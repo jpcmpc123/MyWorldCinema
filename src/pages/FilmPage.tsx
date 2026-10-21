@@ -35,6 +35,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import {
   animateElasticIndicator,
   placeTabIndicator,
+  syncTabIndicatorToButton,
   type IndicatorPos,
 } from '../utils/tabIndicator';
 
@@ -211,6 +212,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   const filmIndicatorRef = useRef<HTMLSpanElement | null>(null);
   const filmPrevPosRef = useRef<IndicatorPos>({ left: 0, width: 0 });
   const filmTabMountedRef = useRef<boolean>(false);
+  const prevActiveTabRef = useRef<TabKey>(activeTab);
 
   // Reset tab when film changes
   useEffect(() => {
@@ -219,6 +221,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     setTabSlidePhase('idle');
     filmPrevPosRef.current = { left: 0, width: 0 };
     filmTabMountedRef.current = false;
+    prevActiveTabRef.current = 'cast';
   }, [movieId]);
 
   const handleSelectTab = (nextTab: TabKey) => {
@@ -275,55 +278,75 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     };
   }, [tabSlidePhase]);
 
-  // Obtém as coordenadas da barra verde: para 'cast' (1ª aba), começa encostada na borda esquerda da tela (left: 0)
-  // e vai até o fim de Cast, exatamente como na captura do aplicativo oficial Letterboxd.
-  const getFilmIndicatorGeometry = (tabKey: TabKey): IndicatorPos | null => {
-    const targetBtn = filmTabButtonsRef.current.get(tabKey);
-    if (!targetBtn) return null;
-    if (tabKey === 'cast') {
-      return {
-        left: 0,
-        width: targetBtn.offsetLeft + targetBtn.offsetWidth,
-      };
-    }
-    return {
-      left: targetBtn.offsetLeft,
-      width: targetBtn.offsetWidth,
-    };
-  };
-
-  // Posiciona a barra verde com animação elástica contínua na GPU ao trocar de aba
+  // Posiciona a barra verde com animação elástica contínua na GPU ao trocar de aba,
+  // ou com posicionamento imediato no carregamento inicial (sem animação e sem atraso).
   useLayoutEffect(() => {
-    if (!isMobile) return;
     const indicator = filmIndicatorRef.current;
-    const geo = getFilmIndicatorGeometry(activeTab);
-    if (!indicator || !geo) return;
+    const targetBtn = filmTabButtonsRef.current.get(activeTab);
+    if (!indicator || !targetBtn) return;
 
-    if (!filmTabMountedRef.current || filmPrevPosRef.current.width <= 0) {
-      filmTabMountedRef.current = true;
-      placeTabIndicator(indicator, geo.left, geo.width, filmPrevPosRef.current);
-    } else {
-      animateElasticIndicator(geo, indicator, filmPrevPosRef.current, false);
-    }
-  }, [activeTab, isMobile, movie?.id]);
+    const isTabChange = filmTabMountedRef.current && prevActiveTabRef.current !== activeTab;
+    prevActiveTabRef.current = activeTab;
 
-  // Recalcula o indicador sem estirar ao redimensionar ou trocar orientação de tela
-  useEffect(() => {
-    if (!isMobile) return;
-    const updateIndicatorImmediate = () => {
-      const indicator = filmIndicatorRef.current;
-      const geo = getFilmIndicatorGeometry(activeTab);
-      if (indicator && geo) {
-        placeTabIndicator(indicator, geo.left, geo.width, filmPrevPosRef.current);
+    const syncIndicator = (immediate: boolean) => {
+      const btn = filmTabButtonsRef.current.get(activeTab);
+      const ind = filmIndicatorRef.current;
+      if (!btn || !ind) return;
+      const left = btn.offsetLeft;
+      const width = btn.offsetWidth;
+      if (width <= 0) return;
+
+      if (immediate || !filmTabMountedRef.current || filmPrevPosRef.current.width <= 0) {
+        filmTabMountedRef.current = true;
+        placeTabIndicator(ind, left, width, filmPrevPosRef.current);
+        ind.style.opacity = '1';
+      } else {
+        animateElasticIndicator(btn, ind, filmPrevPosRef.current, false);
       }
     };
-    window.addEventListener('resize', updateIndicatorImmediate);
-    const t = window.setTimeout(updateIndicatorImmediate, 120);
-    return () => {
-      window.removeEventListener('resize', updateIndicatorImmediate);
-      window.clearTimeout(t);
+
+    // Troca de aba por clique: roda a animação elástica contínua na GPU
+    // Primeiro carregamento da página do filme ou re-render: posiciona imediatamente
+    syncIndicator(!isTabChange);
+
+    // Se for montagem inicial, confirma o alinhamento no próximo frame sem disparar animação
+    if (!isTabChange) {
+      const rafId = window.requestAnimationFrame(() => {
+        const btn = filmTabButtonsRef.current.get(activeTab);
+        const ind = filmIndicatorRef.current;
+        if (!btn || !ind || btn.offsetWidth <= 0) return;
+        placeTabIndicator(ind, btn.offsetLeft, btn.offsetWidth, filmPrevPosRef.current);
+        ind.style.opacity = '1';
+      });
+      return () => window.cancelAnimationFrame(rafId);
+    }
+  }, [activeTab, movie?.id]);
+
+  // Auto-correção não-intrusiva (fontes / resize / rotação): nunca interrompe animação em curso
+  useEffect(() => {
+    const handleSync = () => {
+      const indicator = filmIndicatorRef.current;
+      const targetBtn = filmTabButtonsRef.current.get(activeTab);
+      if (indicator && targetBtn) {
+        syncTabIndicatorToButton(targetBtn, indicator, filmPrevPosRef.current);
+        indicator.style.opacity = '1';
+      }
     };
-  }, [activeTab, isMobile]);
+
+    window.addEventListener('resize', handleSync);
+    window.addEventListener('orientationchange', handleSync);
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(handleSync).catch(() => {});
+    }
+
+    const timer = window.setTimeout(handleSync, 120);
+
+    return () => {
+      window.removeEventListener('resize', handleSync);
+      window.removeEventListener('orientationchange', handleSync);
+      window.clearTimeout(timer);
+    };
+  }, [movie?.id]);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showTrailerModal, setShowTrailerModal] = useState(false);
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
@@ -1012,12 +1035,12 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             )}
 
             {/* App-style tabs — MOBILE ONLY: Cast / Crew / Details / Genre / Releases */}
-            <div className="md:hidden pt-0 mt-[6px]">
+            <div className="md:hidden pt-0 mt-[10px]">
               {/* Barra de abas: borda a borda (-mx-4) no estilo oficial do Letterboxd (Foto de referência) */}
               <div className="-mx-4 bg-[#14181c]">
                 <div
                   ref={filmTabsContainerRef}
-                  className="relative flex items-center justify-start gap-5 sm:gap-6 px-4 border-t border-b border-[#232a32] overflow-x-auto overflow-y-hidden no-scrollbar overscroll-none select-none py-0"
+                  className="relative flex items-center justify-start gap-3 sm:gap-4 pl-0 pr-4 border-t border-b border-[#232a32] overflow-x-auto overflow-y-hidden no-scrollbar overscroll-none select-none py-0"
                   style={{ touchAction: 'pan-x pan-y' }}
                 >
                   {FILM_MOBILE_TABS.map(({ key, labelKey }) => {
@@ -1026,27 +1049,33 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                       <button
                         key={key}
                         ref={(el) => {
-                          if (el) filmTabButtonsRef.current.set(key, el);
-                          else filmTabButtonsRef.current.delete(key);
+                          if (el) {
+                            filmTabButtonsRef.current.set(key, el);
+                            if (key === activeTab && filmIndicatorRef.current && !filmTabMountedRef.current && el.offsetWidth > 0) {
+                              placeTabIndicator(filmIndicatorRef.current, el.offsetLeft, el.offsetWidth, filmPrevPosRef.current);
+                              filmIndicatorRef.current.style.opacity = '1';
+                              filmTabMountedRef.current = true;
+                            }
+                          } else {
+                            filmTabButtonsRef.current.delete(key);
+                          }
                         }}
                         type="button"
                         onClick={() => handleSelectTab(key)}
-                        className={`relative pt-2 pb-2.5 px-0 transition-colors cursor-pointer whitespace-nowrap text-[14.5px] sm:text-[15px] leading-tight tracking-normal outline-none focus:outline-none ${
+                        className={`relative pt-[19px] pb-2.5 px-2 transition-colors cursor-pointer whitespace-nowrap text-[14.5px] sm:text-[15px] leading-tight tracking-normal outline-none focus:outline-none flex items-center justify-center text-center ${
                           isActive
                             ? 'text-white font-bold'
                             : 'text-[#738290] hover:text-white font-medium'
                         }`}
                       >
-                        {t(labelKey)}
+                        <span>{t(labelKey)}</span>
                       </button>
                     );
                   })}
-                  {/* Barrinha verde elástica deslizante: para 'cast' começa encostada na borda esquerda (left: 0) */}
+                  {/* Barrinha verde elástica deslizante: perfeitamente centralizada e um pouco maior que a palavra */}
                   <span
                     ref={filmIndicatorRef}
-                    className={`tab-indicator !h-[2.5px] ${
-                      activeTab === 'cast' ? '!rounded-l-none !rounded-r-full' : '!rounded-full'
-                    }`}
+                    className="tab-indicator !h-[2.5px] !rounded-full opacity-0"
                     aria-hidden="true"
                   />
                 </div>
