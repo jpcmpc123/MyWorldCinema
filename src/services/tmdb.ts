@@ -256,8 +256,8 @@ interface TMDBEnrichmentPayload {
   alternative_titles?: { titles?: { title: string }[] };
 }
 
-/** Quantos itens da 1ª página recebem diretores/títulos alternativos. */
-const SEARCH_ENRICH_LIMIT = 15;
+/** Quantos itens da 1ª página recebem diretores/títulos alternativos (evita congestionar a rede ao digitar). */
+const SEARCH_ENRICH_LIMIT = 6;
 
 /**
  * Diretores + títulos alternativos de UM título.
@@ -327,6 +327,37 @@ async function enrichSearchItems(items: TMDBSearchResult[]): Promise<TMDBSearchR
 const TMDB_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
 const tmdbCache = new Map<string, { data: unknown; expires: number }>();
 const tmdbInflight = new Map<string, Promise<unknown>>();
+const mediaDetailsCache = new Map<string, { data: TMDBMovieDetails; expires: number }>();
+
+async function fetchWithRetry(
+  urlString: string,
+  headers: Record<string, string>,
+  maxAttempts = 3,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4500);
+    try {
+      const res = await fetch(urlString, { headers, signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) return res;
+      // Retry on rate limit (429) or transient server errors (5xx)
+      if ((res.status === 429 || res.status >= 500) && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 250 * attempt));
+        continue;
+      }
+      throw new Error(`TMDB error ${res.status}: ${res.statusText}`);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastError = err;
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 250 * attempt));
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Failed to fetch from TMDB');
+}
 
 async function fetchFromTMDB<T>(endpoint: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
   if (!TMDB_API_KEY || !TMDB_ACCESS_TOKEN) {
@@ -366,10 +397,7 @@ async function fetchFromTMDB<T>(endpoint: string, params: Record<string, string 
   }
 
   const promise = (async () => {
-    const res = await fetch(urlString, { headers });
-    if (!res.ok) {
-      throw new Error(`TMDB error ${res.status}: ${res.statusText}`);
-    }
+    const res = await fetchWithRetry(urlString, headers, 3);
     const data = await res.json();
     // Esconde itens sem pôster (no site todo): em listas de filmes, descarta
     // resultados com poster_path nulo. Itens sem a chave (ex.: pessoas em
@@ -681,6 +709,7 @@ function rankSimilarCandidates(
 async function curateSimilarForDetails(
   details: TMDBMovieDetails,
   type: 'movie' | 'tv',
+  fastMode = false,
 ): Promise<TMDBMovie[]> {
   const cacheKey = `${type}:${details.id}:${tmdbLanguage}`;
   const genreIds = (details.genres || []).map((g) => g.id);
@@ -691,9 +720,89 @@ async function curateSimilarForDetails(
   const collectionObj = (details as unknown as { belongs_to_collection?: { id: number } | null }).belongs_to_collection;
   const collectionId = type === 'movie' && collectionObj?.id ? collectionObj.id : undefined;
 
+  const baseRecs = details.recommendations?.results || [];
+  const baseSim = details.similar?.results || [];
+  const needsFallbackDiscover = baseRecs.length + baseSim.length < 6 && genreIds.length > 0;
+
+  if (fastMode) {
+    // No modo rápido (abertura imediata da página de detalhes), não bloqueamos a renderização
+    // em várias requisições extras. Se houver coleção, damos até 320ms para ela responder junto;
+    // se demorar mais, finaliza em segundo plano sem travar a abertura do filme.
+    let collectionParts: TMDBMovie[] = [];
+    if (collectionId) {
+      const applyCollectionData = (colData: { name?: string; parts?: TMDBMovie[] }) => {
+        const rawParts = (colData.parts || []).map(normalizeMediaItem);
+        const parts = rawParts
+          .filter((m) => Boolean(m.poster_path) && (!itemDate(m) || itemDate(m) <= TMDB_TODAY))
+          .sort((a, b) => {
+            const da = itemDate(a) || '9999-12-31';
+            const db = itemDate(b) || '9999-12-31';
+            return da.localeCompare(db);
+          });
+        if (details.belongs_to_collection && colData.name) {
+          details.belongs_to_collection.name = colData.name;
+        }
+        details.collection_parts = parts;
+        return parts;
+      };
+
+      const colPromise = fetchFromTMDB<{ name?: string; parts?: TMDBMovie[] }>(
+        `/collection/${collectionId}`,
+      )
+        .then((colData) => applyCollectionData(colData))
+        .catch(() => [] as TMDBMovie[]);
+
+      collectionParts = await Promise.race([
+        colPromise,
+        new Promise<TMDBMovie[]>((resolve) => setTimeout(() => resolve([]), 320)),
+      ]);
+    }
+
+    let fallbackDiscoverItems: TMDBMovie[] = [];
+    if (needsFallbackDiscover) {
+      try {
+        const disc = await Promise.race([
+          fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/discover/${type}`, {
+            with_genres: genreIds.slice(0, 2).join(','),
+            sort_by: 'vote_count.desc',
+            'vote_count.gte': type === 'tv' ? 40 : 120,
+            page: 1,
+          }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 350)),
+        ]);
+        if (disc?.results) fallbackDiscoverItems = disc.results;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const profile: SimilarSourceProfile = {
+      id: details.id,
+      type,
+      genreIds,
+      keywordIds,
+      originalLanguage: details.original_language || '',
+      releaseYear,
+      collectionId,
+      collectionParts,
+      rankedPool: [],
+    };
+
+    const collectionIdSet = new Set(collectionParts.map((m) => m.id));
+    const rankedAll = rankSimilarCandidates(profile, {
+      recommendations: baseRecs,
+      keywordDiscover: fallbackDiscoverItems,
+      similar: baseSim,
+    });
+    const ranked = rankedAll.filter((m) => !collectionIdSet.has(m.id)).slice(0, 80);
+    profile.rankedPool = ranked;
+    similarProfileCache.set(cacheKey, profile);
+    return ranked;
+  }
+
   const extraCalls = await Promise.allSettled([
     collectionId
-      ? fetchFromTMDB<{ parts?: TMDBMovie[] }>(`/collection/${collectionId}`)
+      ? fetchFromTMDB<{ name?: string; parts?: TMDBMovie[] }>(`/collection/${collectionId}`)
       : Promise.resolve({ parts: [] as TMDBMovie[] }),
     fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/${type}/${details.id}/recommendations`, { page: 2 }),
     keywordIds.length > 0 && genreIds.length > 0
@@ -722,7 +831,6 @@ async function curateSimilarForDetails(
       ? (extraCalls[0].value as { name?: string; parts?: TMDBMovie[] })
       : { parts: [] as TMDBMovie[] };
   const rawCollectionParts = (collectionData.parts || []).map(normalizeMediaItem);
-  // Ordena os filmes da coleção por data de lançamento (cronológico) e exige pôster
   const collectionParts = rawCollectionParts
     .filter((m) => Boolean(m.poster_path) && (!itemDate(m) || itemDate(m) <= TMDB_TODAY))
     .sort((a, b) => {
@@ -757,13 +865,11 @@ async function curateSimilarForDetails(
     rankedPool: [],
   };
 
-  // Como os capítulos da mesma coleção aparecem na seção dedicada "RELATED FILMS",
-  // removemos os IDs da coleção da seção "SIMILAR FILMS" para não duplicar logo abaixo.
   const collectionIdSet = new Set(collectionParts.map((m) => m.id));
   const rankedAll = rankSimilarCandidates(profile, {
-    recommendations: [...(details.recommendations?.results || []), ...recPage2],
+    recommendations: [...baseRecs, ...recPage2],
     keywordDiscover: [...kwDiscover1, ...kwDiscover2],
-    similar: [...(details.similar?.results || []), ...simPage2],
+    similar: [...baseSim, ...simPage2],
   });
   const ranked = rankedAll.filter((m) => !collectionIdSet.has(m.id)).slice(0, 80);
 
@@ -773,6 +879,15 @@ async function curateSimilarForDetails(
 }
 
 export const tmdb = {
+  getCachedDetails(id: number, type: 'movie' | 'tv'): TMDBMovieDetails | null {
+    const key = `${type}:${id}:${tmdbLanguage}`;
+    const entry = mediaDetailsCache.get(key);
+    if (entry && entry.expires > Date.now()) {
+      return entry.data;
+    }
+    return null;
+  },
+
   getImageUrl(path: string | null, size: 'w92' | 'w185' | 'w342' | 'w500' | 'w780' | 'original' = 'w500'): string {
     if (!path) return 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=500&auto=format&fit=crop&q=60';
     if (path.startsWith('http')) return path;
@@ -807,24 +922,67 @@ export const tmdb = {
   },
 
   async getMovieDetails(id: number): Promise<TMDBMovieDetails> {
-    const movie = await fetchFromTMDB<TMDBMovieDetails>(`/movie/${id}`, {
-      append_to_response: 'credits,similar,recommendations,watch/providers,videos,release_dates,external_ids,keywords,alternative_titles',
-    });
-    // Fallback pt-BR → en-US quando sinopse/tagline vêm vazias (filmes inéditos)
-    if (tmdbLanguage !== 'en-US' && (!movie.overview || !movie.tagline)) {
+    const cacheKey = `movie:${id}:${tmdbLanguage}`;
+    const cached = mediaDetailsCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
+
+    let movie: TMDBMovieDetails;
+    try {
+      movie = await fetchFromTMDB<TMDBMovieDetails>(`/movie/${id}`, {
+        append_to_response:
+          'credits,similar,recommendations,watch/providers,videos,release_dates,external_ids,alternative_titles',
+      });
+    } catch {
+      movie = await fetchFromTMDB<TMDBMovieDetails>(`/movie/${id}`, {
+        append_to_response: 'credits,videos,release_dates,similar',
+      });
+    }
+
+    // Fallback para garantir sempre sinopse, elenco, diretor e backdrop completos
+    const needsEnFallback =
+      !movie.overview ||
+      !movie.backdrop_path ||
+      (!movie.credits?.cast?.length && !movie.credits?.crew?.length);
+    if (needsEnFallback) {
       try {
         const en = await fetchFromTMDB<TMDBMovieDetails>(`/movie/${id}`, {
           language: 'en-US',
-          append_to_response: 'credits',
+          append_to_response: 'credits,videos,release_dates',
         });
-        if (!movie.overview) movie.overview = en.overview;
-        if (!movie.tagline) movie.tagline = en.tagline;
+        if (!movie.overview && en.overview) movie.overview = en.overview;
+        if (!movie.tagline && en.tagline) movie.tagline = en.tagline;
+        if (!movie.runtime && en.runtime) movie.runtime = en.runtime;
+        if (!movie.backdrop_path && en.backdrop_path) movie.backdrop_path = en.backdrop_path;
+        if (!movie.poster_path && en.poster_path) movie.poster_path = en.poster_path;
+        if (!movie.credits?.cast?.length && en.credits?.cast?.length) {
+          movie.credits = {
+            cast: en.credits.cast,
+            crew: movie.credits?.crew?.length ? movie.credits.crew : (en.credits.crew || []),
+          };
+        } else if (!movie.credits?.crew?.length && en.credits?.crew?.length) {
+          movie.credits = {
+            cast: movie.credits?.cast || [],
+            crew: en.credits.crew,
+          };
+        }
       } catch {
-        /* mantém vazio */
+        /* mantém dados atuais */
       }
     }
-    const similarRanked = await curateSimilarForDetails(movie, 'movie');
+
+    if (!movie.credits) {
+      movie.credits = { cast: [], crew: [] };
+    }
+
+    if (!movie.backdrop_path) {
+      movie.backdrop_path = movie.poster_path || null;
+    }
+
+    const similarRanked = await curateSimilarForDetails(movie, 'movie', true);
     movie.similar = { results: similarRanked };
+    mediaDetailsCache.set(cacheKey, { data: movie, expires: Date.now() + TMDB_CACHE_TTL_MS });
     return movie;
   },
 
@@ -1521,23 +1679,53 @@ export const tmdb = {
 
   // Detalhes de serie normalizados para o formato de filme (title/name etc.)
   async getTVDetails(id: number): Promise<TMDBMovieDetails> {
-    const show = await fetchFromTMDB<TMDBMovieDetails>(`/tv/${id}`, {
-      append_to_response: 'credits,aggregate_credits,similar,recommendations,watch/providers,videos,content_ratings,external_ids,keywords,alternative_titles',
-    });
-    // Fallback pt-BR → en-US quando sinopse/tagline vêm vazias
-    if (tmdbLanguage !== 'en-US' && (!show.overview || !show.tagline)) {
+    const cacheKey = `tv:${id}:${tmdbLanguage}`;
+    const cached = mediaDetailsCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
+
+    let show: TMDBMovieDetails;
+    try {
+      show = await fetchFromTMDB<TMDBMovieDetails>(`/tv/${id}`, {
+        append_to_response:
+          'credits,aggregate_credits,similar,recommendations,watch/providers,videos,content_ratings,external_ids,alternative_titles',
+      });
+    } catch {
+      show = await fetchFromTMDB<TMDBMovieDetails>(`/tv/${id}`, {
+        append_to_response: 'credits,aggregate_credits,videos,content_ratings,similar',
+      });
+    }
+
+    // Fallback para garantir sempre sinopse, créditos e backdrop completos
+    const needsEnFallback =
+      !show.overview ||
+      !show.backdrop_path ||
+      (!show.credits?.cast?.length && !show.credits?.crew?.length);
+    if (needsEnFallback) {
       try {
         const en = await fetchFromTMDB<TMDBMovieDetails>(`/tv/${id}`, {
           language: 'en-US',
-          append_to_response: 'credits',
+          append_to_response: 'credits,aggregate_credits',
         });
-        if (!show.overview) show.overview = en.overview;
-        if (!show.tagline) show.tagline = en.tagline;
+        if (!show.overview && en.overview) show.overview = en.overview;
+        if (!show.tagline && en.tagline) show.tagline = en.tagline;
+        if (!show.backdrop_path && en.backdrop_path) show.backdrop_path = en.backdrop_path;
+        if (!show.poster_path && en.poster_path) show.poster_path = en.poster_path;
+        if (!show.credits?.cast?.length && en.credits?.cast?.length) {
+          show.credits = {
+            cast: en.credits.cast,
+            crew: show.credits?.crew?.length ? show.credits.crew : (en.credits.crew || []),
+          };
+        }
       } catch {
         /* mantém vazio */
       }
     }
     const showAny = show as unknown as Record<string, unknown>;
+    if (!show.backdrop_path) {
+      show.backdrop_path = show.poster_path || null;
+    }
     show.title = (showAny.name as string) || '';
     show.original_title = (showAny.original_name as string) || show.title;
     show.release_date = (showAny.first_air_date as string) || show.release_date || '';
@@ -1677,8 +1865,9 @@ export const tmdb = {
       });
     if (show.similar) show.similar.results = normList(show.similar.results);
     if (show.recommendations) show.recommendations.results = normList(show.recommendations.results);
-    const similarRanked = await curateSimilarForDetails(show, 'tv');
+    const similarRanked = await curateSimilarForDetails(show, 'tv', true);
     show.similar = { results: similarRanked };
+    mediaDetailsCache.set(cacheKey, { data: show, expires: Date.now() + TMDB_CACHE_TTL_MS });
     return show;
   },
 

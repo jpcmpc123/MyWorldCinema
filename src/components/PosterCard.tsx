@@ -164,6 +164,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
         <Link
           to={`${tv ? '/tv' : '/film'}/${movie.id}`}
           state={{ initialMovie: movie, fromPoster: true, ...linkState }}
+          onPointerDown={handlePrefetch}
           onMouseEnter={handlePrefetch}
           onTouchStart={handlePrefetch}
           className={`block w-full h-full rounded-[4px] overflow-hidden transition-opacity duration-150 ${

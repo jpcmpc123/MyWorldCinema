@@ -99,6 +99,14 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
     },
   });
 
+  const handlePrefetch = (film: TMDBPersonMovieCredit) => {
+    if (film.media_type === 'tv') {
+      tmdb.getTVDetails(film.id).catch(() => {});
+    } else {
+      tmdb.getMovieDetails(film.id).catch(() => {});
+    }
+  };
+
   // Card de pôster (grade de 4 colunas e lista compacta).
   // Série (media_type 'tv') abre /tv/{id}; filme abre /film/{id}.
   const posterCard = (film: TMDBPersonMovieCredit, className = '') => (
@@ -106,6 +114,9 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
       key={`${film.media_type ?? 'movie'}-${film.id}`}
       to={`${film.media_type === 'tv' ? '/tv' : '/film'}/${film.id}`}
       state={buildLinkState(film)}
+      onPointerDown={() => handlePrefetch(film)}
+      onTouchStart={() => handlePrefetch(film)}
+      onMouseEnter={() => handlePrefetch(film)}
       className={`person-film-card relative block ${className}`}
     >
       {film.poster_path ? (

@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de implementação do layout desktop estilo Letterboxd para a página de Filmes e Séries Semelhantes (com as abas ALL, THEMES e NANOGENRES, filtros de década/serviço/assistidos e coluna lateral com pôster, estatísticas e backdrop em vinheta).",
-  "updatedAt":  "2026-10-21T11:23:21.725698876Z",
+  "summary":  "Plano de implementação para eliminar o estado incompleto na tela de detalhes de filmes/séries, acelerar o carregamento da API do TMDB removendo payloads pesados e bloqueios em série, e corrigir a animação de deslize (slide suave de 340ms da direita para a esquerda).",
+  "updatedAt":  "2026-10-21T16:22:23.034514126Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -11,6 +11,11 @@ import { TabViewPager } from './components/TabViewPager';
 import { useIsMobile } from './hooks/useIsMobile';
 import { tabPanelIndex, parseProfileTabRoute } from './utils/tabRoutes';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { HomePage } from './pages/HomePage';
+import { FilmPage } from './pages/FilmPage';
+import { ActorPage } from './pages/ActorPage';
+import { SearchPage } from './pages/SearchPage';
+import { CollectionPage } from './pages/CollectionPage';
 
 /**
  * Resilient lazy loader that retries failed dynamic imports (e.g. after Vite
@@ -70,10 +75,7 @@ function GlobalModals() {
   );
 }
 
-// Code splitting com retry resiliente
-const HomePage = lazyWithRetry(() => import('./pages/HomePage'), 'HomePage');
-const FilmPage = lazyWithRetry(() => import('./pages/FilmPage'), 'FilmPage');
-const ActorPage = lazyWithRetry(() => import('./pages/ActorPage'), 'ActorPage');
+// Páginas secundárias com code splitting resiliente
 const FilmsHubPage = lazyWithRetry(() => import('./pages/FilmsHubPage'), 'FilmsHubPage');
 const FilmsPage = lazyWithRetry(() => import('./pages/FilmsPage'), 'FilmsPage');
 const SeriesHubPage = lazyWithRetry(() => import('./pages/SeriesHubPage'), 'SeriesHubPage');
@@ -86,14 +88,8 @@ const ListDetailPage = lazyWithRetry(() => import('./pages/ListDetailPage'), 'Li
 const CreateListPage = lazyWithRetry(() => import('./pages/CreateListPage'), 'CreateListPage');
 const AuthPage = lazyWithRetry(() => import('./pages/AuthPage'), 'AuthPage');
 const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'), 'SettingsPage');
-const SearchPage = lazyWithRetry(() => import('./pages/SearchPage'), 'SearchPage');
 const BrowseDrilldownPage = lazyWithRetry(() => import('./pages/BrowseDrilldownPage'), 'BrowseDrilldownPage');
 const BrowseResultsPage = lazyWithRetry(() => import('./pages/BrowseResultsPage'), 'BrowseResultsPage');
-const CollectionPage = lazyWithRetry(() => import('./pages/CollectionPage'), 'CollectionPage');
-
-
-// Pré-carrega o chunk da página de detalhes em background para navegação instantânea
-import('./pages/FilmPage').catch(() => {});
 
 function PageLoader() {
   return (

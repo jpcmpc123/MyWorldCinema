@@ -65,58 +65,13 @@ export const FilmPage: React.FC = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
 
-  // Recupera dados prévios passados ao clicar no pôster (título, pôster, ano, etc.)
-  const locationState = location.state as {
-    initialMovie?: {
-      id: number;
-      title?: string;
-      name?: string;
-      original_title?: string;
-      original_name?: string;
-      poster_path?: string | null;
-      backdrop_path?: string | null;
-      release_date?: string;
-      first_air_date?: string;
-      vote_average?: number;
-      vote_count?: number;
-      overview?: string;
-    };
-    fromPoster?: boolean;
-  } | null;
+  const cachedDetails = useMemo<TMDBMovieDetails | null>(
+    () => (movieId ? tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie') : null),
+    [movieId, isTv],
+  );
 
-  const previewMovie = useMemo<TMDBMovieDetails | null>(() => {
-    const init = locationState?.initialMovie;
-    if (!init || Number(init.id) !== movieId) return null;
-    const title = init.title || init.name || init.original_title || init.original_name || '';
-    const date = init.release_date || init.first_air_date || '';
-    return {
-      id: movieId,
-      title,
-      original_title: init.original_title || init.original_name || title,
-      poster_path: init.poster_path ?? null,
-      backdrop_path: init.backdrop_path ?? null,
-      overview: init.overview || '',
-      release_date: date,
-      vote_average: init.vote_average ?? 0,
-      vote_count: init.vote_count ?? 0,
-      popularity: 0,
-      tagline: '',
-      runtime: 0,
-      status: '',
-      budget: 0,
-      revenue: 0,
-      genres: [],
-      production_companies: [],
-      production_countries: [],
-      spoken_languages: [],
-      credits: { cast: [], crew: [] },
-      similar: { results: [] },
-      recommendations: { results: [] },
-    };
-  }, [locationState?.initialMovie, movieId]);
-
-  const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => previewMovie);
-  const [loading, setLoading] = useState<boolean>(() => !previewMovie);
+  const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => cachedDetails);
+  const [loading, setLoading] = useState<boolean>(() => !cachedDetails);
   const [activeTab, setActiveTab] = useState<'cast' | 'crew' | 'details' | 'genres' | 'releases'>('cast');
   const [copiedLink, setCopiedLink] = useState(false);
   const [showTrailerModal, setShowTrailerModal] = useState(false);
@@ -142,46 +97,80 @@ export const FilmPage: React.FC = () => {
   }, [showTrailerModal]);
 
   useEffect(() => {
-    async function loadFilm() {
-      if (!movieId) return;
-      window.scrollTo(0, 0);
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-      // Se temos preview deste filme/série, inicializa com ele imediatamente
-      if (previewMovie && previewMovie.id === movieId) {
-        setMovie((prev) => (prev?.id === movieId ? prev : previewMovie));
-        setLoading(false);
-      } else {
-        setMovie((prev) => (prev?.id === movieId ? prev : null));
+    async function loadFilm(attempt = 1) {
+      if (!movieId) return;
+      if (attempt === 1) {
+        window.scrollTo(0, 0);
+        const cached = tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie');
+        if (cached && (cached.credits?.cast?.length || cached.credits?.crew?.length || cached.runtime)) {
+          setMovie(cached);
+          setLoading(false);
+          return;
+        }
+        setMovie(null);
         setLoading(true);
       }
 
       try {
         const details = isTv ? await tmdb.getTVDetails(movieId) : await tmdb.getMovieDetails(movieId);
+        if (cancelled) return;
         setMovie(details);
+        setLoading(false);
       } catch (err) {
-        console.error('Failed to load movie details:', err);
-      } finally {
+        if (cancelled) return;
+        console.error('Failed to load movie details (attempt ' + attempt + '):', err);
+        if (attempt < 5) {
+          retryTimer = setTimeout(() => {
+            if (!cancelled) loadFilm(attempt + 1);
+          }, 450 * attempt);
+          return;
+        }
         setLoading(false);
       }
     }
-    loadFilm();
-  }, [movieId, isTv, previewMovie]);
 
-  if (!movie) {
+    loadFilm(1);
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [movieId, isTv]);
+
+  // Se o filme pertence a uma coleção mas a busca da coleção demorou >320ms na abertura,
+  // preenchemos `collection_parts` assim que ela terminar em segundo plano.
+  useEffect(() => {
+    if (isTv || !movie?.belongs_to_collection?.id) return;
+    if (movie.collection_parts && movie.collection_parts.length > 0) return;
+    let cancelled = false;
+    const colId = movie.belongs_to_collection.id;
+    tmdb
+      .getCollectionDetails(colId)
+      .then((col) => {
+        if (cancelled || !col.parts?.length) return;
+        setMovie((prev) =>
+          prev && prev.id === movie.id
+            ? {
+                ...prev,
+                belongs_to_collection: prev.belongs_to_collection
+                  ? { ...prev.belongs_to_collection, name: col.name || prev.belongs_to_collection.name }
+                  : prev.belongs_to_collection,
+                collection_parts: col.parts,
+              }
+            : prev,
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isTv, movie?.id, movie?.belongs_to_collection?.id, movie?.collection_parts?.length]);
+
+  if (!movie || loading) {
     if (loading) {
-      // Sem spinner circular: esqueleto estruturado suave no slide
-      return (
-        <div className="relative min-h-screen text-lb-text mw-slide-in-left max-w-[950px] mx-auto px-4 md:px-0 pt-16 md:pt-20">
-          <div className="flex flex-col md:flex-row gap-6 items-start animate-pulse">
-            <div className="w-[120px] md:w-[230px] aspect-[2/3] rounded bg-[#1c2228] flex-shrink-0" />
-            <div className="flex-1 w-full space-y-3 pt-2">
-              <div className="h-7 w-2/3 bg-[#1c2228] rounded" />
-              <div className="h-4 w-1/3 bg-[#1c2228] rounded" />
-              <div className="h-24 w-full bg-[#1c2228] rounded mt-4" />
-            </div>
-          </div>
-        </div>
-      );
+      return <div key="film-loading" className="min-h-screen" />;
     }
 
     return (
@@ -300,9 +289,10 @@ export const FilmPage: React.FC = () => {
 
   const override = movieOverrides[movie.id];
 
+  const effectiveBackdropPath = movie.backdrop_path || movie.poster_path;
   const backdropUrl =
     override?.backdrop ||
-    (movie.backdrop_path ? tmdb.getBackdropUrl(movie.backdrop_path, 'original') : null);
+    (effectiveBackdropPath ? tmdb.getBackdropUrl(effectiveBackdropPath, 'w1280') : null);
 
   const posterPath = override?.poster || movie.poster_path;
   const posterUrl =
@@ -329,7 +319,7 @@ export const FilmPage: React.FC = () => {
   };
 
   return (
-    <div className="relative min-h-screen text-lb-text mw-slide-in-left">
+    <div key={`film-ready-${movie.id}`} className="relative min-h-screen text-lb-text mw-slide-in-left">
       {/* 1. Cinematic Hero Vignette Backdrop */}
       {backdropUrl && (
         <div className="max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:h-[calc(56.25vw+26px)] max-md:overflow-hidden max-md:z-0 max-md:[&_.backdrop-container]:!h-full max-md:[&_.backdrop-container]:!pt-0 max-md:[&_.backdropimage]:!bg-[length:110%_auto] max-md:[&_.backdropimage]:!bg-[position:-5vw_0]">

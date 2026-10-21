@@ -250,10 +250,10 @@ button, a, [role="button"] {
   animation: mwFadeInUp 180ms var(--mw-ease);
 }
 
-/* Slide da direita para a esquerda no celular ao abrir pôster de filme ou série */
-@keyframes mwSlideInRight {
+/* Slide suave de 340ms da direita para a esquerda ao abrir detalhes de filme ou série */
+@keyframes mwSlideFromRightMobile {
   from {
-    opacity: 0.85;
+    opacity: 0.92;
     transform: translate3d(100%, 0, 0);
   }
   to {
@@ -261,9 +261,30 @@ button, a, [role="button"] {
     transform: translate3d(0, 0, 0);
   }
 }
+
+@keyframes mwSlideFromRightDesktop {
+  from {
+    opacity: 0;
+    transform: translate3d(48px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 @media (max-width: 767px) {
-  .mw-slide-in-right {
-    animation: mwSlideInRight 260ms var(--mw-ease);
+  .mw-slide-in-right,
+  .mw-slide-in-left {
+    animation: mwSlideFromRightMobile 340ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform, opacity;
+  }
+}
+
+@media (min-width: 768px) {
+  .mw-slide-in-right,
+  .mw-slide-in-left {
+    animation: mwSlideFromRightDesktop 340ms cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform, opacity;
   }
 }

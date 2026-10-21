@@ -174,7 +174,7 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
   const [pager, setPager] = useState<PagerState>(() => ({
     active: activeIndex,
     leavingRange: null,
-    mounted: PANELS.map(() => true),
+    mounted: PANELS.map((_, i) => i === activeIndex),
   }));
 
   if (pager.active !== activeIndex) {

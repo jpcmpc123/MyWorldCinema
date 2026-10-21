@@ -110,10 +110,20 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
   const userRating = ratingsMap[item.id] ?? 0;
   const watched = isMovieWatched(item.id);
   const href = item.media_type === 'tv' ? `/tv/${item.id}` : `/film/${item.id}`;
+  const handlePrefetch = () => {
+    if (item.media_type === 'tv') {
+      tmdb.getTVDetails(item.id).catch(() => {});
+    } else {
+      tmdb.getMovieDetails(item.id).catch(() => {});
+    }
+  };
 
   return (
     <Link
       to={href}
+      onPointerDown={handlePrefetch}
+      onTouchStart={handlePrefetch}
+      onMouseEnter={handlePrefetch}
       className="flex gap-[18px] py-[18px] border-b border-[#2c3440] items-start group"
     >
       {/* Pôster 70x105 (placeholder escuro quando não há arte) */}
@@ -274,8 +284,21 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
   const releaseYear = item.release_date ? item.release_date.slice(0, 4) : '';
   const director = (item.directors ?? []).join(', ');
   const href = item.media_type === 'tv' ? `/tv/${item.id}` : `/film/${item.id}`;
+  const handlePrefetch = () => {
+    if (item.media_type === 'tv') {
+      tmdb.getTVDetails(item.id).catch(() => {});
+    } else {
+      tmdb.getMovieDetails(item.id).catch(() => {});
+    }
+  };
   return (
-    <Link to={href} className="flex items-center gap-3.5 px-4 py-2.5 border-b border-white/10 active:bg-white/5">
+    <Link
+      to={href}
+      onPointerDown={handlePrefetch}
+      onTouchStart={handlePrefetch}
+      onMouseEnter={handlePrefetch}
+      className="flex items-center gap-3.5 px-4 py-2.5 border-b border-white/10 active:bg-white/5"
+    >
       <MobilePoster path={item.poster_path} alt={item.title} />
       <div className="flex flex-col justify-center min-w-0">
         <p className="text-sm text-[#9ab] leading-snug">

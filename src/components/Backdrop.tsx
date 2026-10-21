@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 
 interface BackdropProps {
   /** URL da imagem de destaque (TMDB ou override do usuário) */
@@ -31,41 +31,39 @@ interface BackdropProps {
  *    `cubic-bezier(.165,.84,.44,1)` quando a imagem termina de carregar.
  */
 export const Backdrop: React.FC<BackdropProps> = ({ src, alt = '' }) => {
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    if (!src) return;
-    setLoaded(false);
-
-    const img = new Image();
-    img.src = src;
-
-    if (img.complete && img.naturalWidth > 0) {
-      setLoaded(true);
-    } else {
-      img.onload = () => setLoaded(true);
-      img.onerror = () => setLoaded(false);
-    }
-  }, [src]);
-
   if (!src) return null;
+
+  // Para URLs do TMDB, usa w780 (~45KB) na camada de background mobile e w1280 (~130KB) no desktop,
+  // evitando baixar imagens 'original' (4K, 5–10MB) que deixavam o topo vazio em conexões 4G.
+  const mobileSrc = src.includes('image.tmdb.org/t/p/')
+    ? src.replace(/\/t\/p\/(original|w1280)\//, '/t/p/w780/')
+    : src;
+  const desktopSrc = src.includes('image.tmdb.org/t/p/')
+    ? src.replace(/\/t\/p\/original\//, '/t/p/w1280/')
+    : src;
 
   return (
     <div className="backdrop-container" aria-hidden="true" role="presentation">
       <div
         id="backdrop"
-        className={`backdrop-wrapper backdrop-fade-in ${loaded ? '-loaded' : ''}`}
-        data-backdrop={src}
+        className="backdrop-wrapper backdrop-fade-in -loaded"
+        data-backdrop={desktopSrc}
       >
         <div
           className="backdropimage js-backdrop-image md:!bg-none"
           style={{
-            backgroundImage: `url("${src}")`,
+            backgroundImage: `url("${mobileSrc}")`,
           }}
           title={alt}
         >
           <img
-            src={src}
+            src={desktopSrc}
+            srcSet={
+              src.includes('image.tmdb.org/t/p/')
+                ? `${mobileSrc} 780w, ${desktopSrc} 1280w`
+                : undefined
+            }
+            sizes="(max-width: 767px) 100vw, 1200px"
             alt={alt}
             fetchPriority="high"
             decoding="async"
