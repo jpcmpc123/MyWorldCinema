@@ -29,6 +29,7 @@ import { Backdrop } from '../components/Backdrop';
 import { ActionBottomSheet } from '../components/ActionBottomSheet';
 import { PosterLightbox } from '../components/PosterLightbox';
 import { openPersonProfile, personRoleFromJob, type PersonRole } from '../utils/personNav';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 function formatNumber(num: number): string {
   if (num >= 1_000_000) {
@@ -46,6 +47,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 }) => {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
+  const isMobile = useIsMobile();
   const isTv = isTvRoute ?? location.pathname.startsWith('/tv/');
   const movieId = Number(id);
 
@@ -330,7 +332,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     <div
       key={`film-ready-${movie.id}`}
       className={`relative min-h-screen bg-lb-bg text-lb-text ${
-        disableSlideAnimation ? '' : 'mw-slide-in-left'
+        disableSlideAnimation ? '' : 'md:mw-slide-in-left'
       }`}
     >
       {/* 1. Cinematic Hero Vignette Backdrop */}
@@ -340,27 +342,25 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
         </div>
       )}
 
-      {/* Floating back + overflow buttons over the backdrop — mobile only (app-style) */}
+      {/* Floating back + overflow buttons over the backdrop — mobile only (app-style, sem backdrop-blur pesado na GPU) */}
       <div className="md:hidden absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 pt-2.5">
         <button
           onClick={() => navigate(-1)}
           aria-label={t('film_back')}
-          className="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white shadow-md active:scale-95 transition-transform"
+          className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center text-white shadow-md active:scale-95 transition-transform"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
         <button
           onClick={() => setShowActionSheet(true)}
           aria-label={t('film_more_actions')}
-          className="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white shadow-md active:scale-95 transition-transform"
+          className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center text-white shadow-md active:scale-95 transition-transform"
         >
           <MoreVertical className="w-5 h-5" />
         </button>
       </div>
 
-      {/* 2. Main Content Container: 3-column Letterboxd layout (950px total)
-          O backdrop é posicionado de forma absoluta (.backdrop-container).
-          O topo do conteúdo inicia em pt-[210px] (mobile) e md:pt-[472px] (desktop, padrão Letterboxd). */}
+      {/* 2. Main Content Container: 3-column Letterboxd layout (950px total) */}
       <div
         className={`relative z-10 max-w-[950px] mx-auto px-4 md:px-0 pb-16 ${
           backdropUrl ? 'pt-[calc(56.25vw+11px)] md:pt-[472px]' : 'pt-20'
@@ -369,75 +369,75 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
         <div className="flex flex-col md:grid md:grid-cols-[230px_390px_230px] md:gap-x-[50px] md:gap-y-[30px] items-start">
 
           {/* ========================================================
-              LEFT COLUMN (w-[230px]): Poster, Stats Bar, Where to Watch
-              (ocupa todas as linhas do grid em telas md+ e acompanha a
-              rolagem com sticky até encostar no final da página)
+              LEFT COLUMN (w-[230px]): Poster, Stats Bar, Where to Watch (Desktop only)
               ======================================================== */}
-          <div
-            className={`w-full md:w-[230px] md:col-start-1 md:row-start-1 ${
-              hasBottomSections ? 'md:row-span-3' : 'md:row-span-2'
-            } md:sticky md:top-6 md:self-start flex-shrink-0 flex flex-col items-center md:items-start`}
-          >
-            {/* Film Poster (230x345px standard Letterboxd frame) */}
-            <button
-              type="button"
-              onClick={() => setShowPosterLightbox(true)}
-              aria-label={t('view_poster')}
-              className="hidden md:block letterboxd-poster-frame overflow-hidden flex-shrink-0 cursor-pointer group relative"
+          {!isMobile && (
+            <div
+              className={`w-full md:w-[230px] md:col-start-1 md:row-start-1 ${
+                hasBottomSections ? 'md:row-span-3' : 'md:row-span-2'
+              } md:sticky md:top-6 md:self-start flex-shrink-0 flex flex-col items-center md:items-start`}
             >
-              <img
-                fetchPriority="high"
-                decoding="async"
-                src={posterUrl}
-                srcSet={posterSrcSet}
-                sizes="230px"
-                alt={movie.title}
-                className="w-full h-full object-cover"
-              />
-              <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded-[4px] transition-all pointer-events-none" />
-            </button>
+              {/* Film Poster (230x345px standard Letterboxd frame) */}
+              <button
+                type="button"
+                onClick={() => setShowPosterLightbox(true)}
+                aria-label={t('view_poster')}
+                className="hidden md:block letterboxd-poster-frame overflow-hidden flex-shrink-0 cursor-pointer group relative"
+              >
+                <img
+                  fetchPriority="high"
+                  decoding="async"
+                  src={posterUrl}
+                  srcSet={posterSrcSet}
+                  sizes="230px"
+                  alt={movie.title}
+                  className="w-full h-full object-cover"
+                />
+                <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded-[4px] transition-all pointer-events-none" />
+              </button>
 
-            {/* Production Statistics List — 10px below poster, 12px font, #667788 */}
-            <div className="hidden md:flex w-[230px] items-center justify-between mt-2.5 py-1 letterboxd-stats-list select-none">
-              <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${watchedStat.toLocaleString()} ${t('film_stat_watched')}`}>
-                <Eye className="w-4 h-4 text-lb-green" />
-                <span className="font-normal">{formatNumber(watchedStat)}</span>
+              {/* Production Statistics List — 10px below poster, 12px font, #667788 */}
+              <div className="hidden md:flex w-[230px] items-center justify-between mt-2.5 py-1 letterboxd-stats-list select-none">
+                <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${watchedStat.toLocaleString()} ${t('film_stat_watched')}`}>
+                  <Eye className="w-4 h-4 text-lb-green" />
+                  <span className="font-normal">{formatNumber(watchedStat)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${ratingsStat.toLocaleString()} ${t('film_stat_ratings')}`}>
+                  <BarChart2 className="w-4 h-4 text-lb-blue" />
+                  <span className="font-normal">{formatNumber(ratingsStat)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${likesStat.toLocaleString()} ${t('film_stat_likes')}`}>
+                  <Heart className="w-4 h-4 text-lb-orange fill-lb-orange" />
+                  <span className="font-normal">{formatNumber(likesStat)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${listsStat.toLocaleString()} ${t('film_stat_lists')}`}>
+                  <Layers className="w-4 h-4 text-[#e5a00d]" />
+                  <span className="font-normal">{formatNumber(listsStat)}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${ratingsStat.toLocaleString()} ${t('film_stat_ratings')}`}>
-                <BarChart2 className="w-4 h-4 text-lb-blue" />
-                <span className="font-normal">{formatNumber(ratingsStat)}</span>
-              </div>
-              <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${likesStat.toLocaleString()} ${t('film_stat_likes')}`}>
-                <Heart className="w-4 h-4 text-lb-orange fill-lb-orange" />
-                <span className="font-normal">{formatNumber(likesStat)}</span>
-              </div>
-              <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${listsStat.toLocaleString()} ${t('film_stat_lists')}`}>
-                <Layers className="w-4 h-4 text-[#e5a00d]" />
-                <span className="font-normal">{formatNumber(listsStat)}</span>
+
+              {/* Where to Watch — desktop only */}
+              <div className="hidden md:block w-[230px] max-w-full mt-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold tracking-wider uppercase text-lb-muted">
+                    {t('film_where_watch')}
+                  </span>
+                  {trailerVideo ? (
+                    <button
+                      onClick={() => setShowTrailerModal(true)}
+                      className="inline-flex items-center gap-1.5 bg-[#202830] hover:bg-lb-elevated border border-lb-elevated text-white text-[11px] font-medium px-2.5 py-0.5 rounded-full transition-colors cursor-pointer"
+                    >
+                      <Play className="w-2.5 h-2.5 fill-white text-white" />
+                      <span>{t('trailer')}</span>
+                    </button>
+                  ) : null}
+                </div>
+
+                {/* Providers Pill Box */}
+                <WhereToWatch providers={movie['watch/providers']} />
               </div>
             </div>
-
-            {/* Where to Watch — desktop only */}
-            <div className="hidden md:block w-[230px] max-w-full mt-4 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold tracking-wider uppercase text-lb-muted">
-                  {t('film_where_watch')}
-                </span>
-                {trailerVideo ? (
-                  <button
-                    onClick={() => setShowTrailerModal(true)}
-                    className="inline-flex items-center gap-1.5 bg-[#202830] hover:bg-lb-elevated border border-lb-elevated text-white text-[11px] font-medium px-2.5 py-0.5 rounded-full transition-colors cursor-pointer"
-                  >
-                    <Play className="w-2.5 h-2.5 fill-white text-white" />
-                    <span>{t('trailer')}</span>
-                  </button>
-                ) : null}
-              </div>
-
-              {/* Providers Pill Box */}
-              <WhereToWatch providers={movie['watch/providers']} />
-            </div>
-          </div>
+          )}
 
           {/* ========================================================
               MASTHEAD: Title + Year + Director
@@ -542,7 +542,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             >
               <div className="w-full aspect-[2/3] rounded-[4px] overflow-hidden ring-1 ring-white/15 shadow-xl bg-lb-surface">
                 <img
-                  loading="lazy"
+                  fetchPriority="high"
                   decoding="async"
                   src={posterPath ? tmdb.getImageUrl(posterPath, 'w342') : posterUrl}
                   srcSet={posterSrcSet}
@@ -648,69 +648,71 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             )}
 
             {/* MyWorld Tabs Bar: Cast, Crew, Details, Genres, Releases (DESKTOP ONLY) */}
-            <div className="hidden md:block pt-2">
-              <div className="flex items-center gap-4 border-b border-[#445566]/60 text-[11px] uppercase tracking-[0.08em]">
-                {(
-                  [
-                    ['cast', t('tab_cast')],
-                    ['crew', t('tab_crew')],
-                    ['details', t('tab_details')],
-                    ['genres', t('tab_genres')],
-                    ['releases', t('tab_releases')],
-                  ] as const
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setActiveTab(key)}
-                    className={`pb-1.5 -mb-[1px] transition-colors cursor-pointer ${
-                      activeTab === key
-                        ? 'text-white border-b border-white'
-                        : 'text-[#00e054] hover:text-white'
-                    }`}
+            {!isMobile && (
+              <div className="hidden md:block pt-2">
+                <div className="flex items-center gap-4 border-b border-[#445566]/60 text-[11px] uppercase tracking-[0.08em]">
+                  {(
+                    [
+                      ['cast', t('tab_cast')],
+                      ['crew', t('tab_crew')],
+                      ['details', t('tab_details')],
+                      ['genres', t('tab_genres')],
+                      ['releases', t('tab_releases')],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setActiveTab(key)}
+                      className={`pb-1.5 -mb-[1px] transition-colors cursor-pointer ${
+                        activeTab === key
+                          ? 'text-white border-b border-white'
+                          : 'text-[#00e054] hover:text-white'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab Contents (desktop) */}
+                <div className="pt-3.5 pb-4">
+                  <FilmTabContent activeTab={activeTab} movie={movie} isTv={isTv} numberOfSeasons={numberOfSeasons} />
+                </div>
+
+                {/* Rodapé de metadados no PC: "173 mins   More at [IMDB] [TMDB]   ⚑" */}
+                <div className="flex items-center gap-2 pt-2 text-[12px] text-[#778899]">
+                  {!isTv && movie.runtime ? (
+                    <span className="mr-1.5">{movie.runtime} mins</span>
+                  ) : isTv && numberOfSeasons ? (
+                    <span className="mr-1.5">
+                      {numberOfSeasons} {numberOfSeasons === 1 ? t('film_season') : t('film_seasons')}
+                    </span>
+                  ) : null}
+                  <span>{t('more_at')}</span>
+                  <a
+                    href={
+                      movie.external_ids?.imdb_id
+                        ? `https://www.imdb.com/title/${movie.external_ids.imdb_id}/`
+                        : `https://www.imdb.com/find/?q=${encodeURIComponent(movie.title)}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="border border-[#445566] hover:border-[#99aabb] text-[#99aabb] hover:text-white text-[10px] font-semibold uppercase tracking-wider px-1.5 py-[2px] rounded-[2px] leading-none transition-colors"
                   >
-                    {label}
-                  </button>
-                ))}
+                    IMDB
+                  </a>
+                  <a
+                    href={`https://www.themoviedb.org/${isTv ? 'tv' : 'movie'}/${movie.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="border border-[#445566] hover:border-[#99aabb] text-[#99aabb] hover:text-white text-[10px] font-semibold uppercase tracking-wider px-1.5 py-[2px] rounded-[2px] leading-none transition-colors"
+                  >
+                    TMDB
+                  </a>
+                  <Flag className="w-3.5 h-3.5 text-[#556677] fill-[#556677] ml-2" aria-hidden="true" />
+                </div>
               </div>
-
-              {/* Tab Contents (desktop) */}
-              <div className="pt-3.5 pb-4">
-                <FilmTabContent activeTab={activeTab} movie={movie} isTv={isTv} numberOfSeasons={numberOfSeasons} />
-              </div>
-
-              {/* Rodapé de metadados no PC: "173 mins   More at [IMDB] [TMDB]   ⚑" */}
-              <div className="flex items-center gap-2 pt-2 text-[12px] text-[#778899]">
-                {!isTv && movie.runtime ? (
-                  <span className="mr-1.5">{movie.runtime} mins</span>
-                ) : isTv && numberOfSeasons ? (
-                  <span className="mr-1.5">
-                    {numberOfSeasons} {numberOfSeasons === 1 ? t('film_season') : t('film_seasons')}
-                  </span>
-                ) : null}
-                <span>{t('more_at')}</span>
-                <a
-                  href={
-                    movie.external_ids?.imdb_id
-                      ? `https://www.imdb.com/title/${movie.external_ids.imdb_id}/`
-                      : `https://www.imdb.com/find/?q=${encodeURIComponent(movie.title)}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="border border-[#445566] hover:border-[#99aabb] text-[#99aabb] hover:text-white text-[10px] font-semibold uppercase tracking-wider px-1.5 py-[2px] rounded-[2px] leading-none transition-colors"
-                >
-                  IMDB
-                </a>
-                <a
-                  href={`https://www.themoviedb.org/${isTv ? 'tv' : 'movie'}/${movie.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="border border-[#445566] hover:border-[#99aabb] text-[#99aabb] hover:text-white text-[10px] font-semibold uppercase tracking-wider px-1.5 py-[2px] rounded-[2px] leading-none transition-colors"
-                >
-                  TMDB
-                </a>
-                <Flag className="w-3.5 h-3.5 text-[#556677] fill-[#556677] ml-2" aria-hidden="true" />
-              </div>
-            </div>
+            )}
 
             {/* App-style tabs — MOBILE ONLY: Cast / Crew / Details / Genre / Releases */}
             <div className="md:hidden pt-4">
@@ -801,100 +803,115 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
           </div>
 
           {/* ========================================================
-              RIGHT COLUMN (w-[230px]): Action Panel & Rating Histogram
-              (no mobile Ã© substituÃ­da pela barra rÃ¡pida + gaveta de aÃ§Ãµes)
+              RIGHT COLUMN (w-[230px]): Action Panel & Rating Histogram (Desktop only)
               ======================================================== */}
-          <div className="hidden md:block w-[230px] flex-shrink-0 space-y-5">
-            {/* MyWorld Action Card */}
-            <div className="bg-lb-border-light border border-[#556677] rounded-[4px] shadow-lg overflow-hidden text-xs text-lb-text">
-              
-              {/* Row 1: Watch, Like, Watchlist 3-column circular buttons */}
-              <div className="grid grid-cols-3 py-2.5 bg-lb-border-light">
-                {/* Watch / Reviewed */}
-                <button
-                  onClick={() => toggleWatched(movie.id)}
-                  className="flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer group"
-                  title={watched ? (hasUserReviewed ? t('film_reviewed') : t('action_watched')) : t('abs_mark_watched')}
-                >
-                  <Eye
-                    className={`w-5 h-5 transition-colors ${
-                      watched ? 'text-lb-green' : 'text-lb-muted group-hover:text-white'
-                    }`}
-                  />
-                  <span
-                    className={`text-[10px] font-semibold tracking-wide ${
-                      watched ? 'text-lb-green' : 'text-lb-muted group-hover:text-white'
-                    }`}
+          {!isMobile && (
+            <div className="hidden md:block w-[230px] flex-shrink-0 space-y-5">
+              {/* MyWorld Action Card */}
+              <div className="bg-lb-border-light border border-[#556677] rounded-[4px] shadow-lg overflow-hidden text-xs text-lb-text">
+                
+                {/* Row 1: Watch, Like, Watchlist 3-column circular buttons */}
+                <div className="grid grid-cols-3 py-2.5 bg-lb-border-light">
+                  {/* Watch / Reviewed */}
+                  <button
+                    onClick={() => toggleWatched(movie.id)}
+                    className="flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer group"
+                    title={watched ? (hasUserReviewed ? t('film_reviewed') : t('action_watched')) : t('abs_mark_watched')}
                   >
-                    {watched ? (hasUserReviewed ? t('film_reviewed') : t('action_watched')) : t('action_watch')}
-                  </span>
-                </button>
+                    <Eye
+                      className={`w-5 h-5 transition-colors ${
+                        watched ? 'text-lb-green' : 'text-lb-muted group-hover:text-white'
+                      }`}
+                    />
+                    <span
+                      className={`text-[10px] font-semibold tracking-wide ${
+                        watched ? 'text-lb-green' : 'text-lb-muted group-hover:text-white'
+                      }`}
+                    >
+                      {watched ? (hasUserReviewed ? t('film_reviewed') : t('action_watched')) : t('action_watch')}
+                    </span>
+                  </button>
 
-                {/* Like */}
-                <button
-                  onClick={() => toggleLikeMovie(movie.id)}
-                  className="flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer group"
-                  title={liked ? t('action_liked') : t('action_like')}
-                >
-                  <Heart
-                    className={`w-5 h-5 transition-colors ${
-                      liked
-                        ? 'text-lb-orange fill-lb-orange'
-                        : 'text-lb-muted group-hover:text-lb-orange'
-                    }`}
-                  />
-                  <span
-                    className={`text-[10px] font-semibold tracking-wide ${
-                      liked ? 'text-lb-orange' : 'text-lb-muted group-hover:text-lb-orange'
-                    }`}
+                  {/* Like */}
+                  <button
+                    onClick={() => toggleLikeMovie(movie.id)}
+                    className="flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer group"
+                    title={liked ? t('action_liked') : t('action_like')}
                   >
-                    {liked ? t('action_liked') : t('action_like')}
-                  </span>
-                </button>
+                    <Heart
+                      className={`w-5 h-5 transition-colors ${
+                        liked
+                          ? 'text-lb-orange fill-lb-orange'
+                          : 'text-lb-muted group-hover:text-lb-orange'
+                      }`}
+                    />
+                    <span
+                      className={`text-[10px] font-semibold tracking-wide ${
+                        liked ? 'text-lb-orange' : 'text-lb-muted group-hover:text-lb-orange'
+                      }`}
+                    >
+                      {liked ? t('action_liked') : t('action_like')}
+                    </span>
+                  </button>
 
-                {/* Watchlist */}
-                <button
-                  onClick={() =>
-                    toggleWatchlist({
-                      id: movie.id,
-                      title: movie.title,
-                      poster_path: movie.poster_path,
-                      release_date: movie.release_date || '',
-                    })
-                  }
-                  className="flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer group"
-                  title={inWatchlist ? t('film_in_watchlist') : t('abs_add_watchlist')}
-                >
-                  <Clock
-                    className={`w-5 h-5 transition-colors ${
-                      inWatchlist ? 'text-lb-blue' : 'text-lb-muted group-hover:text-lb-blue'
-                    }`}
-                  />
-                  <span
-                    className={`text-[10px] font-semibold tracking-wide ${
-                      inWatchlist ? 'text-lb-blue' : 'text-lb-muted group-hover:text-lb-blue'
-                    }`}
+                  {/* Watchlist */}
+                  <button
+                    onClick={() =>
+                      toggleWatchlist({
+                        id: movie.id,
+                        title: movie.title,
+                        poster_path: movie.poster_path,
+                        release_date: movie.release_date || '',
+                      })
+                    }
+                    className="flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer group"
+                    title={inWatchlist ? t('film_in_watchlist') : t('abs_add_watchlist')}
                   >
-                    {t('action_watchlist')}
+                    <Clock
+                      className={`w-5 h-5 transition-colors ${
+                        inWatchlist ? 'text-lb-blue' : 'text-lb-muted group-hover:text-lb-blue'
+                      }`}
+                    />
+                    <span
+                      className={`text-[10px] font-semibold tracking-wide ${
+                        inWatchlist ? 'text-lb-blue' : 'text-lb-muted group-hover:text-lb-blue'
+                      }`}
+                    >
+                      {t('action_watchlist')}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Row 2: Rate interactive star widget */}
+                <div className="border-t border-[#384654] py-2 px-3 flex flex-col items-center justify-center bg-lb-border-light">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-lb-muted mb-1">
+                    {userRating > 0 ? t('film_rated') : t('action_rate')}
                   </span>
-                </button>
-              </div>
+                  <StarRating
+                    value={userRating}
+                    onChange={(val) => setMovieRating(movie.id, val)}
+                    size="md"
+                  />
+                </div>
 
-              {/* Row 2: Rate interactive star widget */}
-              <div className="border-t border-[#384654] py-2 px-3 flex flex-col items-center justify-center bg-lb-border-light">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-lb-muted mb-1">
-                  {userRating > 0 ? t('film_rated') : t('action_rate')}
-                </span>
-                <StarRating
-                  value={userRating}
-                  onChange={(val) => setMovieRating(movie.id, val)}
-                  size="md"
-                />
-              </div>
+                {/* Row 3: Action Links List */}
+                <div className="border-t border-[#384654] divide-y divide-[#384654] text-center font-medium bg-lb-border-light">
+                  {userLogsForMovie.length > 0 && (
+                    <button
+                      onClick={() =>
+                        openLogModal({
+                          id: movie.id,
+                          title: movie.title,
+                          poster_path: movie.poster_path,
+                          release_date: movie.release_date,
+                        })
+                      }
+                      className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
+                    >
+                      {t('film_show_activity')}
+                    </button>
+                  )}
 
-              {/* Row 3: Action Links List */}
-              <div className="border-t border-[#384654] divide-y divide-[#384654] text-center font-medium bg-lb-border-light">
-                {userLogsForMovie.length > 0 && (
                   <button
                     onClick={() =>
                       openLogModal({
@@ -906,117 +923,103 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     }
                     className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
                   >
-                    {t('film_show_activity')}
+                    {userLogsForMovie.length > 0 ? t('film_log_again') : t('review_or_log')}
                   </button>
-                )}
 
-                <button
-                  onClick={() =>
-                    openLogModal({
-                      id: movie.id,
-                      title: movie.title,
-                      poster_path: movie.poster_path,
-                      release_date: movie.release_date,
-                    })
-                  }
-                  className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
-                >
-                  {userLogsForMovie.length > 0 ? t('film_log_again') : t('review_or_log')}
-                </button>
+                  {isAuthenticated && (
+                    <>
+                      <button
+                        onClick={() => setImagePicker('backdrop')}
+                        className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
+                      >
+                        {t('set_backdrop')}
+                      </button>
 
-                {isAuthenticated && (
-                  <>
-                    <button
-                      onClick={() => setImagePicker('backdrop')}
-                      className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
-                    >
-                      {t('set_backdrop')}
-                    </button>
+                      <button
+                        onClick={() => setImagePicker('poster')}
+                        className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
+                      >
+                        {t('set_poster')}
+                      </button>
+                    </>
+                  )}
 
-                    <button
-                      onClick={() => setImagePicker('poster')}
-                      className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
-                    >
-                      {t('set_poster')}
-                    </button>
-                  </>
-                )}
+                  <button
+                    onClick={() =>
+                      openLogModal({
+                        id: movie.id,
+                        title: movie.title,
+                        poster_path: movie.poster_path,
+                        release_date: movie.release_date,
+                      })
+                    }
+                    className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
+                  >
+                    {t('add_to_lists')}
+                  </button>
+                </div>
 
-                <button
-                  onClick={() =>
-                    openLogModal({
-                      id: movie.id,
-                      title: movie.title,
-                      poster_path: movie.poster_path,
-                      release_date: movie.release_date,
-                    })
-                  }
-                  className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
-                >
-                  {t('add_to_lists')}
-                </button>
-              </div>
+                {/* Row 4: Share Link (Collapsible - matches MyWorld authentic look) */}
+                <div className="border-t border-[#384654] bg-lb-border-light">
+                  <button
+                    onClick={() => setShowSharePanel(!showSharePanel)}
+                    className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
+                  >
+                    {t('share')}
+                  </button>
 
-              {/* Row 4: Share Link (Collapsible - matches MyWorld authentic look) */}
-              <div className="border-t border-[#384654] bg-lb-border-light">
-                <button
-                  onClick={() => setShowSharePanel(!showSharePanel)}
-                  className="w-full py-2 px-3 text-lb-white hover:text-white hover:bg-[#4e6275] transition-colors cursor-pointer block text-xs"
-                >
-                  {t('share')}
-                </button>
+                  {showSharePanel && (
+                    <div className="p-2 border-t border-[#384654] bg-[#394857] flex items-center justify-between gap-1.5 animate-fade-in">
+                      <div className="flex-1 bg-[#2c3743] border border-lb-border-light rounded px-2 py-1 text-[11px] text-lb-white font-mono select-all truncate">
+                        {shortUrl}
+                      </div>
+                      
+                      {/* Copy URL */}
+                      <button
+                        onClick={handleCopyLink}
+                        className="p-1.5 rounded hover:bg-lb-border-light text-lb-muted hover:text-white transition-colors cursor-pointer"
+                        title={t('film_copy_url')}
+                      >
+                        {copiedLink ? (
+                          <Check className="w-3.5 h-3.5 text-lb-green" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
 
-                {showSharePanel && (
-                  <div className="p-2 border-t border-[#384654] bg-[#394857] flex items-center justify-between gap-1.5 animate-fade-in">
-                    <div className="flex-1 bg-[#2c3743] border border-lb-border-light rounded px-2 py-1 text-[11px] text-lb-white font-mono select-all truncate">
-                      {shortUrl}
+                      {/* Twitter / X */}
+                      <button
+                        onClick={shareTwitter}
+                        className="p-1.5 rounded hover:bg-lb-border-light text-lb-muted hover:text-white transition-colors cursor-pointer"
+                        title={t('film_share_twitter')}
+                      >
+                        <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                        </svg>
+                      </button>
+
+                      {/* Facebook */}
+                      <button
+                        onClick={shareFacebook}
+                        className="p-1.5 rounded hover:bg-lb-border-light text-lb-muted hover:text-white transition-colors cursor-pointer"
+                        title={t('film_share_facebook')}
+                      >
+                        <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                        </svg>
+                      </button>
                     </div>
-                    
-                    {/* Copy URL */}
-                    <button
-                      onClick={handleCopyLink}
-                      className="p-1.5 rounded hover:bg-lb-border-light text-lb-muted hover:text-white transition-colors cursor-pointer"
-                      title={t('film_copy_url')}
-                    >
-                      {copiedLink ? (
-                        <Check className="w-3.5 h-3.5 text-lb-green" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-
-                    {/* Twitter / X */}
-                    <button
-                      onClick={shareTwitter}
-                      className="p-1.5 rounded hover:bg-lb-border-light text-lb-muted hover:text-white transition-colors cursor-pointer"
-                      title={t('film_share_twitter')}
-                    >
-                      <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                      </svg>
-                    </button>
-
-                    {/* Facebook */}
-                    <button
-                      onClick={shareFacebook}
-                      className="p-1.5 rounded hover:bg-lb-border-light text-lb-muted hover:text-white transition-colors cursor-pointer"
-                      title={t('film_share_facebook')}
-                    >
-                      <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Community Rating Histogram */}
-            <RatingHistogram
-              averageRating={isOdyssey ? 4.01 : (movie.vote_average ? movie.vote_average / 2 : 3.8)}
-              voteCount={isOdyssey ? 244000 : (movie.vote_count || 1420)}
-            />
-          </div>
+              {/* Community Rating Histogram */}
+              <RatingHistogram
+                averageRating={isOdyssey ? 4.01 : (movie.vote_average ? movie.vote_average / 2 : 3.8)}
+                voteCount={isOdyssey ? 244000 : (movie.vote_count || 1420)}
+              />
+            </div>
+          )}
 
           {/* ========================================================
               BOTTOM SECTIONS (Mobile & Desktop):
@@ -1062,7 +1065,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
               )}
 
               {/* 1. RELATED FILMS — DESKTOP (PC) */}
-              {relatedFilms.length > 0 && collectionId && (
+              {!isMobile && relatedFilms.length > 0 && collectionId && (
                 <section className="hidden md:block space-y-3">
                   <Link
                     to={`/collection/${collectionId}`}
@@ -1128,7 +1131,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
               )}
 
               {/* 2. SIMILAR FILMS — DESKTOP (PC) */}
-              {displaySimilar.length > 0 && (
+              {!isMobile && displaySimilar.length > 0 && (
                 <section className="hidden md:block space-y-3">
                   <Link
                     to={`/browse/results?type=${isTv ? 'tv' : 'movie'}&similarTo=${movie.id}&title=${encodeURIComponent(
@@ -1180,26 +1183,30 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       )}
 
       {/* Gaveta de ações mobile (Watch/Like/Watchlist/Rate/Share) */}
-      <ActionBottomSheet
-        open={showActionSheet}
-        onClose={() => setShowActionSheet(false)}
-        movie={{ id: movie.id, title: movie.title, release_date: movie.release_date }}
-        onPickImage={(mode) => setImagePicker(mode)}
-        onViewPoster={() => setShowPosterLightbox(true)}
-      />
+      {showActionSheet && (
+        <ActionBottomSheet
+          open={showActionSheet}
+          onClose={() => setShowActionSheet(false)}
+          movie={{ id: movie.id, title: movie.title, release_date: movie.release_date }}
+          onPickImage={(mode) => setImagePicker(mode)}
+          onViewPoster={() => setShowPosterLightbox(true)}
+        />
+      )}
 
       {/* Visualização ampliada do pôster (Mobile: largura total + zoom + swipe-down | PC: lightbox com X) */}
-      <PosterLightbox
-        open={showPosterLightbox}
-        src={posterPath ? tmdb.getImageUrl(posterPath, 'w780') : posterUrl}
-        srcSet={
-          posterPath
-            ? `${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w, ${tmdb.getImageUrl(posterPath, 'original')} 1280w`
-            : posterSrcSet
-        }
-        alt={movie.title}
-        onClose={() => setShowPosterLightbox(false)}
-      />
+      {showPosterLightbox && (
+        <PosterLightbox
+          open={showPosterLightbox}
+          src={posterPath ? tmdb.getImageUrl(posterPath, 'w780') : posterUrl}
+          srcSet={
+            posterPath
+              ? `${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w, ${tmdb.getImageUrl(posterPath, 'original')} 1280w`
+              : posterSrcSet
+          }
+          alt={movie.title}
+          onClose={() => setShowPosterLightbox(false)}
+        />
+      )}
 
       {/* 3. Trailer Modal */}
       {showTrailerModal && trailerVideo && (

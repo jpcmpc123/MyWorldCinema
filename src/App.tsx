@@ -106,34 +106,36 @@ function PageLoader() {
   );
 }
 
-function AnimatedRoutes({
-  routeLocation,
-  isOutgoing = false,
-}: {
-  routeLocation: Location;
-  isOutgoing?: boolean;
-}) {
-  const isDetailRoute =
-    routeLocation.pathname.startsWith('/film/') || routeLocation.pathname.startsWith('/tv/');
-  return (
-    <div
-      key={routeLocation.pathname}
-      className={
-        isOutgoing
-          ? ''
-          : isDetailRoute
-            ? 'max-md:overflow-x-hidden md:mw-page-in'
-            : 'mw-page-in'
-      }
-    >
+function predecodeHeroImages(movie: any): Promise<void> {
+  if (!movie || typeof Image === 'undefined') return Promise.resolve();
+  const urls: string[] = [];
+  if (movie.backdrop_path) urls.push(tmdb.getBackdropUrl(movie.backdrop_path, 'w780'));
+  if (movie.poster_path) urls.push(tmdb.getImageUrl(movie.poster_path, 'w342'));
+  if (!urls.length) return Promise.resolve();
+
+  const decodePromises = urls.map((url) => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+    return typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve();
+  });
+
+  return Promise.race([
+    Promise.all(decodePromises).then(() => {}),
+    new Promise<void>((resolve) => setTimeout(resolve, 90)),
+  ]);
+}
+
+const MemoizedRouteTree = React.memo(
+  function RouteTree({ routeLocation }: { routeLocation: Location }) {
+    const isDetailRoute =
+      routeLocation.pathname.startsWith('/film/') || routeLocation.pathname.startsWith('/tv/');
+    return (
       <ErrorBoundary>
         <Suspense fallback={isDetailRoute ? null : <PageLoader />}>
           <Routes location={routeLocation}>
             <Route path="/" element={<HomePage />} />
-            <Route
-              path="/film/:id"
-              element={<FilmPage isTvRoute={false} disableSlideAnimation={isOutgoing} />}
-            />
+            <Route path="/film/:id" element={<FilmPage isTvRoute={false} />} />
             <Route path="/collection/:id" element={<CollectionPage />} />
             <Route path="/actor/:id" element={<ActorPage />} />
             <Route path="/films" element={<FilmsHubPage />} />
@@ -146,10 +148,7 @@ function AnimatedRoutes({
             <Route path="/series/decade/:decade" element={<SeriesPage />} />
             <Route path="/series/year/:year" element={<SeriesPage />} />
             <Route path="/series/popular" element={<SeriesPage />} />
-            <Route
-              path="/tv/:id"
-              element={<FilmPage isTvRoute={true} disableSlideAnimation={isOutgoing} />}
-            />
+            <Route path="/tv/:id" element={<FilmPage isTvRoute={true} />} />
             <Route path="/films/decade/:decade" element={<FilmsPage />} />
             <Route path="/films/year/:year" element={<FilmsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
@@ -181,9 +180,12 @@ function AnimatedRoutes({
           </Routes>
         </Suspense>
       </ErrorBoundary>
-    </div>
-  );
-}
+    );
+  },
+  (prev, next) =>
+    prev.routeLocation.pathname === next.routeLocation.pathname &&
+    prev.routeLocation.search === next.routeLocation.search,
+);
 
 function AppShell() {
   const location = useLocation();
@@ -194,6 +196,7 @@ function AppShell() {
 
   const [committedLocation, setCommittedLocation] = useState<Location>(location);
   const [outgoingState, setOutgoingState] = useState<{ location: Location; scrollY: number } | null>(null);
+  const [slidePhase, setSlidePhase] = useState<'idle' | 'prepare' | 'run'>('idle');
 
   useEffect(() => {
     if (
@@ -212,20 +215,8 @@ function AppShell() {
     const detail = parseDetailRoute(location.pathname);
     if (!detail) {
       setOutgoingState(null);
+      setSlidePhase('idle');
       setCommittedLocation(location);
-      return;
-    }
-
-    const cached = tmdb.getCachedDetails(detail.id, detail.type);
-    const isComplete = Boolean(
-      cached && (cached.credits?.cast?.length || cached.credits?.crew?.length || cached.runtime),
-    );
-
-    if (isComplete) {
-      const prevScroll = window.scrollY;
-      setOutgoingState({ location: committedLocation, scrollY: prevScroll });
-      setCommittedLocation(location);
-      window.scrollTo(0, 0);
       return;
     }
 
@@ -233,33 +224,78 @@ function AppShell() {
     const prevLoc = committedLocation;
     const prevScroll = window.scrollY;
 
+    const startTransition = (movieData: any) => {
+      void predecodeHeroImages(movieData).then(() => {
+        if (cancelled) return;
+        if (isMobile) {
+          setOutgoingState({ location: prevLoc, scrollY: prevScroll });
+          setSlidePhase('prepare');
+          setCommittedLocation(location);
+          window.scrollTo(0, 0);
+        } else {
+          setOutgoingState(null);
+          setSlidePhase('idle');
+          setCommittedLocation(location);
+          window.scrollTo(0, 0);
+        }
+      });
+    };
+
+    const cached = tmdb.getCachedDetails(detail.id, detail.type);
+    const isComplete = Boolean(
+      cached && (cached.credits?.cast?.length || cached.credits?.crew?.length || cached.runtime),
+    );
+
+    if (isComplete) {
+      startTransition(cached);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const loadPromise =
       detail.type === 'tv' ? tmdb.getTVDetails(detail.id) : tmdb.getMovieDetails(detail.id);
 
     loadPromise
       .catch(() => null)
-      .then(() => {
+      .then((movieData) => {
         if (cancelled) return;
-        setOutgoingState({ location: prevLoc, scrollY: prevScroll });
-        setCommittedLocation(location);
-        window.scrollTo(0, 0);
+        startTransition(movieData);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [location, committedLocation]);
+  }, [location, committedLocation, isMobile]);
+
+  // Fase 1 ('prepare') -> Fase 2 ('run'): aguarda 2 frames (layout + upload das texturas na GPU)
+  // antes de disparar o transform 340ms nos dois planos simultaneamente a 60/120 FPS.
+  useEffect(() => {
+    if (slidePhase !== 'prepare') return;
+    let raf2 = 0;
+    const raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        setSlidePhase('run');
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      if (raf2) window.cancelAnimationFrame(raf2);
+    };
+  }, [slidePhase]);
 
   useEffect(() => {
-    if (!outgoingState) return;
+    if (slidePhase !== 'run') return;
     const timer = window.setTimeout(() => {
       setOutgoingState(null);
-    }, 350);
+      setSlidePhase('idle');
+    }, 355);
     return () => window.clearTimeout(timer);
-  }, [outgoingState]);
+  }, [slidePhase]);
 
-  const outgoingLocation = outgoingState?.location ?? null;
-  const outgoingScrollY = outgoingState?.scrollY ?? 0;
+  const isTransitioning = isMobile && slidePhase !== 'idle' && outgoingState !== null;
+  const outgoingLocation = isTransitioning ? outgoingState.location : null;
+  const outgoingScrollY = isTransitioning ? outgoingState.scrollY : 0;
 
   const isMainTab = isMobile && tabPanelIndex(committedLocation.pathname) >= 0;
   const outgoingIsMainTab = Boolean(
@@ -285,29 +321,75 @@ function AppShell() {
     ? outgoingLocation!.pathname
     : committedLocation.pathname;
 
+  const outgoingTransformStyle: React.CSSProperties | undefined = isTransitioning
+    ? {
+        transform: slidePhase === 'run' ? 'translate3d(-100%, 0, 0)' : 'translate3d(0, 0, 0)',
+        transition:
+          slidePhase === 'run'
+            ? 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)'
+            : 'none',
+      }
+    : undefined;
+
+  const incomingTransformStyle: React.CSSProperties | undefined = isTransitioning
+    ? {
+        transform: slidePhase === 'run' ? 'translate3d(0, 0, 0)' : 'translate3d(100%, 0, 0)',
+        transition:
+          slidePhase === 'run'
+            ? 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)'
+            : 'none',
+      }
+    : undefined;
+
+  // Lista estável de painéis de rotas secundárias (ex.: /search, /actor/:id, /film/:id):
+  // preserva a mesma key={panel.location.pathname} quando a rota passa de ativa para
+  // sainte (isOutgoing: true), evitando desmontar e remontar a página anterior no 1º frame!
+  const nonTabPanels: Array<{ location: Location; isOutgoing: boolean; scrollY: number }> = [];
+  if (isMobile && outgoingLocation && !outgoingIsMainTab && !outgoingIsProfileTab) {
+    nonTabPanels.push({
+      location: outgoingLocation,
+      isOutgoing: true,
+      scrollY: outgoingScrollY,
+    });
+  }
+  if (!isMobile || (!isMainTab && !isProfileTab)) {
+    nonTabPanels.push({
+      location: committedLocation,
+      isOutgoing: false,
+      scrollY: 0,
+    });
+  }
+
   return (
     <div className="min-h-screen bg-lb-bg text-lb-text flex flex-col selection:bg-lb-green selection:text-lb-bg">
       {/* Main Top Header */}
-      <Header pathnameOverride={headerPathname} pushingOut={headerPushingOut} />
+      <Header
+        pathnameOverride={headerPathname}
+        pushingOut={headerPushingOut}
+        pushPhase={slidePhase}
+      />
 
       {/* Main Content Viewport (pb: espaço para a BottomNav de 60px no mobile) */}
       <main className="relative flex-1 flex flex-col overflow-x-hidden pb-[calc(60px+env(safe-area-inset-bottom,0px)+16px)] md:pb-0">
         {/* No mobile, mantém o TabViewPager das abas principais vivo em segundo plano.
-            Durante a transição para detalhes do filme, ele é empurrado suavemente para a esquerda. */}
+            Sem `display: contents` para nunca destruir/reconstruir a árvore de layout no início do slide. */}
         {isMobile && (
           <div
             className={
               isMainTab
-                ? 'contents'
+                ? 'w-full flex-1 flex flex-col'
                 : outgoingIsMainTab
-                  ? 'fixed inset-x-0 top-[100px] bottom-0 z-20 overflow-hidden pointer-events-none bg-lb-bg mw-push-out-left'
+                  ? 'fixed inset-x-0 top-[100px] bottom-0 z-20 overflow-hidden pointer-events-none bg-lb-bg mw-gpu-layer'
                   : 'hidden'
             }
+            style={outgoingIsMainTab ? outgoingTransformStyle : undefined}
             aria-hidden={!isMainTab}
           >
             <div
               style={
-                outgoingIsMainTab ? { transform: `translateY(-${outgoingScrollY}px)` } : undefined
+                outgoingIsMainTab
+                  ? { transform: `translate3d(0, -${outgoingScrollY}px, 0)` }
+                  : undefined
               }
             >
               <TabViewPager mode="main" />
@@ -319,14 +401,15 @@ function AppShell() {
           <div
             className={
               outgoingIsProfileTab && !isProfileTab
-                ? 'fixed inset-x-0 top-[100px] bottom-0 z-20 overflow-hidden pointer-events-none bg-lb-bg mw-push-out-left'
-                : 'contents'
+                ? 'fixed inset-x-0 top-[100px] bottom-0 z-20 overflow-hidden pointer-events-none bg-lb-bg mw-gpu-layer'
+                : 'w-full flex-1 flex flex-col'
             }
+            style={outgoingIsProfileTab && !isProfileTab ? outgoingTransformStyle : undefined}
           >
             <div
               style={
                 outgoingIsProfileTab && !isProfileTab
-                  ? { transform: `translateY(-${outgoingScrollY}px)` }
+                  ? { transform: `translate3d(0, -${outgoingScrollY}px, 0)` }
                   : undefined
               }
             >
@@ -339,23 +422,37 @@ function AppShell() {
           </div>
         )}
 
-        {/* Se a página anterior era uma rota normal (ex.: /search, /actor/:id, outro filme),
-            empurra ela para a esquerda sincronizada com a entrada do novo filme */}
-        {isMobile && outgoingLocation && !outgoingIsMainTab && !outgoingIsProfileTab && (
-          <div
-            key={`outgoing-${outgoingLocation.pathname}`}
-            className="fixed inset-0 z-20 overflow-hidden pointer-events-none bg-lb-bg mw-push-out-left"
-            aria-hidden="true"
-          >
-            <div style={{ transform: `translateY(-${outgoingScrollY}px)` }}>
-              <AnimatedRoutes routeLocation={outgoingLocation} isOutgoing />
+        {nonTabPanels.map((panel) => {
+          const isDetail =
+            panel.location.pathname.startsWith('/film/') ||
+            panel.location.pathname.startsWith('/tv/');
+          return (
+            <div
+              key={panel.location.pathname}
+              className={
+                panel.isOutgoing
+                  ? 'fixed inset-0 z-20 overflow-hidden pointer-events-none bg-lb-bg mw-gpu-layer'
+                  : isTransitioning
+                    ? 'relative z-30 bg-lb-bg mw-gpu-layer'
+                    : isDetail
+                      ? 'max-md:overflow-x-hidden md:mw-page-in'
+                      : 'mw-page-in'
+              }
+              style={panel.isOutgoing ? outgoingTransformStyle : incomingTransformStyle}
+              aria-hidden={panel.isOutgoing ? 'true' : undefined}
+            >
+              <div
+                style={
+                  panel.isOutgoing
+                    ? { transform: `translate3d(0, -${panel.scrollY}px, 0)` }
+                    : undefined
+                }
+              >
+                <MemoizedRouteTree routeLocation={panel.location} />
+              </div>
             </div>
-          </div>
-        )}
-
-        {(!isMobile || (!isMainTab && !isProfileTab)) && (
-          <AnimatedRoutes routeLocation={committedLocation} />
-        )}
+          );
+        })}
       </main>
 
       {/* MyWorld Global Modals (lazy) */}

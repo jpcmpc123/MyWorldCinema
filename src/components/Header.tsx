@@ -24,9 +24,14 @@ import {
 interface HeaderProps {
   pathnameOverride?: string;
   pushingOut?: boolean;
+  pushPhase?: 'idle' | 'prepare' | 'run';
 }
 
-export const Header: React.FC<HeaderProps> = ({ pathnameOverride, pushingOut = false }) => {
+export const Header: React.FC<HeaderProps> = ({
+  pathnameOverride,
+  pushingOut = false,
+  pushPhase = 'idle',
+}) => {
   const { user, openLogModal } = useApp();
   const { isAuthenticated, profile, signOut } = useAuth();
   const { language, toggleLanguage, t } = useLanguage();
@@ -530,8 +535,21 @@ export const Header: React.FC<HeaderProps> = ({ pathnameOverride, pushingOut = f
           : !(isMainPage || isProfileArea || isSettingsRoute)
             ? 'hidden md:block sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none'
             : `sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none ${
-                pushingOut ? 'max-md:fixed max-md:inset-x-0 max-md:top-0 mw-push-out-left pointer-events-none' : ''
+                pushingOut
+                  ? 'max-md:fixed max-md:inset-x-0 max-md:top-0 pointer-events-none mw-gpu-layer'
+                  : ''
               }`
+      }
+      style={
+        pushingOut
+          ? {
+              transform: pushPhase === 'run' ? 'translate3d(-100%, 0, 0)' : 'translate3d(0, 0, 0)',
+              transition:
+                pushPhase === 'run'
+                  ? 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)'
+                  : 'none',
+            }
+          : undefined
       }
     >
       {/* Camada de contraste da navbar sobre o backdrop — MESMA receita do
