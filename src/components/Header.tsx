@@ -533,7 +533,7 @@ export const Header: React.FC = () => {
           0.85 no hover. Só existe nas rotas com backdrop (filme/série). */}
       {overBackdrop && <div className="site-header-bg hidden md:block" aria-hidden="true" />}
       <div className={`relative max-w-[950px] mx-auto px-4 h-[52px] md:h-[72px] flex items-center justify-between md:justify-center gap-4 ${
-        isAuthenticated ? 'md:gap-14' : 'md:gap-12'
+        isAuthenticated ? 'md:gap-28' : 'md:gap-24'
       } ${
         overBackdrop ? '[text-shadow:0_1px_3px_rgba(0,0,0,0.8)] [&_svg]:drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''
       }`}>
