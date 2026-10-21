@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { Search, Plus, User, BookOpen, Clock, List, X, ChevronDown, Zap, LogOut, Settings, Globe, Check } from 'lucide-react';
+import { Search, Plus, X, ChevronDown, Zap, Settings, Globe, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -532,14 +532,14 @@ export const Header: React.FC = () => {
           #14181c (sólido no topo) até transparente, opacidade 2/3 parada e
           0.85 no hover. Só existe nas rotas com backdrop (filme/série). */}
       {overBackdrop && <div className="site-header-bg hidden md:block" aria-hidden="true" />}
-      <div className={`relative max-w-[950px] mx-auto px-4 h-[52px] md:h-14 flex items-center justify-between gap-4 ${
+      <div className={`relative max-w-[950px] mx-auto px-4 h-[52px] md:h-[72px] flex items-center justify-between gap-4 ${
         overBackdrop ? '[text-shadow:0_1px_3px_rgba(0,0,0,0.8)] [&_svg]:drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''
       }`}>
         {/* Mobile-only (páginas de detalhe): os botões ← e ⋮ flutuantes são
             renderizados pela própria FilmPage (o ⋮ abre o ActionBottomSheet) */}
 
         {/* Zone 1 (Left): Brand Logo — apenas Desktop */}
-        <Link to="/" className="hidden md:flex items-center gap-2 shrink-0 group">
+        <Link to="/" className="hidden md:flex items-center gap-2.5 shrink-0 group">
           <svg
             viewBox="0 0 32 32"
             className="w-7 h-7 shrink-0 drop-shadow-[0_2px_6px_rgba(0,224,84,0.35)] transition-transform duration-300 group-hover:rotate-6"
@@ -560,7 +560,7 @@ export const Header: React.FC = () => {
             {/* Shine */}
             <ellipse cx="10.5" cy="9.5" rx="4" ry="2.6" fill="#ffffff" opacity="0.25" transform="rotate(-20 10.5 9.5)" />
           </svg>
-          <span className="font-extrabold text-xl tracking-tight text-white whitespace-nowrap">
+          <span className="font-extrabold text-[22px] tracking-tight text-white whitespace-nowrap leading-none">
             My<span className="text-lb-green">World</span>
           </span>
         </Link>
@@ -603,12 +603,13 @@ export const Header: React.FC = () => {
           </div>
         )}
 
-        {/* Mobile-only (páginas principais): título centrado "MyWorld" */}
+        {/* Mobile-only (páginas principais): título centrado "MyWorld"
+            Ajustado: recuado mais 0.5mm para cima (translate-y-[2px]) e afastado das abas */}
         {isMainPage && (
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="md:hidden absolute left-1/2 -translate-x-1/2 text-white text-[20px] font-bold tracking-[-0.01em] cursor-pointer leading-none whitespace-nowrap"
+            className="md:hidden absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 translate-y-[2px] text-white text-[20px] font-bold tracking-[-0.01em] cursor-pointer leading-none whitespace-nowrap"
             style={{ fontFamily: 'var(--font-brand)' }}
           >
             MyWorld
@@ -631,50 +632,19 @@ export const Header: React.FC = () => {
           </div>
         )}
 
-        {/* Zone 2 (Center — Desktop): Primary Navigation Links */}
-        <nav
-          aria-label={t('nav_main')}
-          className="hidden md:flex items-center gap-6 text-xs font-bold uppercase tracking-wider"
+        {/* Zone 2 (Right — Desktop Unified Navigation Cluster + Mobile Right Actions):
+            No PC segue exatamente o formato Letterboxd:
+            [Avatar + USERNAME ⌄]  ⚡  FILMS  SERIES  LISTS  🔍  [+ LOG ⌄] */}
+        <div
+          className={`${
+            overBackdrop || isSearchRoute || isProfileArea || isSettingsRoute
+              ? 'hidden md:flex'
+              : 'flex'
+          }${
+            isMainPage ? ' ml-auto md:ml-auto' : ' md:ml-auto'
+          } items-center gap-3 md:gap-5 text-[12px] font-bold uppercase tracking-[0.08em] shrink-0`}
         >
-          <Link
-            to="/films"
-            className={`whitespace-nowrap shrink-0 transition-colors ${
-              location.pathname.startsWith('/films') ? 'text-white font-bold' : 'text-lb-text hover:text-white'
-            }`}
-          >
-            {t('nav_films')}
-          </Link>
-          <Link
-            to="/series"
-            className={`whitespace-nowrap shrink-0 transition-colors ${
-              location.pathname.startsWith('/series') || location.pathname.startsWith('/tv')
-                ? 'text-white font-bold'
-                : 'text-lb-text hover:text-white'
-            }`}
-          >
-            {t('nav_series')}
-          </Link>
-          <Link
-            to="/lists"
-            className={`whitespace-nowrap shrink-0 transition-colors ${
-              location.pathname === '/lists' ? 'text-white font-bold' : 'text-lb-text hover:text-white'
-            }`}
-          >
-            {t('nav_lists')}
-          </Link>
-          <Link
-            to="/diary"
-            className={`whitespace-nowrap shrink-0 transition-colors ${
-              location.pathname === '/diary' ? 'text-white font-bold' : 'text-lb-text hover:text-white'
-            }`}
-          >
-            {t('hdr_diary')}
-          </Link>
-        </nav>
-
-        {/* Zone 3 (Right): User Account, Search & Primary Action (+ LOG) */}
-        <div className={`${overBackdrop || isSearchRoute || isProfileArea || isSettingsRoute ? 'hidden md:flex' : 'flex'}${isMainPage ? ' ml-auto md:ml-0' : ''} items-center gap-3 md:gap-4 text-xs font-bold uppercase tracking-wider shrink-0`}>
-          {/* User Profile Link & Avatar (or Sign in when logged out) */}
+          {/* User Profile Dropdown (Desktop) or Sign In (Mobile/Desktop when logged out) */}
           {!isAuthenticated ? (
             <div className="flex items-center gap-2.5">
               {/* Seletor de idioma (desktop + rotas secundárias mobile; na Home mobile já fica à esquerda) */}
@@ -690,70 +660,80 @@ export const Header: React.FC = () => {
               </button>
               <Link
                 to="/signin"
-                className={`${isMainPage ? 'hidden md:flex' : 'flex'} min-h-[36px] items-center px-1.5 text-[11px] md:text-xs whitespace-nowrap transition-colors ${
+                className={`${isMainPage ? 'hidden md:flex' : 'flex'} min-h-[36px] items-center px-1.5 text-[11px] md:text-[12px] whitespace-nowrap transition-colors ${
                   location.pathname === '/signin' || location.pathname === '/signup'
                     ? 'text-white font-bold'
-                    : 'text-lb-text hover:text-white'
+                    : 'text-[#99aabb] hover:text-white'
                 }`}
               >
                 {t('nav_sign_in')}
               </Link>
             </div>
           ) : (
-            <div ref={userMenuRef} className="relative hidden md:block">
+            <div
+              ref={userMenuRef}
+              className="relative hidden md:block"
+              onMouseEnter={() => setIsUserMenuOpen(true)}
+              onMouseLeave={() => setIsUserMenuOpen(false)}
+            >
               <button
-                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="flex items-center gap-2 text-lb-text hover:text-white transition-colors cursor-pointer"
+                type="button"
+                onClick={() => setIsUserMenuOpen((v) => !v)}
+                className={`flex items-center gap-2 py-1.5 px-2 rounded-t-[3px] transition-colors cursor-pointer ${
+                  isUserMenuOpen
+                    ? 'bg-[#899aa9] text-white'
+                    : 'text-[#99aabb] hover:text-white'
+                }`}
               >
                 <img
                   src={displayAvatar}
                   alt={displayDisplayName}
-                  className="w-6 h-6 rounded-full object-cover border border-lb-border-light"
+                  className="w-6 h-6 rounded-full object-cover border border-white/20 shrink-0"
                 />
-                <span className="hidden md:inline text-[11px] font-bold text-white tracking-wider uppercase whitespace-nowrap">
+                <span
+                  className={`text-[12px] font-bold tracking-[0.08em] uppercase whitespace-nowrap transition-colors ${
+                    isUserMenuOpen ? 'text-white' : 'text-[#99aabb] hover:text-white'
+                  }`}
+                >
                   {displayUsername}
                 </span>
-                <ChevronDown className="hidden md:block w-3 h-3 text-lb-muted" />
+                <ChevronDown
+                  className={`w-3.5 h-3.5 stroke-[2.5] transition-colors ${
+                    isUserMenuOpen ? 'text-white' : 'text-[#99aabb]'
+                  }`}
+                />
               </button>
 
               {isUserMenuOpen && (
-                <div className="absolute right-0 top-9 w-48 bg-lb-surface border border-lb-elevated rounded shadow-2xl py-1 z-50 text-xs normal-case mw-pop-in">
-                  <Link
-                    to={`/${displayUsername}`}
-                    className="flex items-center gap-2 px-4 py-2 text-lb-text hover:text-white hover:bg-lb-elevated"
-                  >
-                    <User className="w-3.5 h-3.5 text-lb-green" />
-                    <span>{t('nav_profile')}</span>
-                  </Link>
-                  <Link
-                    to={`/${displayUsername}/diary`}
-                    className="flex items-center gap-2 px-4 py-2 text-lb-text hover:text-white hover:bg-lb-elevated"
-                  >
-                    <BookOpen className="w-3.5 h-3.5 text-lb-blue" />
-                    <span>{t('hdr_diary')}</span>
-                  </Link>
-                  <Link
-                    to={`/${displayUsername}/watchlist`}
-                    className="flex items-center gap-2 px-4 py-2 text-lb-text hover:text-white hover:bg-lb-elevated"
-                  >
-                    <Clock className="w-3.5 h-3.5 text-lb-blue" />
-                    <span>{t('hdr_watchlist')}</span>
-                  </Link>
-                  <Link
-                    to={`/${displayUsername}/lists`}
-                    className="flex items-center gap-2 px-4 py-2 text-lb-text hover:text-white hover:bg-lb-elevated"
-                  >
-                    <List className="w-3.5 h-3.5 text-lb-orange" />
-                    <span>{t('nav_lists')}</span>
-                  </Link>
-                  <div className="border-t border-lb-elevated my-1" />
+                <div className="absolute left-0 top-full w-[196px] bg-[#899aa9] rounded-b-[3px] rounded-tr-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)] border-t border-[#6c7c8b] py-1.5 z-50 text-[13px] font-normal normal-case tracking-normal select-none">
+                  {[
+                    { label: t('nav_home'), to: '/' },
+                    { label: t('nav_profile'), to: `/${encodeURIComponent(displayUsername)}` },
+                    { label: t('nav_films'), to: `/${encodeURIComponent(displayUsername)}?tab=films` },
+                    { label: t('hdr_diary'), to: `/${encodeURIComponent(displayUsername)}/diary` },
+                    { label: t('reviews_label'), to: `/${encodeURIComponent(displayUsername)}?tab=reviews` },
+                    { label: t('hdr_watchlist'), to: `/${encodeURIComponent(displayUsername)}/watchlist` },
+                    { label: t('nav_lists'), to: `/${encodeURIComponent(displayUsername)}/lists` },
+                    { label: t('pp_likes'), to: `/${encodeURIComponent(displayUsername)}?tab=likes` },
+                  ].map((item) => (
+                    <Link
+                      key={item.label}
+                      to={item.to}
+                      onClick={() => setIsUserMenuOpen(false)}
+                      className="block px-4 py-[5px] text-[#1f272e] hover:bg-[#677786] hover:text-white transition-colors"
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+
+                  <div className="border-t border-[#738494] my-1.5" />
+
                   <Link
                     to="/settings"
                     onClick={() => setIsUserMenuOpen(false)}
-                    className="flex items-center gap-2 px-4 py-2 text-lb-text hover:text-white hover:bg-lb-elevated"
+                    className="block px-4 py-[5px] text-[#1f272e] hover:bg-[#677786] hover:text-white transition-colors"
                   >
-                    <Settings className="w-3.5 h-3.5 text-lb-muted" />
-                    <span>{t('nav_settings')}</span>
+                    {t('nav_settings')}
                   </Link>
                   <button
                     type="button"
@@ -761,24 +741,58 @@ export const Header: React.FC = () => {
                       setIsUserMenuOpen(false);
                       void signOut();
                     }}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-lb-text hover:text-white hover:bg-lb-elevated cursor-pointer text-left"
+                    className="w-full text-left block px-4 py-[5px] text-[#1f272e] hover:bg-[#677786] hover:text-white transition-colors cursor-pointer"
                   >
-                    <LogOut className="w-3.5 h-3.5 text-red-400" />
-                    <span>{t('nav_sign_out')}</span>
+                    {t('nav_sign_out')}
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* Activity Zap Icon */}
+          {/* Activity Zap Icon (Desktop) */}
           <Link
-            to={`/${displayUsername}?tab=activity`}
-            className="hidden md:block text-lb-text hover:text-white transition-colors p-1"
+            to={`/${encodeURIComponent(displayUsername)}?tab=activity`}
+            className="hidden md:flex items-center justify-center text-[#99aabb] hover:text-white transition-colors"
             title={t('nav_activity')}
           >
-            <Zap className="w-3.5 h-3.5 fill-lb-text text-transparent hover:fill-white" />
+            <Zap className="w-4 h-4 fill-current text-transparent" />
           </Link>
+
+          {/* Desktop Navigation Links (apenas as funcionalidades existentes no site: FILMS, SERIES, LISTS) */}
+          <nav
+            aria-label={t('nav_main')}
+            className="hidden md:flex items-center gap-5 text-[12px] font-bold uppercase tracking-[0.08em]"
+          >
+            <Link
+              to="/films"
+              className={`whitespace-nowrap shrink-0 transition-colors ${
+                location.pathname.startsWith('/films') ? 'text-white' : 'text-[#99aabb] hover:text-white'
+              }`}
+            >
+              {t('nav_films')}
+            </Link>
+            <Link
+              to="/series"
+              className={`whitespace-nowrap shrink-0 transition-colors ${
+                location.pathname.startsWith('/series') || location.pathname.startsWith('/tv')
+                  ? 'text-white'
+                  : 'text-[#99aabb] hover:text-white'
+              }`}
+            >
+              {t('nav_series')}
+            </Link>
+            <Link
+              to="/lists"
+              className={`whitespace-nowrap shrink-0 transition-colors ${
+                location.pathname === '/lists' || location.pathname.startsWith('/list/')
+                  ? 'text-white'
+                  : 'text-[#99aabb] hover:text-white'
+              }`}
+            >
+              {t('nav_lists')}
+            </Link>
+          </nav>
 
           {/* Search Icon & Typeahead — desktop only (no mobile a busca vive na BottomNav/rota /search) */}
           <div ref={searchRef} className="relative hidden md:block">
@@ -801,7 +815,7 @@ export const Header: React.FC = () => {
                     }
                   }}
                   autoFocus
-                  className="no-focus-ring flex-1 min-w-0 h-full bg-transparent text-xs text-gray-900 placeholder-gray-500 border-0 outline-none p-0"
+                  className="no-focus-ring flex-1 min-w-0 h-full bg-transparent text-xs text-gray-900 placeholder-gray-500 border-0 outline-none p-0 normal-case tracking-normal font-normal"
                 />
                 {searchQuery && (
                   <button
@@ -829,11 +843,11 @@ export const Header: React.FC = () => {
             ) : (
               <button
                 onClick={() => setIsSearchExpanded(true)}
-                className="text-lb-text hover:text-white p-1 transition-colors cursor-pointer"
+                className="text-[#99aabb] hover:text-white p-1 transition-colors cursor-pointer flex items-center justify-center"
                 title={t('search_label')}
                 aria-label={t('search_label')}
               >
-                <Search className="w-4 h-4" />
+                <Search className="w-4 h-4 stroke-[2.2]" />
               </button>
             )}
 
@@ -879,21 +893,22 @@ export const Header: React.FC = () => {
             )}
           </div>
 
-          {/* MyWorld "+ LOG ▼" Button — desktop only (BottomNav tem o botão central de Log no mobile) */}
+          {/* "+ LOG ⌄" Split Green Button — desktop only */}
           <div className="hidden md:flex items-center">
             <button
               onClick={() => openLogModal()}
-              className="btn-log-green flex items-center gap-1 text-lb-bg font-black text-xs px-2.5 py-1.5 rounded-l-xs cursor-pointer tracking-wider whitespace-nowrap"
+              className="bg-[#00b020] hover:bg-[#00c030] flex items-center gap-1 text-white font-bold text-[12px] px-2.5 h-[26px] rounded-l-[3px] cursor-pointer tracking-[0.06em] whitespace-nowrap shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
               <span>{t('nav_log')}</span>
             </button>
             <button
-              onClick={() => openLogModal()}
-              className="btn-log-green px-1.5 py-1.5 rounded-r-xs border-l border-black/15 text-lb-bg cursor-pointer"
-              aria-label={t('nav_log')}
+              onClick={() => navigate('/lists/new')}
+              title={t('create_list_title')}
+              aria-label={t('create_list_title')}
+              className="bg-[#00a01d] hover:bg-[#00b522] px-1.5 h-[26px] rounded-r-[3px] border-l border-black/20 text-white cursor-pointer flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] transition-colors"
             >
-              <ChevronDown className="w-3 h-3 stroke-[2.5]" />
+              <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
             </button>
           </div>
         </div>
@@ -902,9 +917,10 @@ export const Header: React.FC = () => {
       {/* Mobile-only (páginas principais ou área de perfil): faixa de 4 abas
           (FILMES / SÉRIES / CRÍTICAS / LISTAS ou PERFIL / DIÁRIO / LISTAS / WATCHLIST)
           com barra verde DESLIZANTE embaixo da aba ativa (.tab-indicator) e
-          suporte completo ao gesto de puxar (swipe). */}
+          suporte completo ao gesto de puxar (swipe).
+          Ajustado: pt-[16px] (~4mm) de afastamento entre a barra do título e as abas */}
       {(isMainPage || isProfileArea) && (
-        <div className="md:hidden hidden max-md:block">
+        <div className="md:hidden hidden max-md:block pt-[16px]">
           <nav
             ref={tabsContainerRef}
             aria-label={isProfileArea ? t('nav_profile') : t('nav_sections')}
