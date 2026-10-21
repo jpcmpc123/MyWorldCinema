@@ -21,7 +21,12 @@ import {
   type TabSwipeDetail,
 } from '../utils/tabSwipe';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  pathnameOverride?: string;
+  pushingOut?: boolean;
+}
+
+export const Header: React.FC<HeaderProps> = ({ pathnameOverride, pushingOut = false }) => {
   const { user, openLogModal } = useApp();
   const { isAuthenticated, profile, signOut } = useAuth();
   const { language, toggleLanguage, t } = useLanguage();
@@ -118,11 +123,11 @@ export const Header: React.FC = () => {
     navigate(`/search?q=${encodeURIComponent(q)}`);
   };
 
+  const path = pathnameOverride ?? location.pathname;
   // Páginas de detalhe (filme/série): navbar flutua transparente por cima do backdrop
-  const overBackdrop = /^\/(film|tv)\/\d+/.test(location.pathname);
+  const overBackdrop = /^\/(film|tv)\/\d+/.test(path);
 
   // Mobile (<768px): páginas principais exibem título centrado + faixa de 4 abas
-  const path = location.pathname;
   const isMainPage = !overBackdrop && isMainTabRoute(path);
   // Tela de busca: no mobile o campo ocupa a faixa preta do topo (em vez do título/sign in)
   const isSearchRoute = path === '/search';
@@ -524,7 +529,9 @@ export const Header: React.FC = () => {
           ? 'hidden md:block absolute inset-x-0 top-0 z-50 bg-transparent select-none'
           : !(isMainPage || isProfileArea || isSettingsRoute)
             ? 'hidden md:block sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none'
-            : 'sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none'
+            : `sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none ${
+                pushingOut ? 'max-md:fixed max-md:inset-x-0 max-md:top-0 mw-push-out-left pointer-events-none' : ''
+              }`
       }
     >
       {/* Camada de contraste da navbar sobre o backdrop — MESMA receita do

@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ChevronRight, Eye, Search, Star, X } from 'lucide-react';
 import { tmdb, type TMDBSearchPerson, type TMDBSearchResult } from '../services/tmdb';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -357,11 +357,24 @@ export const SearchPage: React.FC = () => {
   // Mobile: estado de foco do input (máquina de 3 estados: idle / focused / typing)
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const query = searchParams.get('q') ?? '';
+  const frozenSearchRef = useRef({
+    q: searchParams.get('q') ?? '',
+    r: searchParams.get('r') === '1',
+    f: searchParams.get('f') as SearchFilter | null,
+  });
+  if (location.pathname === '/search') {
+    frozenSearchRef.current = {
+      q: searchParams.get('q') ?? '',
+      r: searchParams.get('r') === '1',
+      f: searchParams.get('f') as SearchFilter | null,
+    };
+  }
+  const query = frozenSearchRef.current.q;
   // Mobile: ?r=1 abre a tela de buscas recentes (sem os atalhos de tipo / Browse by)
-  const isRecentView = searchParams.get('r') === '1';
-  const rawFilter = searchParams.get('f') as SearchFilter | null;
+  const isRecentView = frozenSearchRef.current.r;
+  const rawFilter = frozenSearchRef.current.f;
   // Mobile: aba padrão é "Filmes" (não "Todos")
   const validFilterIds = isMobile ? MOBILE_FILTER_IDS : FILTERS.map((f) => f.id);
   const filter: SearchFilter =

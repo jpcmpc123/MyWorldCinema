@@ -250,15 +250,22 @@ button, a, [role="button"] {
   animation: mwFadeInUp 180ms var(--mw-ease);
 }
 
-/* Slide suave de 340ms da direita para a esquerda ao abrir detalhes de filme ou série */
+/* Slide suave de 340ms da direita para a esquerda empurrando a página anterior para a esquerda */
 @keyframes mwSlideFromRightMobile {
   from {
-    opacity: 0.92;
     transform: translate3d(100%, 0, 0);
   }
   to {
-    opacity: 1;
     transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes mwPushOutLeftMobile {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-100%, 0, 0);
   }
 }
 
@@ -277,7 +284,11 @@ button, a, [role="button"] {
   .mw-slide-in-right,
   .mw-slide-in-left {
     animation: mwSlideFromRightMobile 340ms cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: transform, opacity;
+    will-change: transform;
+  }
+  .mw-push-out-left {
+    animation: mwPushOutLeftMobile 340ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    will-change: transform;
   }
 }
 

@@ -40,10 +40,13 @@ function formatNumber(num: number): string {
   return num.toString();
 }
 
-export const FilmPage: React.FC = () => {
+export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: boolean }> = ({
+  isTvRoute,
+  disableSlideAnimation = false,
+}) => {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
-  const isTv = location.pathname.startsWith('/tv/');
+  const isTv = isTvRoute ?? location.pathname.startsWith('/tv/');
   const movieId = Number(id);
 
   const {
@@ -72,6 +75,11 @@ export const FilmPage: React.FC = () => {
 
   const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => cachedDetails);
   const [loading, setLoading] = useState<boolean>(() => !cachedDetails);
+
+  if (cachedDetails && movie?.id !== movieId) {
+    setMovie(cachedDetails);
+    if (loading) setLoading(false);
+  }
   const [activeTab, setActiveTab] = useState<'cast' | 'crew' | 'details' | 'genres' | 'releases'>('cast');
   const [copiedLink, setCopiedLink] = useState(false);
   const [showTrailerModal, setShowTrailerModal] = useState(false);
@@ -319,7 +327,12 @@ export const FilmPage: React.FC = () => {
   };
 
   return (
-    <div key={`film-ready-${movie.id}`} className="relative min-h-screen text-lb-text mw-slide-in-left">
+    <div
+      key={`film-ready-${movie.id}`}
+      className={`relative min-h-screen bg-lb-bg text-lb-text ${
+        disableSlideAnimation ? '' : 'mw-slide-in-left'
+      }`}
+    >
       {/* 1. Cinematic Hero Vignette Backdrop */}
       {backdropUrl && (
         <div className="max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:h-[calc(56.25vw+26px)] max-md:overflow-hidden max-md:z-0 max-md:[&_.backdrop-container]:!h-full max-md:[&_.backdrop-container]:!pt-0 max-md:[&_.backdropimage]:!bg-[length:110%_auto] max-md:[&_.backdropimage]:!bg-[position:-5vw_0]">

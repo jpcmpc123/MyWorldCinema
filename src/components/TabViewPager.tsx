@@ -166,16 +166,21 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
   const PANELS = mode === 'profile' ? PROFILE_PANELS : MAIN_PANELS;
   const panelPaths =
     mode === 'profile' ? getProfileTabPaths(profileUsername) : TAB_PANEL_PATHS;
-  const activeIndex =
+  const rawIndex =
     mode === 'profile'
-      ? Math.max(0, parseProfileTabRoute(location.pathname, profileUsername)?.index ?? 0)
-      : Math.max(0, tabPanelIndex(location.pathname));
+      ? (parseProfileTabRoute(location.pathname, profileUsername)?.index ?? -1)
+      : tabPanelIndex(location.pathname);
 
-  const [pager, setPager] = useState<PagerState>(() => ({
-    active: activeIndex,
-    leavingRange: null,
-    mounted: PANELS.map((_, i) => i === activeIndex),
-  }));
+  const [pager, setPager] = useState<PagerState>(() => {
+    const initialActive = Math.max(0, rawIndex);
+    return {
+      active: initialActive,
+      leavingRange: null,
+      mounted: PANELS.map((_, i) => i === initialActive),
+    };
+  });
+
+  const activeIndex = rawIndex >= 0 ? rawIndex : pager.active;
 
   if (pager.active !== activeIndex) {
     setPager((prev) => {
