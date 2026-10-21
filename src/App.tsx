@@ -106,26 +106,6 @@ function PageLoader() {
   );
 }
 
-function predecodeHeroImages(movie: any): Promise<void> {
-  if (!movie || typeof Image === 'undefined') return Promise.resolve();
-  const urls: string[] = [];
-  if (movie.backdrop_path) urls.push(tmdb.getBackdropUrl(movie.backdrop_path, 'w780'));
-  if (movie.poster_path) urls.push(tmdb.getImageUrl(movie.poster_path, 'w342'));
-  if (!urls.length) return Promise.resolve();
-
-  const decodePromises = urls.map((url) => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.src = url;
-    return typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve();
-  });
-
-  return Promise.race([
-    Promise.all(decodePromises).then(() => {}),
-    new Promise<void>((resolve) => setTimeout(resolve, 90)),
-  ]);
-}
-
 const MemoizedRouteTree = React.memo(
   function RouteTree({ routeLocation }: { routeLocation: Location }) {
     const isDetailRoute =
@@ -220,52 +200,20 @@ function AppShell() {
       return;
     }
 
-    let cancelled = false;
     const prevLoc = committedLocation;
     const prevScroll = window.scrollY;
 
-    const startTransition = (movieData: any) => {
-      void predecodeHeroImages(movieData).then(() => {
-        if (cancelled) return;
-        if (isMobile) {
-          setOutgoingState({ location: prevLoc, scrollY: prevScroll });
-          setSlidePhase('prepare');
-          setCommittedLocation(location);
-          window.scrollTo(0, 0);
-        } else {
-          setOutgoingState(null);
-          setSlidePhase('idle');
-          setCommittedLocation(location);
-          window.scrollTo(0, 0);
-        }
-      });
-    };
-
-    const cached = tmdb.getCachedDetails(detail.id, detail.type);
-    const isComplete = Boolean(
-      cached && (cached.credits?.cast?.length || cached.credits?.crew?.length || cached.runtime),
-    );
-
-    if (isComplete) {
-      startTransition(cached);
-      return () => {
-        cancelled = true;
-      };
+    if (isMobile) {
+      setOutgoingState({ location: prevLoc, scrollY: prevScroll });
+      setSlidePhase('prepare');
+      setCommittedLocation(location);
+      window.scrollTo(0, 0);
+    } else {
+      setOutgoingState(null);
+      setSlidePhase('idle');
+      setCommittedLocation(location);
+      window.scrollTo(0, 0);
     }
-
-    const loadPromise =
-      detail.type === 'tv' ? tmdb.getTVDetails(detail.id) : tmdb.getMovieDetails(detail.id);
-
-    loadPromise
-      .catch(() => null)
-      .then((movieData) => {
-        if (cancelled) return;
-        startTransition(movieData);
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, [location, committedLocation, isMobile]);
 
   // Fase 1 ('prepare') -> Fase 2 ('run'): aguarda 2 frames (layout + upload das texturas na GPU)

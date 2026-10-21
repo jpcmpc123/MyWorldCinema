@@ -96,7 +96,7 @@ const en = {
   tab_cast: 'Cast',
   tab_crew: 'Crew',
   tab_details: 'Details',
-  tab_genres: 'Genres',
+  tab_genres: 'Genre',
   tab_releases: 'Releases',
 
   // Cargos da aba Crew (chave = rótulo exibido)
@@ -693,7 +693,7 @@ const pt: Record<TranslationKey, string> = {
   tab_cast: 'Elenco',
   tab_crew: 'Equipe',
   tab_details: 'Detalhes',
-  tab_genres: 'Gêneros',
+  tab_genres: 'Gênero',
   tab_releases: 'Lançamentos',
   crew_director: 'Direção',
   crew_writers: 'Roteiro',

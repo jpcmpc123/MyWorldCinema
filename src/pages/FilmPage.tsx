@@ -15,6 +15,8 @@ import {
   Users,
   ChevronRight,
   Flag,
+  Loader2,
+  Globe,
 } from 'lucide-react';
 import { tmdb, type TMDBMovieDetails } from '../services/tmdb';
 import { useApp } from '../context/AppContext';
@@ -39,6 +41,94 @@ function formatNumber(num: number): string {
     return (num / 1_000).toFixed(0) + 'K';
   }
   return num.toString();
+}
+
+const loadedImageUrls = new Set<string>();
+const pinnedDecodedImages: HTMLImageElement[] = [];
+
+function preloadSingleImage(url: string): Promise<void> {
+  if (!url || typeof Image === 'undefined') return Promise.resolve();
+  if (loadedImageUrls.has(url)) return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    const img = new Image();
+    img.decoding = 'async';
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      loadedImageUrls.add(url);
+      pinnedDecodedImages.push(img);
+      if (pinnedDecodedImages.length > 35) {
+        pinnedDecodedImages.shift();
+      }
+      resolve();
+    };
+
+    img.onload = () => {
+      if (typeof img.decode === 'function') {
+        img.decode().then(finish).catch(finish);
+      } else {
+        finish();
+      }
+    };
+    img.onerror = finish;
+    img.src = url;
+
+    if (img.complete && img.naturalWidth > 0) {
+      if (typeof img.decode === 'function') {
+        img.decode().then(finish).catch(finish);
+      } else {
+        finish();
+      }
+    }
+  });
+}
+
+function getRequiredFilmImageUrls(
+  movie: TMDBMovieDetails | null,
+  isMobile: boolean,
+  override?: { poster?: string; backdrop?: string },
+): string[] {
+  if (!movie) return [];
+  const urls: string[] = [];
+
+  const effectiveBackdropPath = movie.backdrop_path || movie.poster_path;
+  const rawBackdrop =
+    override?.backdrop ||
+    (effectiveBackdropPath ? tmdb.getBackdropUrl(effectiveBackdropPath, 'w1280') : null);
+
+  if (rawBackdrop) {
+    const activeBackdrop = isMobile
+      ? rawBackdrop.includes('image.tmdb.org/t/p/')
+        ? rawBackdrop.replace(/\/t\/p\/(original|w1280)\//, '/t/p/w780/')
+        : rawBackdrop
+      : rawBackdrop.includes('image.tmdb.org/t/p/')
+        ? rawBackdrop.replace(/\/t\/p\/original\//, '/t/p/w1280/')
+        : rawBackdrop;
+    if (activeBackdrop) urls.push(activeBackdrop);
+  }
+
+  const posterUrl =
+    override?.poster ||
+    (movie.poster_path ? tmdb.getImageUrl(movie.poster_path, isMobile ? 'w342' : 'w500') : '');
+  if (posterUrl) urls.push(posterUrl);
+
+  if (isMobile && movie.credits?.cast?.length) {
+    const initialCast = movie.credits.cast.slice(0, 10);
+    for (const actor of initialCast) {
+      if (actor.profile_path) {
+        urls.push(tmdb.getProfileUrl(actor.profile_path, 'w185'));
+      }
+    }
+  }
+
+  return urls;
+}
+
+function areAllUrlsLoaded(urls: string[]): boolean {
+  return urls.every((u) => loadedImageUrls.has(u));
 }
 
 export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: boolean }> = ({
@@ -70,17 +160,29 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   const { t } = useLanguage();
   const navigate = useNavigate();
 
-  const cachedDetails = useMemo<TMDBMovieDetails | null>(
-    () => (movieId ? tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie') : null),
-    [movieId, isTv],
-  );
+  const cachedDetails = useMemo<TMDBMovieDetails | null>(() => {
+    if (!movieId) return null;
+    const cached = tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie');
+    if (cached && (cached.credits?.cast?.length || cached.credits?.crew?.length || cached.runtime)) {
+      return cached;
+    }
+    return null;
+  }, [movieId, isTv]);
 
   const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => cachedDetails);
   const [loading, setLoading] = useState<boolean>(() => !cachedDetails);
+  const [assetsReady, setAssetsReady] = useState<boolean>(() => {
+    if (!cachedDetails) return false;
+    const urls = getRequiredFilmImageUrls(cachedDetails, isMobile, movieOverrides[movieId]);
+    return areAllUrlsLoaded(urls);
+  });
 
   if (cachedDetails && movie?.id !== movieId) {
     setMovie(cachedDetails);
     if (loading) setLoading(false);
+    const urls = getRequiredFilmImageUrls(cachedDetails, isMobile, movieOverrides[movieId]);
+    const alreadyReady = areAllUrlsLoaded(urls);
+    if (assetsReady !== alreadyReady) setAssetsReady(alreadyReady);
   }
   const [activeTab, setActiveTab] = useState<'cast' | 'crew' | 'details' | 'genres' | 'releases'>('cast');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -109,6 +211,16 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   useEffect(() => {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const mountTime = performance.now();
+
+    const waitSlideIfMobile = async () => {
+      if (!isMobile) return;
+      const elapsed = performance.now() - mountTime;
+      const remaining = Math.max(0, 355 - elapsed);
+      if (remaining > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+      }
+    };
 
     async function loadFilm(attempt = 1) {
       if (!movieId) return;
@@ -116,18 +228,49 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
         window.scrollTo(0, 0);
         const cached = tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie');
         if (cached && (cached.credits?.cast?.length || cached.credits?.crew?.length || cached.runtime)) {
+          const urls = getRequiredFilmImageUrls(cached, isMobile, movieOverrides[movieId]);
+          if (areAllUrlsLoaded(urls)) {
+            setMovie(cached);
+            setAssetsReady(true);
+            setLoading(false);
+            return;
+          }
           setMovie(cached);
+          setAssetsReady(false);
           setLoading(false);
+          await Promise.all([
+            Promise.race([
+              Promise.all(urls.map(preloadSingleImage)),
+              new Promise<void>((resolve) => setTimeout(resolve, 8000)),
+            ]),
+            waitSlideIfMobile(),
+          ]);
+          if (!cancelled) {
+            setAssetsReady(true);
+          }
           return;
         }
         setMovie(null);
         setLoading(true);
+        setAssetsReady(false);
       }
 
       try {
         const details = isTv ? await tmdb.getTVDetails(movieId) : await tmdb.getMovieDetails(movieId);
         if (cancelled) return;
+        const urls = getRequiredFilmImageUrls(details, isMobile, movieOverrides[movieId]);
+        await Promise.all([
+          areAllUrlsLoaded(urls)
+            ? Promise.resolve()
+            : Promise.race([
+                Promise.all(urls.map(preloadSingleImage)),
+                new Promise<void>((resolve) => setTimeout(resolve, 8000)),
+              ]),
+          waitSlideIfMobile(),
+        ]);
+        if (cancelled) return;
         setMovie(details);
+        setAssetsReady(true);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -147,7 +290,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [movieId, isTv]);
+  }, [movieId, isTv, isMobile]);
 
   // Se o filme pertence a uma coleção mas a busca da coleção demorou >320ms na abertura,
   // preenchemos `collection_parts` assim que ela terminar em segundo plano.
@@ -178,9 +321,25 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     };
   }, [isTv, movie?.id, movie?.belongs_to_collection?.id, movie?.collection_parts?.length]);
 
-  if (!movie || loading) {
-    if (loading) {
-      return <div key="film-loading" className="min-h-screen" />;
+  if (!movie || loading || !assetsReady) {
+    if (loading || (movie && !assetsReady)) {
+      return (
+        <div
+          key="film-loading"
+          className="relative min-h-[calc(100dvh-60px)] md:min-h-screen bg-lb-bg flex items-center justify-center"
+        >
+          <div className="md:hidden absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 pt-2.5">
+            <button
+              onClick={() => navigate(-1)}
+              aria-label={t('film_back')}
+              className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center text-white shadow-md active:scale-95 transition-transform"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          </div>
+          <Loader2 className="w-9 h-9 animate-spin text-lb-green" />
+        </div>
+      );
     }
 
     return (
@@ -307,7 +466,10 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   const posterPath = override?.poster || movie.poster_path;
   const posterUrl =
     override?.poster ||
-    (movie.poster_path ? tmdb.getImageUrl(movie.poster_path, 'w780') : '');
+    (movie.poster_path ? tmdb.getImageUrl(movie.poster_path, 'w500') : '');
+  const posterMobileUrl =
+    override?.poster ||
+    (movie.poster_path ? tmdb.getImageUrl(movie.poster_path, 'w342') : '');
   const posterSrcSet = posterPath
     ? `${tmdb.getImageUrl(posterPath, 'w342')} 342w, ${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w`
     : undefined;
@@ -388,8 +550,6 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                   fetchPriority="high"
                   decoding="async"
                   src={posterUrl}
-                  srcSet={posterSrcSet}
-                  sizes="230px"
                   alt={movie.title}
                   className="w-full h-full object-cover"
                 />
@@ -544,9 +704,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                 <img
                   fetchPriority="high"
                   decoding="async"
-                  src={posterPath ? tmdb.getImageUrl(posterPath, 'w342') : posterUrl}
-                  srcSet={posterSrcSet}
-                  sizes="86px"
+                  src={posterMobileUrl}
                   alt={movie.title}
                   className="w-full h-full object-cover"
                 />
@@ -1394,7 +1552,7 @@ const CastTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ movi
             >
               {actor.profile_path ? (
                 <img
-                  loading="lazy"
+                  loading={showAll ? 'lazy' : 'eager'}
                   decoding="async"
                   src={tmdb.getProfileUrl(actor.profile_path, 'w185')}
                   alt=""
@@ -1928,7 +2086,7 @@ const GenresTab: React.FC<{ movie: TMDBMovieDetails; isTv: boolean; mobile?: boo
   );
 };
 
-// ---- 5. RELEASES (agrupado por tipo, ordenado cronologicamente) ------------
+// ---- 5. RELEASES (estilo oficial Letterboxd) -------------------------------
 const RELEASE_TYPE_LABELS: Record<number, TranslationKey> = {
   1: 'rel_premiere',
   2: 'rel_theatrical_limited',
@@ -1938,25 +2096,92 @@ const RELEASE_TYPE_LABELS: Record<number, TranslationKey> = {
   6: 'rel_tv',
 };
 
-const formatReleaseDateDesktop = (isoDate: string, language: string): string => {
+const SHORT_COUNTRY_NAMES: Record<string, { pt: string; en: string }> = {
+  US: { pt: 'EUA', en: 'USA' },
+  GB: { pt: 'Reino Unido', en: 'UK' },
+  CA: { pt: 'Canadá', en: 'Canada' },
+  HU: { pt: 'Hungria', en: 'Hungary' },
+  NL: { pt: 'Holanda', en: 'Netherlands' },
+  SE: { pt: 'Suécia', en: 'Sweden' },
+  PL: { pt: 'Polônia', en: 'Poland' },
+  TR: { pt: 'Turquia', en: 'Turkey' },
+  CZ: { pt: 'República Tcheca', en: 'Czechia' },
+  DE: { pt: 'Alemanha', en: 'Germany' },
+  FR: { pt: 'França', en: 'France' },
+  IT: { pt: 'Itália', en: 'Italy' },
+  ES: { pt: 'Espanha', en: 'Spain' },
+  JP: { pt: 'Japão', en: 'Japan' },
+  KR: { pt: 'Coreia do Sul', en: 'South Korea' },
+  AU: { pt: 'Austrália', en: 'Australia' },
+  NZ: { pt: 'Nova Zelândia', en: 'New Zealand' },
+  BR: { pt: 'Brasil', en: 'Brazil' },
+  MX: { pt: 'México', en: 'Mexico' },
+  AR: { pt: 'Argentina', en: 'Argentina' },
+  CL: { pt: 'Chile', en: 'Chile' },
+  CO: { pt: 'Colômbia', en: 'Colombia' },
+  PT: { pt: 'Portugal', en: 'Portugal' },
+  DK: { pt: 'Dinamarca', en: 'Denmark' },
+  NO: { pt: 'Noruega', en: 'Norway' },
+  FI: { pt: 'Finlândia', en: 'Finland' },
+  BE: { pt: 'Bélgica', en: 'Belgium' },
+  AT: { pt: 'Áustria', en: 'Austria' },
+  CH: { pt: 'Suíça', en: 'Switzerland' },
+  IE: { pt: 'Irlanda', en: 'Ireland' },
+  IN: { pt: 'Índia', en: 'India' },
+  CN: { pt: 'China', en: 'China' },
+  HK: { pt: 'Hong Kong', en: 'Hong Kong' },
+  TW: { pt: 'Taiwan', en: 'Taiwan' },
+  RU: { pt: 'Rússia', en: 'Russia' },
+  UA: { pt: 'Ucrânia', en: 'Ukraine' },
+  GR: { pt: 'Grécia', en: 'Greece' },
+  ZA: { pt: 'África do Sul', en: 'South Africa' },
+  IL: { pt: 'Israel', en: 'Israel' },
+  EG: { pt: 'Egito', en: 'Egypt' },
+};
+
+function resolveCountryLabel(iso: string, language: string, regions: Intl.DisplayNames): string {
+  const upper = (iso || '').trim().toUpperCase();
+  const override = SHORT_COUNTRY_NAMES[upper];
+  if (override) {
+    return language === 'pt-BR' ? override.pt : override.en;
+  }
+  return regions.of(upper) ?? upper;
+}
+
+const formatReleaseDateLetterboxd = (isoDate: string, language: string): string => {
   if (!isoDate) return '—';
-  const d = new Date(`${isoDate.slice(0, 10)}T00:00:00Z`);
-  if (Number.isNaN(d.getTime())) return isoDate.slice(0, 10);
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const month = d.toLocaleString(language === 'pt-BR' ? 'pt-BR' : 'en-GB', {
-    month: 'short',
-    timeZone: 'UTC',
-  }).replace(/\.$/, '');
-  const monthCap = month.charAt(0).toUpperCase() + month.slice(1);
-  const year = d.getUTCFullYear();
-  return `${day} ${monthCap} ${year}`;
+  const clean = isoDate.slice(0, 10);
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const dt = new Date(Date.UTC(y, m, d));
+    if (!Number.isNaN(dt.getTime())) {
+      const day = dt.getUTCDate();
+      const month = dt.toLocaleString(language === 'pt-BR' ? 'pt-BR' : 'en-US', {
+        month: 'short',
+        timeZone: 'UTC',
+      }).replace(/\.$/, '');
+      const monthCap = month.charAt(0).toUpperCase() + month.slice(1);
+      return `${day} ${monthCap} ${dt.getUTCFullYear()}`;
+    }
+  }
+  return clean;
 };
 
 const CircularFlag: React.FC<{ iso: string }> = ({ iso }) => {
   const [failed, setFailed] = useState(false);
-  const code = iso.toLowerCase();
+  const code = (iso || '').trim().toLowerCase();
   if (failed || !/^[a-z]{2}$/.test(code)) {
-    return <span className="text-sm leading-none" aria-hidden="true">{flagEmoji(iso)}</span>;
+    return (
+      <span
+        className="w-5 h-5 rounded-full flex items-center justify-center text-xs leading-none shrink-0"
+        aria-hidden="true"
+      >
+        {flagEmoji(iso)}
+      </span>
+    );
   }
   return (
     <img
@@ -1965,7 +2190,7 @@ const CircularFlag: React.FC<{ iso: string }> = ({ iso }) => {
       loading="lazy"
       decoding="async"
       onError={() => setFailed(true)}
-      className="w-4 h-4 rounded-full object-cover shrink-0 bg-[#283038]"
+      className="w-5 h-5 rounded-full aspect-square object-cover shrink-0 shadow-sm border border-white/10"
     />
   );
 };
@@ -1974,6 +2199,7 @@ const ReleasesTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ 
   const { language, t } = useLanguage();
   const regions = useMemo(() => regionNames(language), [language]);
   const [sortBy, setSortBy] = useState<'date' | 'country'>('date');
+  const [filterIso, setFilterIso] = useState<string | null>(null);
 
   const entries = useMemo(() => {
     const list: { iso: string; type: number; date: string; cert: string; note: string }[] = [];
@@ -1981,7 +2207,7 @@ const ReleasesTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ 
       for (const d of r.release_dates) {
         list.push({
           iso: r.iso_3166_1,
-          type: d.type,
+          type: d.type || 3,
           date: d.release_date || '',
           cert: d.certification || '',
           note: d.note || '',
@@ -1991,35 +2217,65 @@ const ReleasesTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ 
     return list;
   }, [movie]);
 
+  const availableCountries = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of entries) {
+      if (e.iso) set.add(e.iso.toUpperCase());
+    }
+    return Array.from(set).sort((a, b) => {
+      const nameA = resolveCountryLabel(a, language, regions);
+      const nameB = resolveCountryLabel(b, language, regions);
+      return nameA.localeCompare(nameB);
+    });
+  }, [entries, language, regions]);
+
+  const filteredEntries = useMemo(() => {
+    if (!filterIso) return entries;
+    return entries.filter((e) => e.iso.toUpperCase() === filterIso);
+  }, [entries, filterIso]);
+
   if (entries.length === 0) {
+    const fallbackDate = movie.release_date || (movie as unknown as { first_air_date?: string }).first_air_date || '';
+    const fallbackIso = movie.production_countries?.[0]?.iso_3166_1 || 'US';
+    const countryName = resolveCountryLabel(fallbackIso, language, regions);
     return (
-      <div className="divide-y divide-lb-elevated text-sm">
-        <div className="flex items-center justify-between py-2.5">
-          <span className="text-white font-medium">{t('rel_theatrical')}</span>
-          <span className="text-lb-muted text-xs">
-            {movie.release_date ? formatDatePt(language, movie.release_date) : t('na')}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between pb-1">
+          <h4 className="text-[11px] uppercase font-bold tracking-[0.08em] text-[#778899]">
+            {t('rel_theatrical')}
+          </h4>
+          <Globe className="w-4 h-4 text-[#778899]" />
+        </div>
+        <div className="flex items-start gap-3 py-2 text-[13px]">
+          <span className="w-[88px] shrink-0 text-[#8899aa] font-normal leading-[1.35] pt-[1px] tabular-nums">
+            {formatReleaseDateLetterboxd(fallbackDate, language)}
           </span>
+          <div className="shrink-0 pt-[1px]">
+            <CircularFlag iso={fallbackIso} />
+          </div>
+          <div className="flex-1 min-w-0 leading-[1.35]">
+            <span className="font-bold text-white mr-1.5">{countryName}</span>
+          </div>
         </div>
       </div>
     );
   }
 
-  // DESKTOP: Layout por tipo e data agrupada com bandeiras circulares e selo bordado (Imagem 7)
+  // DESKTOP: Layout por tipo e data agrupada com bandeiras circulares e selo bordado
   if (!mobile) {
     const desktopGroups = [1, 2, 3, 4, 5, 6]
       .map((type) => {
-        const items = entries
+        const items = filteredEntries
           .filter((e) => e.type === type)
           .sort((a, b) => {
             if (sortBy === 'country') {
-              const nameA = shortCountryName(a.iso, regions.of(a.iso) ?? a.iso);
-              const nameB = shortCountryName(b.iso, regions.of(b.iso) ?? b.iso);
+              const nameA = resolveCountryLabel(a.iso, language, regions);
+              const nameB = resolveCountryLabel(b.iso, language, regions);
               return nameA.localeCompare(nameB) || (a.date || '9999').localeCompare(b.date || '9999');
             }
             return (a.date || '9999').localeCompare(b.date || '9999');
           });
 
-        // Agrupa entradas consecutivas com a mesma data quando não há notas longas individuais
         const dateRows: { dateKey: string; items: typeof items }[] = [];
         for (const item of items) {
           const dKey = item.date.slice(0, 10);
@@ -2048,26 +2304,25 @@ const ReleasesTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ 
                 {t(RELEASE_TYPE_LABELS[g.type])}
               </h4>
               {gIdx === 0 && (
-                <button
-                  onClick={() => setSortBy((s) => (s === 'date' ? 'country' : 'date'))}
-                  className="text-[11px] text-[#778899] hover:text-white transition-colors cursor-pointer"
-                >
-                  {sortBy === 'date' ? t('sort_by_date') : t('sort_by_country')} ⌄
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setSortBy((s) => (s === 'date' ? 'country' : 'date'))}
+                    className="text-[11px] text-[#778899] hover:text-white transition-colors cursor-pointer"
+                  >
+                    {sortBy === 'date' ? t('sort_by_date') : t('sort_by_country')} ⌄
+                  </button>
+                </div>
               )}
             </div>
             <div className="divide-y divide-[#232a32]">
               {g.dateRows.map((row, rIdx) => (
                 <div key={`${row.dateKey}-${rIdx}`} className="flex items-start gap-3 py-2.5 text-[12px]">
-                  <span className="w-[84px] shrink-0 text-[#99aabb] leading-[1.4]">
-                    {formatReleaseDateDesktop(row.dateKey, language)}
+                  <span className="w-[84px] shrink-0 text-[#99aabb] leading-[1.4] tabular-nums">
+                    {formatReleaseDateLetterboxd(row.dateKey, language)}
                   </span>
                   <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-3.5 gap-y-2">
                     {row.items.map((e, i) => {
-                      const countryName =
-                        language === 'en-US'
-                          ? shortCountryName(e.iso, regions.of(e.iso) ?? e.iso)
-                          : regions.of(e.iso) ?? e.iso;
+                      const countryName = resolveCountryLabel(e.iso, language, regions);
                       const longNote = e.note.length > 28;
                       return (
                         <div
@@ -2081,7 +2336,7 @@ const ReleasesTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ 
                             <div className="inline-flex flex-wrap items-center gap-1.5">
                               <span className="text-white font-bold">{countryName}</span>
                               {e.cert && (
-                                <span className="border border-[#445566] text-[#99aabb] text-[10px] leading-none px-1 py-[2px] rounded-[2px] font-medium">
+                                <span className="border border-[#445566] bg-[#202830] text-[#99aabb] text-[10px] leading-none px-1.5 py-[2px] rounded-[3px] font-medium">
                                   {e.cert}
                                 </span>
                               )}
@@ -2108,36 +2363,86 @@ const ReleasesTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ 
     );
   }
 
-  // MOBILE (inalterado)
-  const groups = [1, 2, 3, 4, 5, 6]
+  // MOBILE: Layout idêntico ao aplicativo oficial do Letterboxd (captura de tela do usuário)
+  const mobileGroups = [1, 2, 3, 4, 5, 6]
     .map((type) => ({
       type,
-      items: entries
+      items: filteredEntries
         .filter((e) => e.type === type)
         .sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999')),
     }))
     .filter((g) => g.items.length > 0);
 
   return (
-    <div className="space-y-5">
-      {groups.map((g) => (
-        <div key={g.type}>
-          <h4 className="text-[10px] uppercase font-bold tracking-wider text-white border-b border-lb-elevated pb-1 mb-2">
-            {t(RELEASE_TYPE_LABELS[g.type])}
-          </h4>
-          <div className="divide-y divide-lb-elevated/50 text-xs">
-            {g.items.map((e, i) => (
-              <div key={i} className="flex items-center gap-2.5 py-2">
-                <span className="text-base leading-none" aria-hidden="true">{flagEmoji(e.iso)}</span>
-                <span className="text-white font-medium">{regions.of(e.iso) ?? e.iso}</span>
-                {e.cert && <CertBadge cert={e.cert} small />}
-                <span className="flex-1" />
-                <span className="text-lb-muted">{e.date ? formatDatePt(language, e.date.slice(0, 10)) : '—'}</span>
-                {e.note && <span className="text-lb-muted/70 italic truncate max-w-[30%]">{e.note}</span>}
-              </div>
-            ))}
+    <div className="space-y-4">
+      {mobileGroups.map((g, gIdx) => (
+        <section
+          key={g.type}
+          className={gIdx > 0 ? 'border-t border-[#232a32] pt-4 mt-3' : ''}
+        >
+          {/* Cabeçalho da seção: ex.: PREMIERE, THEATRICAL LIMITED, THEATRICAL */}
+          <div className="flex items-center justify-between pb-1">
+            <h4 className="text-[11px] uppercase font-bold tracking-[0.08em] text-[#778899]">
+              {t(RELEASE_TYPE_LABELS[g.type])}
+            </h4>
+            {gIdx === 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (filterIso) {
+                    setFilterIso(null);
+                  } else if (availableCountries.length > 1) {
+                    const next = availableCountries[0];
+                    setFilterIso(next);
+                  }
+                }}
+                title={filterIso ? `${t('common_all')} (${filterIso})` : t('common_all')}
+                className={`p-1 -mr-1 rounded transition-colors ${
+                  filterIso ? 'text-lb-green' : 'text-[#778899] hover:text-white'
+                }`}
+                aria-label="Filter releases by country"
+              >
+                <Globe className="w-4 h-4" />
+              </button>
+            )}
           </div>
-        </div>
+
+          {/* Lista de lançamentos com data à esquerda, bandeira circular, país em negrito, classificação e festival/nota */}
+          <div className="divide-y divide-transparent">
+            {g.items.map((e, i) => {
+              const countryName = resolveCountryLabel(e.iso, language, regions);
+              return (
+                <div
+                  key={`${e.iso}-${e.date}-${i}`}
+                  className="flex items-start gap-3 py-2 text-[13px]"
+                >
+                  {/* Coluna 1: Data (ex.: 6 Sep 2026) */}
+                  <span className="w-[88px] shrink-0 text-[#8899aa] font-normal leading-[1.35] pt-[1px] tabular-nums">
+                    {formatReleaseDateLetterboxd(e.date, language)}
+                  </span>
+
+                  {/* Coluna 2: Bandeira circular */}
+                  <div className="shrink-0 pt-[1px]">
+                    <CircularFlag iso={e.iso} />
+                  </div>
+
+                  {/* Coluna 3: País em negrito + Selo de classificação + Festival/Nota */}
+                  <div className="flex-1 min-w-0 leading-[1.35]">
+                    <span className="font-bold text-white mr-1.5">{countryName}</span>
+                    {e.cert && (
+                      <span className="inline-block border border-[#445566] bg-[#202830] text-[#99aabb] text-[10px] font-bold px-1.5 py-[1px] rounded-[3px] leading-none align-baseline mr-1.5">
+                        {e.cert}
+                      </span>
+                    )}
+                    {e.note && (
+                      <span className="text-[#778899] font-normal">{e.note}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       ))}
     </div>
   );
