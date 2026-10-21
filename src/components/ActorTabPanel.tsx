@@ -137,8 +137,8 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
       <div
         className={
           profileImg
-            ? 'px-3.5 py-4 grid grid-cols-[92px_1fr] gap-4 items-start'
-            : 'px-3.5 py-4'
+            ? 'w-full max-w-full box-border overflow-hidden px-3.5 py-4 flex items-start gap-4'
+            : 'w-full max-w-full box-border overflow-hidden px-3.5 py-4'
         }
       >
         {profileImg && (
@@ -146,7 +146,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
             type="button"
             onClick={onOpenPhoto}
             aria-label={personName}
-            className="w-[92px] h-[138px] rounded-md overflow-hidden border border-white/12 bg-[#1c2228] cursor-pointer active:scale-[0.97] transition-transform p-0 block"
+            className="w-[92px] h-[138px] shrink-0 rounded-md overflow-hidden border border-white/12 bg-[#1c2228] cursor-pointer active:scale-[0.97] transition-transform p-0 block"
           >
             <img
               src={profileImg}
@@ -157,7 +157,10 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
             />
           </button>
         )}
-        <p className="m-0 text-[#9ab] text-[0.92rem] leading-[1.55] whitespace-pre-line">
+        <p
+          className="m-0 flex-1 min-w-0 max-w-full text-[#9ab] text-[0.92rem] leading-[1.55] whitespace-pre-line break-words overflow-hidden"
+          style={{ overflowWrap: 'anywhere' }}
+        >
           {biography || t('person_bio_empty')}
         </p>
       </div>

@@ -496,9 +496,11 @@ button, a, [role="button"] {
 .tab-panel {
   min-width: 100%;
   width: 100%;
+  max-width: 100%;
   min-height: calc(100dvh - 165px);
   flex-shrink: 0;
   box-sizing: border-box;
+  overflow-x: hidden;
   will-change: transform;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
@@ -644,9 +646,11 @@ button, a, [role="button"] {
 .actor-tab-panel {
   min-width: 100%;
   width: 100%;
+  max-width: 100%;
   min-height: calc(100dvh - 165px);
   flex-shrink: 0;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* Painel fora da tela: altura zero (a página fica com a altura da aba ativa) e
