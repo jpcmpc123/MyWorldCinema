@@ -1,2 +1,1 @@
-# MyWorld — My World Cinema
 
