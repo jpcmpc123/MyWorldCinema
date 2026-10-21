@@ -1285,11 +1285,53 @@ const DesktopDottedRow: React.FC<{ label: string; children?: React.ReactNode }> 
   );
 };
 
+interface FromPersonState {
+  id: number;
+  name: string;
+  profile_path?: string | null;
+  character?: string;
+  job?: string;
+  role?: string;
+}
+
 // ---- 1. CAST ---------------------------------------------------------------
 const CastTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ movie, mobile }) => {
   const { t } = useLanguage();
+  const location = useLocation();
+  const fromPerson = (location.state as { fromPerson?: FromPersonState } | null)?.fromPerson;
   const [showAll, setShowAll] = useState(false);
-  const cast = movie.credits?.cast ?? [];
+
+  const cast = useMemo(() => {
+    const base = [...(movie.credits?.cast ?? [])];
+    if (
+      fromPerson &&
+      fromPerson.id &&
+      (fromPerson.role === 'Actor' || typeof fromPerson.character === 'string')
+    ) {
+      const existingIdx = base.findIndex((c) => c.id === fromPerson.id);
+      if (existingIdx === -1) {
+        base.push({
+          id: fromPerson.id,
+          name: fromPerson.name,
+          character: fromPerson.character || '',
+          profile_path: fromPerson.profile_path ?? null,
+          order: base.length,
+        });
+      } else if (!base[existingIdx].character && fromPerson.character) {
+        base[existingIdx] = { ...base[existingIdx], character: fromPerson.character };
+      }
+
+      const limit = mobile ? 10 : 28;
+      const idxNow = base.findIndex((c) => c.id === fromPerson.id);
+      if (idxNow >= limit) {
+        const [item] = base.splice(idxNow, 1);
+        const insertAt = Math.min(3, base.length);
+        base.splice(insertAt, 0, item);
+      }
+    }
+    return base;
+  }, [movie.credits?.cast, fromPerson, mobile]);
+
   if (cast.length === 0) {
     return (
       <div className="py-12 text-center space-y-2">
@@ -1403,7 +1445,24 @@ const CREW_GROUPS: { key: TranslationKey; jobs: string[]; role?: PersonRole }[] 
 
 const CrewTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ movie, mobile }) => {
   const { t } = useLanguage();
-  const crew = movie.credits?.crew ?? [];
+  const location = useLocation();
+  const fromPerson = (location.state as { fromPerson?: FromPersonState } | null)?.fromPerson;
+  const crew = useMemo(() => {
+    const base = [...(movie.credits?.crew ?? [])];
+    if (fromPerson && fromPerson.id && fromPerson.job) {
+      const exists = base.some((c) => c.id === fromPerson.id && c.job === fromPerson.job);
+      if (!exists) {
+        base.unshift({
+          id: fromPerson.id,
+          name: fromPerson.name,
+          job: fromPerson.job,
+          department: '',
+          profile_path: fromPerson.profile_path ?? null,
+        });
+      }
+    }
+    return base;
+  }, [movie.credits?.crew, fromPerson]);
   const [showAll, setShowAll] = useState(false);
   const LIMIT = 10;
 

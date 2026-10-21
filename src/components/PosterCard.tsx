@@ -25,6 +25,7 @@ interface PosterCardProps {
   enableLongPressActions?: boolean;
   disableHoverActions?: boolean;
   faded?: boolean;
+  linkState?: Record<string, unknown>;
 }
 
 const PosterCardBase: React.FC<PosterCardProps> = ({
@@ -35,6 +36,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   enableLongPressActions = false,
   disableHoverActions = false,
   faded = false,
+  linkState,
 }) => {
   const openActionSheet = useOpenActionSheet();
   const { watched, liked, inWatchlist, rating, overridePoster } = useMovieState(movie.id);
@@ -161,7 +163,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
 
         <Link
           to={`${tv ? '/tv' : '/film'}/${movie.id}`}
-          state={{ initialMovie: movie, fromPoster: true }}
+          state={{ initialMovie: movie, fromPoster: true, ...linkState }}
           onMouseEnter={handlePrefetch}
           onTouchStart={handlePrefetch}
           className={`block w-full h-full rounded-[4px] overflow-hidden transition-opacity duration-150 ${

@@ -17,7 +17,9 @@ interface ActorTabPanelProps {
   tabKey: ActorTabKey;
   /** Filmografia DAQUELE cargo (vem do mesmo fetch da pessoa — sem API extra) */
   items: TMDBPersonMovieCredit[];
+  personId: number;
   personName: string;
+  personProfilePath: string | null;
   biography: string | null;
   profileImg: string | null;
   onOpenPhoto?: () => void;
@@ -44,7 +46,9 @@ interface ActorTabPanelProps {
 export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
   tabKey,
   items,
+  personId,
   personName,
+  personProfilePath,
   biography,
   profileImg,
   onOpenPhoto,
@@ -82,13 +86,26 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
     return Math.round((watched / visibleFilms.length) * 100);
   }, [visibleFilms, isMovieWatched]);
 
+  const buildLinkState = (film: TMDBPersonMovieCredit) => ({
+    initialMovie: film,
+    fromPoster: true,
+    fromPerson: {
+      id: personId,
+      name: personName,
+      profile_path: personProfilePath,
+      character: film.character,
+      job: film.job,
+      role: tabKey,
+    },
+  });
+
   // Card de pôster (grade de 4 colunas e lista compacta).
   // Série (media_type 'tv') abre /tv/{id}; filme abre /film/{id}.
   const posterCard = (film: TMDBPersonMovieCredit, className = '') => (
     <Link
       key={`${film.media_type ?? 'movie'}-${film.id}`}
       to={`${film.media_type === 'tv' ? '/tv' : '/film'}/${film.id}`}
-      state={{ initialMovie: film, fromPoster: true }}
+      state={buildLinkState(film)}
       className={`person-film-card relative block ${className}`}
     >
       {film.poster_path ? (
@@ -180,7 +197,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
               <div className="min-w-0">
                 <Link
                   to={`${f.media_type === 'tv' ? '/tv' : '/film'}/${f.id}`}
-                  state={{ initialMovie: f, fromPoster: true }}
+                  state={buildLinkState(f)}
                   className="block text-sm font-semibold text-white truncate"
                 >
                   {f.title}

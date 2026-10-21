@@ -1568,14 +1568,38 @@ export const tmdb = {
       }[];
     } | undefined;
 
-    if (show.credits.cast.length === 0 && aggCredits?.cast?.length) {
-      show.credits.cast = aggCredits.cast.map((c, idx) => ({
-        id: c.id,
-        name: c.name,
-        character: c.roles?.[0]?.character || '',
-        profile_path: c.profile_path ?? null,
-        order: c.order ?? idx,
-      }));
+    if (aggCredits?.cast?.length) {
+      const existingById = new Map(show.credits.cast.map((c) => [c.id, c]));
+      for (let idx = 0; idx < aggCredits.cast.length; idx++) {
+        const ac = aggCredits.cast[idx];
+        const roleNames = Array.from(
+          new Set(
+            (ac.roles ?? [])
+              .map((r) => r.character?.trim())
+              .filter((ch): ch is string => Boolean(ch)),
+          ),
+        );
+        const characterStr = roleNames.join(' / ');
+        const existing = existingById.get(ac.id);
+        if (existing) {
+          if (!existing.character && characterStr) {
+            existing.character = characterStr;
+          }
+          if (!existing.profile_path && ac.profile_path) {
+            existing.profile_path = ac.profile_path;
+          }
+        } else {
+          const entry = {
+            id: ac.id,
+            name: ac.name,
+            character: characterStr,
+            profile_path: ac.profile_path ?? null,
+            order: ac.order ?? show.credits.cast.length + idx,
+          };
+          show.credits.cast.push(entry);
+          existingById.set(ac.id, entry);
+        }
+      }
     }
 
     if (aggCredits?.crew?.length) {

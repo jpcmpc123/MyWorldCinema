@@ -670,7 +670,9 @@ export function ActorPage() {
                     <ActorTabPanel
                       tabKey={tab.key}
                       items={tab.items}
+                      personId={person.id}
                       personName={person.name}
+                      personProfilePath={person.profile_path}
                       biography={person.biography}
                       profileImg={profileImg}
                       onOpenPhoto={() => setShowPhotoLightbox(true)}
@@ -778,6 +780,16 @@ export function ActorPage() {
                         }}
                         tv={film.media_type === 'tv'}
                         size="fluid"
+                        linkState={{
+                          fromPerson: {
+                            id: person.id,
+                            name: person.name,
+                            profile_path: person.profile_path,
+                            character: film.character,
+                            job: film.job,
+                            role: activeTab,
+                          },
+                        }}
                       />
                     ))}
                   </div>
