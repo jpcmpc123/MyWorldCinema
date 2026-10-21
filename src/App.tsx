@@ -89,6 +89,7 @@ const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'), 'Settin
 const SearchPage = lazyWithRetry(() => import('./pages/SearchPage'), 'SearchPage');
 const BrowseDrilldownPage = lazyWithRetry(() => import('./pages/BrowseDrilldownPage'), 'BrowseDrilldownPage');
 const BrowseResultsPage = lazyWithRetry(() => import('./pages/BrowseResultsPage'), 'BrowseResultsPage');
+const CollectionPage = lazyWithRetry(() => import('./pages/CollectionPage'), 'CollectionPage');
 
 
 // Pré-carrega o chunk da página de detalhes em background para navegação instantânea
@@ -115,6 +116,7 @@ function AnimatedRoutes() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/film/:id" element={<FilmPage />} />
+            <Route path="/collection/:id" element={<CollectionPage />} />
             <Route path="/actor/:id" element={<ActorPage />} />
             <Route path="/films" element={<FilmsHubPage />} />
             <Route path="/films/browse" element={<FilmsPage />} />

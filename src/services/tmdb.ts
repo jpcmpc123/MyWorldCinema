@@ -133,6 +133,22 @@ export interface TMDBMovieDetails extends TMDBMovie {
     results?: { iso_3166_1: string; title: string; type: string }[];
   };
   original_language?: string;
+  belongs_to_collection?: {
+    id: number;
+    name: string;
+    poster_path: string | null;
+    backdrop_path: string | null;
+  } | null;
+  collection_parts?: TMDBMovie[];
+}
+
+export interface TMDBCollectionDetails {
+  id: number;
+  name: string;
+  overview: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  parts: TMDBMovie[];
 }
 
 export interface TMDBImage {
@@ -440,6 +456,308 @@ const isFuture = (m: TMDBMovie) => {
   return Boolean(d) && d > TMDB_TODAY;
 };
 
+// ---------------------------------------------------------------------------
+// Motor de Afinidade Temática e de Público (Filmes & Séries Semelhantes)
+// Combina sequências/franquia (belongs_to_collection), recomendações reais de
+// público (/recommendations), descoberta por palavras-chave + gêneros centrais
+// (/discover) e filtragem estrita de estilo (live-action vs. animação/doc).
+// ---------------------------------------------------------------------------
+
+interface SimilarSourceProfile {
+  id: number;
+  type: 'movie' | 'tv';
+  genreIds: number[];
+  keywordIds: number[];
+  originalLanguage: string;
+  releaseYear: number;
+  collectionId?: number;
+  collectionParts: TMDBMovie[];
+  rankedPool: TMDBMovie[];
+}
+
+const similarProfileCache = new Map<string, SimilarSourceProfile>();
+
+function normalizeMediaItem(m: TMDBMovie): TMDBMovie {
+  const a = m as unknown as Record<string, unknown>;
+  return {
+    ...m,
+    title: (m.title || (a.name as string) || '') as string,
+    original_title: (m.original_title || (a.original_name as string) || m.title || (a.name as string) || '') as string,
+    release_date: (m.release_date || (a.first_air_date as string) || '') as string,
+  };
+}
+
+function rankSimilarCandidates(
+  profile: SimilarSourceProfile,
+  buckets: {
+    collection?: TMDBMovie[];
+    recommendations?: TMDBMovie[];
+    keywordDiscover?: TMDBMovie[];
+    similar?: TMDBMovie[];
+  },
+): TMDBMovie[] {
+  const collectionList = (buckets.collection || []).map(normalizeMediaItem);
+  const recList = (buckets.recommendations || []).map(normalizeMediaItem);
+  const kwList = (buckets.keywordDiscover || []).map(normalizeMediaItem);
+  const simList = (buckets.similar || []).map(normalizeMediaItem);
+
+  const collectionIds = new Set(collectionList.map((m) => m.id));
+  const recRankMap = new Map<number, number>();
+  recList.forEach((m, idx) => {
+    if (!recRankMap.has(m.id)) recRankMap.set(m.id, idx);
+  });
+
+  const kwRankMap = new Map<number, number>();
+  kwList.forEach((m, idx) => {
+    if (!kwRankMap.has(m.id)) kwRankMap.set(m.id, idx);
+  });
+
+  const simRankMap = new Map<number, number>();
+  simList.forEach((m, idx) => {
+    if (!simRankMap.has(m.id)) simRankMap.set(m.id, idx);
+  });
+
+  const candidatesMap = new Map<number, TMDBMovie>();
+  for (const list of [collectionList, recList, kwList, simList]) {
+    for (const item of list) {
+      if (item && item.id && item.id !== profile.id && !candidatesMap.has(item.id)) {
+        candidatesMap.set(item.id, item);
+      }
+    }
+  }
+
+  const sourceGenreSet = new Set(profile.genreIds);
+  const primaryGenre = profile.genreIds[0];
+  const secondaryGenre = profile.genreIds[1];
+  const thirdGenre = profile.genreIds[2];
+
+  const isSourceAnim = sourceGenreSet.has(16);
+  const isSourceDoc = sourceGenreSet.has(99);
+  const isSourceFamily = sourceGenreSet.has(10751) || sourceGenreSet.has(10762);
+  const isSourceComedy = sourceGenreSet.has(35);
+  const isSourceHorror = sourceGenreSet.has(27);
+  const isSourceTvExcluded = profile.genreIds.some((g) => TV_EXCLUDED_GENRE_IDS.has(g));
+
+  const scored: { movie: TMDBMovie; score: number }[] = [];
+
+  for (const cand of candidatesMap.values()) {
+    if (!cand.poster_path) continue;
+
+    const inCollection = collectionIds.has(cand.id);
+    const recRank = recRankMap.get(cand.id);
+    const kwRank = kwRankMap.get(cand.id);
+    const simRank = simRankMap.get(cand.id);
+
+    const inRecs = recRank !== undefined;
+    const inKw = kwRank !== undefined;
+    const inSim = simRank !== undefined;
+
+    const d = itemDate(cand);
+    if (!inCollection && (!d || d > TMDB_TODAY)) continue;
+
+    const candGenres = cand.genre_ids || [];
+    const candGenreSet = new Set(candGenres);
+
+    // 1. Trava estrita de formato: Animação vs Live-Action e Documentário vs Ficção
+    const isCandAnim = candGenreSet.has(16);
+    if (!inCollection && isSourceAnim !== isCandAnim) continue;
+
+    const isCandDoc = candGenreSet.has(99);
+    if (!inCollection && isSourceDoc !== isCandDoc) continue;
+
+    if (profile.type === 'tv' && !isSourceTvExcluded) {
+      if (candGenres.some((g) => TV_EXCLUDED_GENRE_IDS.has(g))) continue;
+    }
+
+    // 2. Afinidade mínima de gêneros
+    const sharedCount = candGenres.filter((g) => sourceGenreSet.has(g)).length;
+    if (!inCollection && profile.genreIds.length > 0 && candGenres.length > 0) {
+      if (sharedCount === 0) continue;
+
+      const hasPrimaryGenre = primaryGenre !== undefined && candGenreSet.has(primaryGenre);
+      const hasSecondaryGenre = secondaryGenre !== undefined && candGenreSet.has(secondaryGenre);
+
+      if (profile.genreIds.length >= 2) {
+        // Se veio apenas do endpoint /similar bruto, exige alta afinidade de gênero e votos
+        if (!inRecs && !inKw) {
+          if (sharedCount < 2 || !hasPrimaryGenre) continue;
+          if ((cand.vote_count ?? 0) < (profile.type === 'tv' ? 80 : 250)) continue;
+        } else if (!hasPrimaryGenre && !hasSecondaryGenre && sharedCount < 2) {
+          // Mesmo em recommendations, descarta desvios temáticos sem os gêneros principais
+          if ((recRank ?? 99) > 5) continue;
+        }
+      }
+    }
+
+    // 3. Filtro de relevância e qualidade mínima
+    const minVotes = inCollection ? 1 : inRecs && (recRank ?? 99) < 10 ? 20 : profile.type === 'tv' ? 25 : 50;
+    if ((cand.vote_count ?? 0) < minVotes) continue;
+    if (!inCollection && (cand.vote_average ?? 0) > 0 && (cand.vote_average ?? 0) < 5.2) continue;
+
+    // 4. Cálculo de pontuação de afinidade temática e de público
+    let score = 0;
+
+    if (inCollection) {
+      score += 1000;
+    }
+
+    if (inRecs && recRank !== undefined) {
+      score += Math.max(45, 165 - recRank * 3.2);
+    }
+
+    if (inKw && kwRank !== undefined) {
+      score += Math.max(25, 85 - kwRank * 1.8);
+    }
+
+    if (inSim && simRank !== undefined) {
+      score += Math.max(5, 30 - simRank * 1.0);
+    }
+
+    // Bônus de consenso entre fontes independentes
+    if (inRecs && inKw) score += 70;
+    if (inRecs && inSim) score += 55;
+    if (inKw && inSim) score += 40;
+
+    // Precisão de gêneros
+    if (primaryGenre !== undefined && candGenres[0] === primaryGenre) {
+      score += 38;
+    } else if (primaryGenre !== undefined && candGenreSet.has(primaryGenre)) {
+      score += 22;
+    }
+
+    if (secondaryGenre !== undefined && candGenreSet.has(secondaryGenre)) {
+      score += 24;
+    }
+
+    if (thirdGenre !== undefined && candGenreSet.has(thirdGenre)) {
+      score += 15;
+    }
+
+    if (profile.genreIds.length > 0 && candGenres.length > 0) {
+      const unionSize = new Set([...profile.genreIds, ...candGenres]).size;
+      const jaccard = sharedCount / Math.max(1, unionSize);
+      score += jaccard * 50;
+    }
+
+    // Penalidades de incompatibilidade de tom
+    if (!isSourceFamily && (candGenreSet.has(10751) || candGenreSet.has(10762))) {
+      score -= 65;
+    }
+    if (!isSourceComedy && candGenres[0] === 35) {
+      score -= 35;
+    }
+    if (!isSourceHorror && candGenreSet.has(27)) {
+      score -= 40;
+    }
+
+    // Proximidade de época / década (evita que filmes de outra era sem relação dominem)
+    const candYear = d ? parseInt(d.slice(0, 4), 10) : 0;
+    if (!inCollection && profile.releaseYear > 0 && candYear > 0) {
+      const yearDiff = Math.abs(profile.releaseYear - candYear);
+      if (yearDiff <= 15) {
+        score += (15 - yearDiff) * 1.3;
+      } else if (yearDiff > 32) {
+        score -= Math.min(35, (yearDiff - 32) * 1.1);
+      }
+    }
+
+    // Afinidade de idioma/cultura original (ex.: anime/cinema japonês, suspense coreano, nacional)
+    const candLang = (cand as unknown as { original_language?: string }).original_language || '';
+    if (profile.originalLanguage && candLang === profile.originalLanguage) {
+      score += profile.originalLanguage !== 'en' ? 24 : 8;
+    }
+
+    // Aprovação do público
+    score += (cand.vote_average || 0) * 2.4;
+    score += Math.min(14, Math.log10(Math.max(10, cand.vote_count || 10)) * 3.2);
+
+    scored.push({ movie: cand, score });
+  }
+
+  scored.sort((a, b) => b.score - a.score || (b.movie.vote_count || 0) - (a.movie.vote_count || 0));
+  return scored.map((s) => s.movie);
+}
+
+async function curateSimilarForDetails(
+  details: TMDBMovieDetails,
+  type: 'movie' | 'tv',
+): Promise<TMDBMovie[]> {
+  const cacheKey = `${type}:${details.id}:${tmdbLanguage}`;
+  const genreIds = (details.genres || []).map((g) => g.id);
+  const rawKeywords = details.keywords?.keywords || details.keywords?.results || [];
+  const keywordIds = rawKeywords.slice(0, 6).map((k) => k.id);
+  const rawDate = details.release_date || ((details as unknown as Record<string, unknown>).first_air_date as string) || '';
+  const releaseYear = rawDate ? parseInt(rawDate.slice(0, 4), 10) || 0 : 0;
+  const collectionObj = (details as unknown as { belongs_to_collection?: { id: number } | null }).belongs_to_collection;
+  const collectionId = type === 'movie' && collectionObj?.id ? collectionObj.id : undefined;
+
+  const extraCalls = await Promise.allSettled([
+    collectionId
+      ? fetchFromTMDB<{ parts?: TMDBMovie[] }>(`/collection/${collectionId}`)
+      : Promise.resolve({ parts: [] as TMDBMovie[] }),
+    fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/${type}/${details.id}/recommendations`, { page: 2 }),
+    keywordIds.length > 0 && genreIds.length > 0
+      ? fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/discover/${type}`, {
+          with_genres: genreIds.slice(0, 2).join(','),
+          with_keywords: keywordIds.slice(0, 4).join('|'),
+          sort_by: 'vote_count.desc',
+          'vote_count.gte': type === 'tv' ? 40 : 120,
+          page: 1,
+        })
+      : Promise.resolve({ results: [] as TMDBMovie[], page: 1, total_pages: 1, total_results: 0 }),
+  ]);
+
+  const collectionData =
+    extraCalls[0].status === 'fulfilled'
+      ? (extraCalls[0].value as { name?: string; parts?: TMDBMovie[] })
+      : { parts: [] as TMDBMovie[] };
+  const rawCollectionParts = (collectionData.parts || []).map(normalizeMediaItem);
+  // Ordena os filmes da coleção por data de lançamento (cronológico) e exige pôster
+  const collectionParts = rawCollectionParts
+    .filter((m) => Boolean(m.poster_path) && (!itemDate(m) || itemDate(m) <= TMDB_TODAY))
+    .sort((a, b) => {
+      const da = itemDate(a) || '9999-12-31';
+      const db = itemDate(b) || '9999-12-31';
+      return da.localeCompare(db);
+    });
+
+  if (collectionId && details.belongs_to_collection && collectionData.name) {
+    details.belongs_to_collection.name = collectionData.name;
+  }
+  details.collection_parts = collectionParts;
+
+  const recPage2 =
+    extraCalls[1].status === 'fulfilled' ? extraCalls[1].value.results || [] : [];
+  const kwDiscover =
+    extraCalls[2].status === 'fulfilled' ? extraCalls[2].value.results || [] : [];
+
+  const profile: SimilarSourceProfile = {
+    id: details.id,
+    type,
+    genreIds,
+    keywordIds,
+    originalLanguage: details.original_language || '',
+    releaseYear,
+    collectionId,
+    collectionParts,
+    rankedPool: [],
+  };
+
+  // Como os capítulos da mesma coleção aparecem na seção dedicada "RELATED FILMS",
+  // removemos os IDs da coleção da seção "SIMILAR FILMS" para não duplicar logo abaixo.
+  const collectionIdSet = new Set(collectionParts.map((m) => m.id));
+  const rankedAll = rankSimilarCandidates(profile, {
+    recommendations: [...(details.recommendations?.results || []), ...recPage2],
+    keywordDiscover: kwDiscover,
+    similar: details.similar?.results || [],
+  });
+  const ranked = rankedAll.filter((m) => !collectionIdSet.has(m.id));
+
+  profile.rankedPool = ranked;
+  similarProfileCache.set(cacheKey, profile);
+  return ranked;
+}
+
 export const tmdb = {
   getImageUrl(path: string | null, size: 'w92' | 'w185' | 'w342' | 'w500' | 'w780' | 'original' = 'w500'): string {
     if (!path) return 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=500&auto=format&fit=crop&q=60';
@@ -491,6 +809,8 @@ export const tmdb = {
         /* mantém vazio */
       }
     }
+    const similarRanked = await curateSimilarForDetails(movie, 'movie');
+    movie.similar = { results: similarRanked };
     return movie;
   },
 
@@ -500,12 +820,84 @@ export const tmdb = {
     });
   },
 
+  async getCollectionDetails(collectionId: number): Promise<TMDBCollectionDetails> {
+    const col = await fetchFromTMDB<TMDBCollectionDetails>(`/collection/${collectionId}`);
+    const parts = (col.parts || [])
+      .map(normalizeMediaItem)
+      .filter((m) => Boolean(m.poster_path) && (!itemDate(m) || itemDate(m) <= TMDB_TODAY))
+      .sort((a, b) => {
+        const da = itemDate(a) || '9999-12-31';
+        const db = itemDate(b) || '9999-12-31';
+        return da.localeCompare(db);
+      });
+    return {
+      ...col,
+      parts,
+    };
+  },
+
   async getSimilarMedia(
     type: 'movie' | 'tv',
     id: number,
     page = 1,
   ): Promise<TMDBResponse<TMDBMovie>> {
-    return fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/${type}/${id}/similar`, { page });
+    const cacheKey = `${type}:${id}:${tmdbLanguage}`;
+    let profile = similarProfileCache.get(cacheKey);
+
+    if (!profile) {
+      const details = type === 'tv' ? await this.getTVDetails(id) : await this.getMovieDetails(id);
+      profile = similarProfileCache.get(cacheKey);
+      if (!profile) {
+        return {
+          page: 1,
+          results: details.similar?.results || [],
+          total_pages: 1,
+          total_results: (details.similar?.results || []).length,
+        };
+      }
+    }
+
+    if (page === 1) {
+      return {
+        page: 1,
+        results: profile.rankedPool,
+        total_pages: 5,
+        total_results: Math.max(profile.rankedPool.length, 60),
+      };
+    }
+
+    // Páginas seguintes na tela "Filmes/Séries Semelhantes": busca próxima leva
+    // de recommendations + discover temático (gêneros + keywords) + similar,
+    // aplicando o mesmo filtro estrito de estilo e afinidade.
+    const recPage = page + 1;
+    const [recRes, kwRes, simRes] = await Promise.allSettled([
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/${type}/${id}/recommendations`, { page: recPage }),
+      profile.genreIds.length > 0
+        ? fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/discover/${type}`, {
+            with_genres: profile.genreIds.slice(0, 2).join(','),
+            ...(profile.keywordIds.length > 0
+              ? { with_keywords: profile.keywordIds.slice(0, 4).join('|') }
+              : {}),
+            sort_by: 'vote_count.desc',
+            'vote_count.gte': type === 'tv' ? 40 : 120,
+            page,
+          })
+        : Promise.resolve({ results: [] as TMDBMovie[], page, total_pages: 1, total_results: 0 }),
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/${type}/${id}/similar`, { page }),
+    ]);
+
+    const rankedPage = rankSimilarCandidates(profile, {
+      recommendations: recRes.status === 'fulfilled' ? recRes.value.results || [] : [],
+      keywordDiscover: kwRes.status === 'fulfilled' ? kwRes.value.results || [] : [],
+      similar: simRes.status === 'fulfilled' ? simRes.value.results || [] : [],
+    });
+
+    return {
+      page,
+      results: rankedPage,
+      total_pages: 5,
+      total_results: 100,
+    };
   },
 
   async searchTV(query: string, page = 1): Promise<TMDBResponse<TMDBMovie>> {
@@ -1167,6 +1559,8 @@ export const tmdb = {
       });
     if (show.similar) show.similar.results = normList(show.similar.results);
     if (show.recommendations) show.recommendations.results = normList(show.recommendations.results);
+    const similarRanked = await curateSimilarForDetails(show, 'tv');
+    show.similar = { results: similarRanked };
     return show;
   },
 

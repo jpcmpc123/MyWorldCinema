@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano para tornar a animação da barra verde de abas fluida em 60/120fps durante o arrasto com o dedo e ao soltar/tocar, mantendo exatamente o mesmo visual, efeito elástico e velocidade.",
-  "updatedAt":  "2026-10-21T00:13:49.125169193Z",
+  "summary":  "Plano para adicionar o visualizador de pôster ampliado (PosterLightbox) ao clicar no pôster na página do filme ou série, com layout fiel ao PC (fundo desfocado, pôster centralizado, botão X e fechar clicando fora/ESC) e celular (pôster em largura total, suporte a pinça/duplo-toque para zoom e arrastar para baixo para fechar).",
+  "updatedAt":  "2026-10-21T01:19:29.951597875Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

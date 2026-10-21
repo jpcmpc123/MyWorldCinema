@@ -522,11 +522,9 @@ export const Header: React.FC = () => {
       className={
         overBackdrop
           ? 'hidden md:block absolute inset-x-0 top-0 z-50 bg-transparent select-none'
-          : isBrowseRoute || isActorRoute
+          : !(isMainPage || isProfileArea || isSettingsRoute)
             ? 'hidden md:block sticky top-0 z-50 bg-black border-b border-lb-elevated shadow-md select-none'
-            : isSearchRoute
-              ? 'hidden md:block sticky top-0 z-50 bg-black md:border-b md:border-lb-elevated md:shadow-md select-none'
-              : 'sticky top-0 z-50 bg-black border-b border-lb-elevated shadow-md select-none'
+            : 'sticky top-0 z-50 bg-black border-b border-lb-elevated shadow-md select-none'
       }
     >
       {/* Camada de contraste da navbar sobre o backdrop — MESMA receita do
@@ -540,8 +538,8 @@ export const Header: React.FC = () => {
         {/* Mobile-only (páginas de detalhe): os botões ← e ⋮ flutuantes são
             renderizados pela própria FilmPage (o ⋮ abre o ActionBottomSheet) */}
 
-        {/* Zone 1 (Left): Brand Logo (desktop + rotas secundárias mobile) */}
-        <Link to="/" className={`${overBackdrop || isMainPage || isSearchRoute || isProfileArea || isSettingsRoute ? 'hidden md:flex' : 'flex'} items-center gap-2 shrink-0 group`}>
+        {/* Zone 1 (Left): Brand Logo — apenas Desktop */}
+        <Link to="/" className="hidden md:flex items-center gap-2 shrink-0 group">
           <svg
             viewBox="0 0 32 32"
             className="w-7 h-7 shrink-0 drop-shadow-[0_2px_6px_rgba(0,224,84,0.35)] transition-transform duration-300 group-hover:rotate-6"

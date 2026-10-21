@@ -5,6 +5,7 @@ import { Eye, Heart, Clock, Minus, Star, PenLine, ListPlus, Image as ImageIcon, 
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { tmdb } from '../services/tmdb';
+import { PosterLightbox } from './PosterLightbox';
 
 export interface ActionBottomSheetTarget {
   id: number;
@@ -62,6 +63,7 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
   const draggingRef = useRef(false);
   const lastTapRef = useRef(0);
   const [posterPath, setPosterPath] = useState<string | null>(posterCache[movie.id] ?? null);
+  const [showPosterLightbox, setShowPosterLightbox] = useState(false);
   // Contador de "pop" para os ícones Watch/Like/Watchlist
   const [bump, setBump] = useState(0);
 
@@ -174,10 +176,10 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
   };
 
   const handleViewPoster = () => {
-    if (posterPath) {
-      window.open(tmdb.getImageUrl(posterPath, 'original'), '_blank', 'noopener,noreferrer');
-    }
     onClose();
+    if (posterPath) {
+      setShowPosterLightbox(true);
+    }
   };
 
   const year = movie.release_date ? movie.release_date.slice(0, 4) : '';
@@ -375,6 +377,16 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
           </button>
         </div>
       </div>
+
+      {posterPath && (
+        <PosterLightbox
+          open={showPosterLightbox}
+          src={tmdb.getImageUrl(posterPath, 'w780')}
+          srcSet={`${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w, ${tmdb.getImageUrl(posterPath, 'original')} 1280w`}
+          alt={movie.title}
+          onClose={() => setShowPosterLightbox(false)}
+        />
+      )}
     </div>,
     document.body,
   );

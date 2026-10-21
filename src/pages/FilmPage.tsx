@@ -27,6 +27,7 @@ import { PosterCard } from '../components/PosterCard';
 import { ImagePickerModal } from '../components/ImagePickerModal';
 import { Backdrop } from '../components/Backdrop';
 import { ActionBottomSheet } from '../components/ActionBottomSheet';
+import { PosterLightbox } from '../components/PosterLightbox';
 import { openPersonProfile, personRoleFromJob, type PersonRole } from '../utils/personNav';
 
 function formatNumber(num: number): string {
@@ -123,6 +124,7 @@ export const FilmPage: React.FC = () => {
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [imagePicker, setImagePicker] = useState<'poster' | 'backdrop' | null>(null);
   const [showSharePanel, setShowSharePanel] = useState(false);
+  const [showPosterLightbox, setShowPosterLightbox] = useState(false);
 
   // Lock body scroll while the trailer modal is open + close on Escape
   useEffect(() => {
@@ -197,10 +199,15 @@ export const FilmPage: React.FC = () => {
   const movieReviews = reviews.filter((r) => r.movieId === movie.id);
   const hasUserReviewed = userLogsForMovie.some((l) => l.reviewText && l.reviewText.trim().length > 0);
 
+  // Coleção / Franquia ("Filmes Relacionados" / "Related Films")
+  const collectionId = !isTv && movie.belongs_to_collection?.id ? movie.belongs_to_collection.id : null;
+  const collectionName = movie.belongs_to_collection?.name || '';
+  const collectionParts = (movie.collection_parts || []).filter((item) => item.poster_path);
+  const relatedFilms = collectionParts.filter((item) => item.id !== movie.id);
+
   // Similar (mobile): carrossel horizontal com EXATAMENTE 20 títulos, só pôsteres.
-  // A lista já vem do /movie/{id}/similar ou /tv/{id}/similar (append no fetch
-  // único de getMovieDetails/getShowDetails) — nenhuma chamada extra aqui.
   const displaySimilar = (movie.similar?.results || []).filter((item) => item.poster_path).slice(0, 20);
+  const hasBottomSections = relatedFilms.length > 0 || displaySimilar.length > 0;
 
   const watched = isMovieWatched(movie.id) || userLogsForMovie.length > 0;
   const liked = isMovieLiked(movie.id) || userLogsForMovie.some((l) => l.liked);
@@ -360,11 +367,21 @@ export const FilmPage: React.FC = () => {
 
           {/* ========================================================
               LEFT COLUMN (w-[230px]): Poster, Stats Bar, Where to Watch
-              (ocupa as 2 linhas do grid em telas md+)
+              (ocupa todas as linhas do grid em telas md+ e acompanha a
+              rolagem com sticky até encostar no final da página)
               ======================================================== */}
-          <div className="w-full md:w-[230px] md:row-span-2 flex-shrink-0 flex flex-col items-center md:items-start">
+          <div
+            className={`w-full md:w-[230px] md:col-start-1 md:row-start-1 ${
+              hasBottomSections ? 'md:row-span-3' : 'md:row-span-2'
+            } md:sticky md:top-6 md:self-start flex-shrink-0 flex flex-col items-center md:items-start`}
+          >
             {/* Film Poster (230x345px standard Letterboxd frame) */}
-            <div className="hidden md:block letterboxd-poster-frame overflow-hidden flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowPosterLightbox(true)}
+              aria-label={t('view_poster')}
+              className="hidden md:block letterboxd-poster-frame overflow-hidden flex-shrink-0 cursor-pointer group relative"
+            >
               <img
                 fetchPriority="high"
                 decoding="async"
@@ -374,7 +391,8 @@ export const FilmPage: React.FC = () => {
                 alt={movie.title}
                 className="w-full h-full object-cover"
               />
-            </div>
+              <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded-[4px] transition-all pointer-events-none" />
+            </button>
 
             {/* Production Statistics List — 10px below poster, 12px font, #667788 */}
             <div className="hidden md:flex w-[230px] items-center justify-between mt-2.5 py-1 letterboxd-stats-list select-none">
@@ -513,7 +531,12 @@ export const FilmPage: React.FC = () => {
             </div>
 
             {/* Pôster compacto à direita — SOMENTE mobile (padrão app Letterboxd, alinhado na margem) */}
-            <div className="md:hidden absolute right-0 top-0 w-[86px]">
+            <button
+              type="button"
+              onClick={() => setShowPosterLightbox(true)}
+              aria-label={t('view_poster')}
+              className="md:hidden absolute right-0 top-0 w-[86px] cursor-pointer active:scale-[0.97] transition-transform"
+            >
               <div className="w-full aspect-[2/3] rounded-[4px] overflow-hidden ring-1 ring-white/15 shadow-xl bg-lb-surface">
                 <img
                   loading="lazy"
@@ -525,7 +548,7 @@ export const FilmPage: React.FC = () => {
                   className="w-full h-full object-cover"
                 />
               </div>
-            </div>
+            </button>
           </div>
 
           {/* ========================================================
@@ -991,66 +1014,150 @@ export const FilmPage: React.FC = () => {
               voteCount={isOdyssey ? 244000 : (movie.vote_count || 1420)}
             />
           </div>
+
+          {/* ========================================================
+              BOTTOM SECTIONS (Mobile & Desktop):
+              1. RELATED FILMS (Filmes da mesma coleção/franquia, entre Reviews e Similar)
+              2. SIMILAR FILMS (Filmes/Séries semelhantes)
+              No PC ficam em md:col-start-2 md:col-span-2 (670px à direita
+              da coluna do pôster), permitindo que o pôster desça junto até o fim.
+              ======================================================== */}
+          {hasBottomSections && (
+            <div className="w-full md:col-start-2 md:col-span-2 min-w-0 md:space-y-10 md:pt-4">
+              {/* 1. RELATED FILMS — MOBILE */}
+              {relatedFilms.length > 0 && collectionId && (
+                <section className="similar-section md:hidden">
+                  <Link
+                    to={`/collection/${collectionId}`}
+                    state={{ collectionName, initialParts: collectionParts }}
+                    className="similar-header group"
+                  >
+                    <span className="group-active:text-lb-green group-hover:text-white transition-colors">
+                      {t('film_related_films').toUpperCase()}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
+                  </Link>
+                  <div data-h-scroll="true" className="similar-carousel">
+                    {relatedFilms.map((item) => (
+                      <Link
+                        key={item.id}
+                        to={`/film/${item.id}`}
+                        state={{ previewMovie: item }}
+                        className="similar-card"
+                        aria-label={item.title}
+                      >
+                        <img
+                          src={tmdb.getImageUrl(item.poster_path, 'w342')}
+                          alt={item.title}
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* 1. RELATED FILMS — DESKTOP (PC) */}
+              {relatedFilms.length > 0 && collectionId && (
+                <section className="hidden md:block space-y-3">
+                  <Link
+                    to={`/collection/${collectionId}`}
+                    state={{ collectionName, initialParts: collectionParts }}
+                    className="flex items-center justify-between border-b border-[#445566]/60 pb-1.5 group"
+                  >
+                    <h2 className="text-xs uppercase tracking-[0.08em] font-normal text-[#99aabb] group-hover:text-white transition-colors">
+                      {t('film_related_films')}
+                    </h2>
+                    <span className="text-[11px] uppercase tracking-wider text-[#667788] group-hover:text-white transition-colors">
+                      {t('common_all')}
+                    </span>
+                  </Link>
+                  <div className="grid grid-cols-6 gap-2.5">
+                    {relatedFilms.slice(0, 6).map((m) => (
+                      <PosterCard
+                        key={m.id}
+                        movie={m}
+                        size="fluid"
+                        showDetails={false}
+                        tv={false}
+                        disableHoverActions
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* 2. SIMILAR FILMS — MOBILE */}
+              {displaySimilar.length > 0 && (
+                <section className="similar-section md:hidden">
+                  <Link
+                    to={`/browse/results?type=${isTv ? 'tv' : 'movie'}&similarTo=${movie.id}&title=${encodeURIComponent(
+                      isTv ? t('film_similar_series') : t('film_similar_films'),
+                    )}`}
+                    state={{ initialItems: displaySimilar }}
+                    className="similar-header group"
+                  >
+                    <span className="group-active:text-lb-green group-hover:text-white transition-colors">
+                      {isTv ? t('film_similar_series').toUpperCase() : t('film_similar_films').toUpperCase()}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
+                  </Link>
+                  <div data-h-scroll="true" className="similar-carousel">
+                    {displaySimilar.map((item) => (
+                      <Link
+                        key={item.id}
+                        to={`${isTv ? '/tv' : '/film'}/${item.id}`}
+                        state={{ previewMovie: item }}
+                        className="similar-card"
+                        aria-label={item.title}
+                      >
+                        <img
+                          src={tmdb.getImageUrl(item.poster_path, 'w342')}
+                          alt={item.title}
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* 2. SIMILAR FILMS — DESKTOP (PC) */}
+              {displaySimilar.length > 0 && (
+                <section className="hidden md:block space-y-3">
+                  <Link
+                    to={`/browse/results?type=${isTv ? 'tv' : 'movie'}&similarTo=${movie.id}&title=${encodeURIComponent(
+                      isTv ? t('film_similar_series') : t('film_similar_films'),
+                    )}`}
+                    state={{ initialItems: displaySimilar }}
+                    className="flex items-center justify-between border-b border-[#445566]/60 pb-1.5 group"
+                  >
+                    <h2 className="text-xs uppercase tracking-[0.08em] font-normal text-[#99aabb] group-hover:text-white transition-colors">
+                      {isTv ? t('film_similar_series') : t('film_similar_films')}
+                    </h2>
+                    <span className="text-[11px] uppercase tracking-wider text-[#667788] group-hover:text-white transition-colors">
+                      {t('common_all')}
+                    </span>
+                  </Link>
+                  <div className="grid grid-cols-6 gap-2.5">
+                    {displaySimilar.slice(0, 6).map((m) => (
+                      <PosterCard
+                        key={m.id}
+                        movie={m}
+                        size="fluid"
+                        showDetails={false}
+                        tv={isTv}
+                        disableHoverActions
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
         </div>
-
-        {/* Similar — MOBILE: carrossel horizontal de 20 pôsteres (sem títulos
-            nem estrelas embaixo, igual ao app); DESKTOP: grade de 6 (inalterada) */}
-        {displaySimilar.length > 0 && (
-          <section className="similar-section md:hidden">
-            <Link
-              to={`/browse/results?type=${isTv ? 'tv' : 'movie'}&similarTo=${movie.id}&title=${encodeURIComponent(
-                isTv ? t('film_similar_series') : t('film_similar_films'),
-              )}`}
-              state={{ initialItems: displaySimilar }}
-              className="similar-header group"
-            >
-              <span className="group-active:text-lb-green group-hover:text-white transition-colors">
-                {isTv ? t('film_similar_series').toUpperCase() : t('film_similar_films').toUpperCase()}
-              </span>
-              <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
-            </Link>
-            <div data-h-scroll="true" className="similar-carousel">
-              {displaySimilar.map((item) => (
-                <Link
-                  key={item.id}
-                  to={`${isTv ? '/tv' : '/film'}/${item.id}`}
-                  state={{ previewMovie: item }}
-                  className="similar-card"
-                  aria-label={item.title}
-                >
-                  <img
-                    src={tmdb.getImageUrl(item.poster_path, 'w342')}
-                    alt={item.title}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {movie.similar?.results && movie.similar.results.length > 0 && (
-          <section className="hidden md:block mt-16 pt-8 border-t border-lb-elevated space-y-4">
-            <Link
-              to={`/browse/results?type=${isTv ? 'tv' : 'movie'}&similarTo=${movie.id}&title=${encodeURIComponent(
-                isTv ? t('film_similar_series') : t('film_similar_films'),
-              )}`}
-              state={{ initialItems: displaySimilar }}
-              className="flex items-center justify-between group"
-            >
-              <h2 className="text-xs uppercase tracking-widest font-bold text-lb-muted group-hover:text-white transition-colors">
-                {isTv ? t('film_similar_series') : t('film_similar_films')}
-              </h2>
-              <ChevronRight className="w-4 h-4 text-lb-muted group-hover:text-lb-green transition-colors" />
-            </Link>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
-              {movie.similar.results.slice(0, 6).map((m) => (
-                <PosterCard key={m.id} movie={m} size="fluid" showDetails tv={isTv} disableHoverActions />
-              ))}
-            </div>
-          </section>
-        )}
       </div>
 
       {/* Set Poster / Backdrop Picker */}
@@ -1069,12 +1176,25 @@ export const FilmPage: React.FC = () => {
         />
       )}
 
-      {/* Gaveta de aÃ§Ãµes mobile (Watch/Like/Watchlist/Rate/Share) */}
+      {/* Gaveta de ações mobile (Watch/Like/Watchlist/Rate/Share) */}
       <ActionBottomSheet
         open={showActionSheet}
         onClose={() => setShowActionSheet(false)}
         movie={{ id: movie.id, title: movie.title, release_date: movie.release_date }}
         onPickImage={(mode) => setImagePicker(mode)}
+      />
+
+      {/* Visualização ampliada do pôster (Mobile: largura total + zoom + swipe-down | PC: lightbox com X) */}
+      <PosterLightbox
+        open={showPosterLightbox}
+        src={posterPath ? tmdb.getImageUrl(posterPath, 'w780') : posterUrl}
+        srcSet={
+          posterPath
+            ? `${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w, ${tmdb.getImageUrl(posterPath, 'original')} 1280w`
+            : posterSrcSet
+        }
+        alt={movie.title}
+        onClose={() => setShowPosterLightbox(false)}
       />
 
       {/* 3. Trailer Modal */}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, Eye } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import type { TMDBMovie } from '../../services/tmdb';
 import { PosterCard } from '../PosterCard';
 import { useLanguage } from '../../i18n/LanguageContext';
@@ -9,8 +9,8 @@ import { useLanguage } from '../../i18n/LanguageContext';
 // MobileCatalogSections — SOMENTE mobile (md:hidden).
 // Estrutura IDÊNTICA para a aba Films e a aba Series do app Android:
 //   1. Popular this week    (4 pôsteres limpos)
-//   2. Highest rated        (4 pôsteres + nota em estrelas/número abaixo)
-//   3. Most watched         (4 pôsteres + olho verde + contagem)
+//   2. Highest rated        (4 pôsteres limpos)
+//   3. Most watched         (4 pôsteres limpos)
 //   4. Most anticipated     (4 pôsteres limpos — "Just reviewed" em séries)
 // Cada cabeçalho navega para a grade completa de 4 colunas já filtrada.
 //
@@ -94,13 +94,6 @@ const PosterRail: React.FC<{ movies: TMDBMovie[]; isSeries: boolean; children?: 
   </div>
 );
 
-/** Número compacto: 1234 → "1.2K", 1234567 → "1.2M" */
-function compact(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
-  return `${n}`;
-}
-
 export const MobileCatalogSections: React.FC<MobileCatalogSectionsProps> = ({
   basePath,
   popular,
@@ -139,7 +132,7 @@ export const MobileCatalogSections: React.FC<MobileCatalogSectionsProps> = ({
         {loading ? <SkeletonRow /> : <PosterRail movies={popular} isSeries={isSeries} />}
       </SectionShell>
 
-      {/* 2. Highest rated — pôsteres + nota em estrelas abaixo */}
+      {/* 2. Highest rated — pôsteres limpos */}
       <SectionShell title={t('sec_highest_rated')} to={routes.rated} state={{ initialItems: topRated.slice(0, 18) }}>
         {loading ? (
           <SkeletonRow />
@@ -148,22 +141,12 @@ export const MobileCatalogSections: React.FC<MobileCatalogSectionsProps> = ({
         )}
       </SectionShell>
 
-      {/* 3. Most watched — pôsteres + olho verde + contagem */}
+      {/* 3. Most watched — pôsteres limpos */}
       <SectionShell title={t('sec_most_watched')} to={routes.watched} state={{ initialItems: mostWatched.slice(0, 18) }}>
         {loading ? (
           <SkeletonRow />
         ) : (
-          <PosterRail movies={mostWatched} isSeries={isSeries}>
-            {(m) => (
-              <div className="flex items-center gap-1 px-0.5 pt-1 text-[#00e054]">
-                <Eye className="w-3 h-3" />
-                <span className="text-[10px] text-[#9ab]">
-                  {/* Votos escalados ≈ visualizações (mesma proporção da página de detalhe) */}
-                  {compact(Math.max(35000, (m.vote_count || 100) * 350))}
-                </span>
-              </div>
-            )}
-          </PosterRail>
+          <PosterRail movies={mostWatched} isSeries={isSeries} />
         )}
       </SectionShell>
 
