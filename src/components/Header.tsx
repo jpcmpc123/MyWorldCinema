@@ -41,6 +41,7 @@ export const Header: React.FC = () => {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
   const searchRef = useRef<HTMLDivElement>(null);
+  const desktopSearchInputRef = useRef<HTMLInputElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   // Barra de abas mobile (FILMES / SÉRIES / CRÍTICAS / LISTAS na Home, ou
@@ -53,7 +54,6 @@ export const Header: React.FC = () => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setIsSearchOpen(false);
-        if (!searchQuery) setIsSearchExpanded(false);
       }
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setIsUserMenuOpen(false);
@@ -61,7 +61,7 @@ export const Header: React.FC = () => {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [searchQuery]);
+  }, []);
 
   useEffect(() => {
     setIsSearchOpen(false);
@@ -688,85 +688,92 @@ export const Header: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsUserMenuOpen((v) => !v)}
-                className={`flex items-center gap-1.5 py-1.5 px-2 -mx-2 rounded-t-[3px] transition-colors cursor-pointer ${
-                  isUserMenuOpen
-                    ? 'bg-[#899aa9] text-white'
-                    : 'text-[#99aabb] hover:text-white'
-                }`}
+                className="flex items-center gap-1.5 text-[#99aabb] hover:text-white transition-colors cursor-pointer"
               >
                 <img
                   src={displayAvatar}
                   alt={displayDisplayName}
                   className="w-6 h-6 rounded-full object-cover border border-white/20 shrink-0"
                 />
-                <span
-                  className={`text-[12px] font-bold tracking-[0.075em] uppercase whitespace-nowrap transition-colors ${
-                    isUserMenuOpen ? 'text-white' : 'text-[#99aabb] hover:text-white'
-                  }`}
-                >
+                <span className="text-[12px] font-bold tracking-[0.06em] uppercase whitespace-nowrap">
                   {displayUsername}
                 </span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 -ml-0.5 stroke-[2.5] transition-colors ${
-                    isUserMenuOpen ? 'text-white' : 'text-[#99aabb]'
-                  }`}
-                />
+                <ChevronDown className="w-3.5 h-3.5 -ml-0.5 stroke-[2.5]" />
               </button>
 
               {isUserMenuOpen && (
-                <div className="absolute left-0 top-full -ml-2 w-[196px] bg-[#899aa9] rounded-b-[3px] rounded-tr-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)] border-t border-[#6c7c8b] py-1.5 z-50 text-[13px] font-normal normal-case tracking-normal select-none">
-                  {[
-                    { label: t('nav_home'), to: '/' },
-                    { label: t('nav_profile'), to: `/${encodeURIComponent(displayUsername)}` },
-                    { label: t('nav_films'), to: `/${encodeURIComponent(displayUsername)}?tab=films` },
-                    { label: t('hdr_diary'), to: `/${encodeURIComponent(displayUsername)}/diary` },
-                    { label: t('reviews_label'), to: `/${encodeURIComponent(displayUsername)}?tab=reviews` },
-                    { label: t('hdr_watchlist'), to: `/${encodeURIComponent(displayUsername)}/watchlist` },
-                    { label: t('nav_lists'), to: `/${encodeURIComponent(displayUsername)}/lists` },
-                    { label: t('pp_likes'), to: `/${encodeURIComponent(displayUsername)}?tab=likes` },
-                  ].map((item) => (
-                    <Link
-                      key={item.label}
-                      to={item.to}
-                      onClick={() => setIsUserMenuOpen(false)}
-                      className="block px-4 py-[5px] text-[#1f272e] hover:bg-[#677786] hover:text-white transition-colors"
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-
-                  <div className="border-t border-[#738494] my-1.5" />
-
+                <div className="absolute -top-[7px] -left-[10px] min-w-[calc(100%+20px)] w-max bg-[#8995a0] rounded-[3px] shadow-[0_6px_20px_rgba(0,0,0,0.6)] border border-black/25 z-50 text-[12px] leading-[17px] font-normal normal-case tracking-normal select-none [text-shadow:none] [&_svg]:!drop-shadow-none">
+                  {/* Cabeçalho integrado do menu (mesma largura da coluna inteira, igual ao Letterboxd) */}
                   <button
                     type="button"
-                    onClick={() => {
-                      toggleLanguage();
-                      setIsUserMenuOpen(false);
-                    }}
-                    className="w-full text-left flex items-center justify-between px-4 py-[5px] text-[#1f272e] hover:bg-[#677786] hover:text-white transition-colors cursor-pointer"
-                  >
-                    <span>{t('nav_language_tick')}</span>
-                    <span className="text-[11px] font-bold uppercase opacity-80">
-                      {language === 'pt-BR' ? 'PT' : 'EN'}
-                    </span>
-                  </button>
-                  <Link
-                    to="/settings"
                     onClick={() => setIsUserMenuOpen(false)}
-                    className="block px-4 py-[5px] text-[#1f272e] hover:bg-[#677786] hover:text-white transition-colors"
+                    className="w-full flex items-center gap-1.5 px-[9px] py-[6px] border-b border-[#73808c] text-white cursor-pointer"
                   >
-                    {t('nav_settings')}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsUserMenuOpen(false);
-                      void signOut();
-                    }}
-                    className="w-full text-left block px-4 py-[5px] text-[#1f272e] hover:bg-[#677786] hover:text-white transition-colors cursor-pointer"
-                  >
-                    {t('nav_sign_out')}
+                    <img
+                      src={displayAvatar}
+                      alt={displayDisplayName}
+                      className="w-6 h-6 rounded-full object-cover border border-white/25 shrink-0"
+                    />
+                    <span className="text-[12px] font-bold tracking-[0.06em] uppercase whitespace-nowrap text-white">
+                      {displayUsername}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 -ml-0.5 stroke-[2.5] text-white" />
                   </button>
+
+                  <div className="py-1">
+                    {[
+                      { label: t('nav_home'), to: '/' },
+                      { label: t('nav_profile'), to: `/${encodeURIComponent(displayUsername)}` },
+                      { label: t('nav_films'), to: `/${encodeURIComponent(displayUsername)}?tab=films` },
+                      { label: t('hdr_diary'), to: `/${encodeURIComponent(displayUsername)}/diary` },
+                      { label: t('reviews_label'), to: `/${encodeURIComponent(displayUsername)}?tab=reviews` },
+                      { label: t('hdr_watchlist'), to: `/${encodeURIComponent(displayUsername)}/watchlist` },
+                      { label: t('nav_lists'), to: `/${encodeURIComponent(displayUsername)}/lists` },
+                      { label: t('pp_likes'), to: `/${encodeURIComponent(displayUsername)}?tab=likes` },
+                    ].map((item) => (
+                      <Link
+                        key={item.label}
+                        to={item.to}
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="block px-3.5 py-[4px] text-[#202830] hover:bg-[#66727e] hover:text-white transition-colors whitespace-nowrap"
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+
+                    <div className="border-t border-[#73808c] my-1" />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleLanguage();
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full text-left flex items-center justify-between gap-3 px-3.5 py-[4px] text-[#202830] hover:bg-[#66727e] hover:text-white transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <span>{t('nav_language_tick')}</span>
+                      <span className="text-[10px] font-bold uppercase opacity-75">
+                        {language === 'pt-BR' ? 'PT' : 'EN'}
+                      </span>
+                    </button>
+                    <Link
+                      to="/settings"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      className="block px-3.5 py-[4px] text-[#202830] hover:bg-[#66727e] hover:text-white transition-colors whitespace-nowrap"
+                    >
+                      {t('nav_settings')}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        void signOut();
+                      }}
+                      className="w-full text-left block px-3.5 py-[4px] text-[#202830] hover:bg-[#66727e] hover:text-white transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      {t('nav_sign_out')}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -829,13 +836,16 @@ export const Header: React.FC = () => {
             </Link>
           </nav>
 
-          {/* Search — quando deslogado exibe a pílula escura aberta (igual ao Letterboxd sem login);
-              quando logado exibe a lupa que expande ao clicar */}
-          <div ref={searchRef} className="relative hidden md:block">
+          {/* Search + Botão "+ REGISTRAR ⌄" (Desktop):
+              - Quando deslogado: exibe a pílula escura aberta (igual ao Letterboxd sem login).
+              - Quando logado: ao clicar na lupa (🔍), ela vira um "✕", oculta o botão
+                "+ REGISTRAR ⌄" com efeito de transição e abre a pílula branca no lugar dele;
+                o botão "+ REGISTRAR ⌄" só volta ao clicar no "✕". */}
+          <div ref={searchRef} className="relative hidden md:flex items-center">
             {!isAuthenticated ? (
               <form
                 onSubmit={submitSearch}
-                className="group flex items-center h-[30px] w-[150px] rounded-full bg-[#2c3440]/90 hover:bg-[#343e4c] focus-within:bg-white transition-colors px-3"
+                className="group flex items-center h-[30px] w-[150px] rounded-full bg-[#2c3440]/90 hover:bg-[#343e4c] focus-within:bg-white transition-colors px-3 [text-shadow:none] [&_svg]:!drop-shadow-none"
               >
                 <input
                   type="text"
@@ -874,64 +884,105 @@ export const Header: React.FC = () => {
                   </button>
                 )}
               </form>
-            ) : isSearchExpanded ? (
-              <form
-                onSubmit={submitSearch}
-                className="flex items-center h-7 bg-white rounded-full px-2.5 w-36 sm:w-44"
-              >
-                <input
-                  type="text"
-                  placeholder={t('search_placeholder')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitSearch(e);
-                    if (e.key === 'Escape') {
-                      setIsSearchOpen(false);
-                      setIsSearchExpanded(false);
-                      setSearchQuery('');
-                    }
-                  }}
-                  autoFocus
-                  className="no-focus-ring flex-1 min-w-0 h-full bg-transparent text-xs text-gray-900 placeholder-gray-500 border-0 outline-none p-0 normal-case tracking-normal font-normal"
-                />
-                {searchQuery && (
+            ) : (
+              <div className="flex items-center gap-3">
+                {/* Botão alternador: Lupa (🔍) quando fechado -> X (✕) quando aberto */}
+                {isSearchExpanded ? (
                   <button
                     type="button"
                     onClick={() => {
+                      setIsSearchExpanded(false);
+                      setIsSearchOpen(false);
                       setSearchQuery('');
                       setSearchResults([]);
-                      setIsSearchOpen(false);
-                      if (isSearchRoute) navigate('/');
                     }}
+                    className="text-[#99aabb] hover:text-white p-0.5 transition-all duration-200 cursor-pointer flex items-center justify-center"
+                    title={t('search_clear')}
                     aria-label={t('search_clear')}
-                    className="ml-1 shrink-0 text-gray-400 hover:text-gray-700 cursor-pointer"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-[18px] h-[18px] stroke-[2.4]" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSearchExpanded(true);
+                      window.requestAnimationFrame(() => {
+                        desktopSearchInputRef.current?.focus();
+                      });
+                    }}
+                    className="text-[#99aabb] hover:text-white p-0.5 transition-all duration-200 cursor-pointer flex items-center justify-center"
+                    title={t('search_label')}
+                    aria-label={t('search_label')}
+                  >
+                    <Search className="w-[17px] h-[17px] stroke-[2.2]" />
                   </button>
                 )}
-                <button
-                  type="submit"
-                  aria-label={t('search_placeholder')}
-                  className="ml-2 shrink-0 text-gray-400 hover:text-gray-700 cursor-pointer"
-                >
-                  <Search className="w-3.5 h-3.5" />
-                </button>
-              </form>
-            ) : (
-              <button
-                onClick={() => setIsSearchExpanded(true)}
-                className="text-[#99aabb] hover:text-white p-0.5 transition-colors cursor-pointer flex items-center justify-center"
-                title={t('search_label')}
-                aria-label={t('search_label')}
-              >
-                <Search className="w-[17px] h-[17px] stroke-[2.2]" />
-              </button>
+
+                {/* Slot animado: alterna entre a pílula branca de busca e o botão verde "+ REGISTRAR ⌄" */}
+                <div className="relative flex items-center h-[30px]">
+                  <form
+                    onSubmit={submitSearch}
+                    className={`flex items-center h-[30px] bg-white rounded-full overflow-hidden transition-all duration-200 ease-out [text-shadow:none] [&_svg]:!drop-shadow-none ${
+                      isSearchExpanded
+                        ? 'w-[150px] px-3 opacity-100 scale-100'
+                        : 'w-0 px-0 opacity-0 scale-95 pointer-events-none'
+                    }`}
+                  >
+                    <input
+                      ref={desktopSearchInputRef}
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') submitSearch(e);
+                      }}
+                      aria-label={t('search_placeholder')}
+                      tabIndex={isSearchExpanded ? 0 : -1}
+                      className="no-focus-ring flex-1 min-w-0 h-full bg-transparent text-xs text-[#2c3440] border-0 outline-none p-0 normal-case tracking-normal font-normal"
+                    />
+                    <button
+                      type="submit"
+                      aria-label={t('search_placeholder')}
+                      tabIndex={isSearchExpanded ? 0 : -1}
+                      className="ml-1.5 shrink-0 text-[#677786] hover:text-[#2c3440] cursor-pointer"
+                    >
+                      <Search className="w-3.5 h-3.5 stroke-[2.2]" />
+                    </button>
+                  </form>
+
+                  <div
+                    className={`flex items-center overflow-hidden transition-all duration-200 ease-out ${
+                      isSearchExpanded
+                        ? 'max-w-0 opacity-0 scale-95 pointer-events-none'
+                        : 'max-w-[170px] opacity-100 scale-100'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openLogModal()}
+                      className="bg-[#00b020] hover:bg-[#00c030] flex items-center gap-1 text-white font-bold uppercase text-[12px] px-2.5 h-[26px] rounded-l-[3px] cursor-pointer tracking-[0.06em] whitespace-nowrap shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>{t('nav_log')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/list/new')}
+                      title={t('create_list_title')}
+                      aria-label={t('create_list_title')}
+                      className="bg-[#009d1c] hover:bg-[#00b020] px-1.5 h-[26px] rounded-r-[3px] border-l border-black/15 text-white cursor-pointer flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] transition-colors"
+                    >
+                      <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Typeahead Dropdown */}
             {isSearchOpen && (
-              <div className="absolute right-0 top-9 w-72 sm:w-80 bg-lb-surface border border-lb-elevated rounded shadow-2xl overflow-hidden z-50 mw-pop-in">
+              <div className="absolute right-0 top-9 w-72 sm:w-80 bg-lb-surface border border-lb-elevated rounded shadow-2xl overflow-hidden z-50 mw-pop-in [text-shadow:none] [&_svg]:!drop-shadow-none">
                 <div className="px-3 py-1.5 bg-lb-bg border-b border-lb-elevated text-[10px] uppercase font-bold text-lb-muted flex justify-between">
                   <span>
                     {t('search_showing_matches')} “{searchQuery}”
@@ -970,27 +1021,6 @@ export const Header: React.FC = () => {
               </div>
             )}
           </div>
-
-          {/* "+ LOG ⌄" / "+ REGISTRAR ⌄" Split Green Button — exibido apenas quando logado, igual ao Letterboxd */}
-          {isAuthenticated && (
-            <div className="hidden md:flex items-center">
-              <button
-                onClick={() => openLogModal()}
-                className="bg-[#00b020] hover:bg-[#00c030] flex items-center gap-1 text-white font-bold uppercase text-[12px] px-2.5 h-[26px] rounded-l-[3px] cursor-pointer tracking-[0.06em] whitespace-nowrap shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>{t('nav_log')}</span>
-              </button>
-              <button
-                onClick={() => navigate('/list/new')}
-                title={t('create_list_title')}
-                aria-label={t('create_list_title')}
-                className="bg-[#009d1c] hover:bg-[#00b020] px-1.5 h-[26px] rounded-r-[3px] border-l border-black/15 text-white cursor-pointer flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] transition-colors"
-              >
-                <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
