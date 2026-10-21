@@ -188,14 +188,27 @@ export const Header: React.FC = () => {
   const suppressBarClickUntilRef = useRef<number>(0);
   const isSwipingBarRef = useRef<boolean>(false);
 
-  const getBarButtons = (): HTMLElement[] =>
-    Array.from(tabsContainerRef.current?.querySelectorAll<HTMLElement>('.main-tab-btn') ?? []);
-
+  const barButtonsRef = useRef<HTMLElement[]>([]);
   const buttonGeometriesRef = useRef<{ left: number; width: number }[]>([]);
   const currentHighlightIdxRef = useRef<number>(-1);
 
+  const getBarButtons = (forceQuery = false): HTMLElement[] => {
+    if (
+      !forceQuery &&
+      barButtonsRef.current.length > 0 &&
+      barButtonsRef.current[0]?.isConnected
+    ) {
+      return barButtonsRef.current;
+    }
+    const btns = Array.from(
+      tabsContainerRef.current?.querySelectorAll<HTMLElement>('.main-tab-btn') ?? [],
+    );
+    barButtonsRef.current = btns;
+    return btns;
+  };
+
   const measureBarButtons = (buttons?: HTMLElement[]): { left: number; width: number }[] => {
-    const btns = buttons ?? getBarButtons();
+    const btns = buttons ?? getBarButtons(true);
     const geos = btns.map((b) => ({ left: b.offsetLeft, width: b.offsetWidth }));
     buttonGeometriesRef.current = geos;
     return geos;
@@ -204,14 +217,14 @@ export const Header: React.FC = () => {
   const syncActiveHighlight = (buttons: ArrayLike<HTMLElement>, highlightedIdx: number) => {
     if (currentHighlightIdxRef.current === highlightedIdx) return;
     currentHighlightIdxRef.current = highlightedIdx;
-    Array.from(buttons).forEach((btn, idx) => {
-      btn.classList.toggle('active', idx === highlightedIdx);
-    });
+    for (let i = 0; i < buttons.length; i++) {
+      buttons[i].classList.toggle('active', i === highlightedIdx);
+    }
   };
 
   // Único efeito síncrono de posicionamento e animação:
   // - Quando muda o modo da barra (Home <-> Perfil), idioma ou sai de estado oculto: posiciona sem animar (immediate = true).
-  // - Quando muda a aba ativa (por clique ou confirmação de swipe): anima com o efeito elástico e agenda verificação de invariante.
+  // - Quando muda a aba ativa (por clique ou confirmação de swipe): anima com o efeito elástico na GPU.
   useLayoutEffect(() => {
     const modeChanged = prevBarModeRef.current !== barModeKey;
     const labelsChanged = prevLabelsKeyRef.current !== tabsLabelKey;
@@ -220,11 +233,13 @@ export const Header: React.FC = () => {
     isSwipingBarRef.current = false;
 
     const indicator = indicatorRef.current;
-    const buttons = getBarButtons();
+    const buttons = getBarButtons(true);
     const btn = buttons[currentBarActiveIndex] ?? null;
     if (!indicator || !btn) return;
 
+    currentHighlightIdxRef.current = -1;
     syncActiveHighlight(buttons, currentBarActiveIndex);
+    measureBarButtons(buttons);
 
     const navWidth = tabsContainerRef.current?.clientWidth ?? 0;
     const wasHidden = lastBarWidthRef.current <= 0;
@@ -243,23 +258,13 @@ export const Header: React.FC = () => {
       if (!activeBtn || !indicatorRef.current) return;
       syncActiveHighlight(currentButtons, idx);
       if (prevPosRef.current.width <= 0) {
+        measureBarButtons(currentButtons);
         syncTabIndicatorToButton(activeBtn, indicatorRef.current, prevPosRef.current);
       }
     });
 
-    const verifyTimer = window.setTimeout(() => {
-      if (isSwipingBarRef.current) return;
-      const currentButtons = getBarButtons();
-      const idx = currentBarActiveIndexRef.current;
-      const activeBtn = currentButtons[idx] ?? null;
-      if (!activeBtn || !indicatorRef.current) return;
-      syncActiveHighlight(currentButtons, idx);
-      syncTabIndicatorToButton(activeBtn, indicatorRef.current, prevPosRef.current);
-    }, 320);
-
     return () => {
       window.cancelAnimationFrame(rafId);
-      window.clearTimeout(verifyTimer);
     };
   }, [currentBarActiveKey, currentBarActiveIndex, tabsLabelKey, barModeKey]);
 
@@ -283,7 +288,8 @@ export const Header: React.FC = () => {
         lastBarWidthRef.current <= 0 || Math.abs(w - lastBarWidthRef.current) > 1;
       lastBarWidthRef.current = w;
 
-      const buttons = getBarButtons();
+      const buttons = getBarButtons(true);
+      measureBarButtons(buttons);
       const idx = currentBarActiveIndexRef.current;
       const btn = buttons[idx] ?? null;
       if (!btn) return;
@@ -323,20 +329,20 @@ export const Header: React.FC = () => {
   }, [barModeKey]);
 
   // Durante o arrasto horizontal (swipe entre abas da Home ou do Perfil), a barra
-  // verde acompanha o movimento do dedo em tempo real, acende a nova aba ao atingir
-  // o limiar de confirmação (apagando a anterior) e encaixa suavemente ao soltar.
+  // verde acompanha o movimento do dedo em tempo real usando geometria em cache
+  // (zero querySelectorAll e zero reflow por frame), acende a nova aba ao atingir
+  // o limiar de confirmação e encaixa suavemente ao soltar.
   useEffect(() => {
     const onSwipe = (event: Event) => {
       const detail = (event as CustomEvent<TabSwipeDetail>).detail;
       if (!detail || barModeKey === 'none') return;
 
-      const navEl = tabsContainerRef.current;
       const indicator = indicatorRef.current;
-      if (!navEl || !indicator) return;
+      if (!indicator) return;
 
       suppressBarClickUntilRef.current = performance.now() + 500;
 
-      const buttons = getBarButtons();
+      const buttons = getBarButtons(false);
       if (!buttons.length) return;
 
       const geometries =
@@ -432,6 +438,8 @@ export const Header: React.FC = () => {
   };
 
   const onBarPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    // Em telas de toque, o listener nativo onTouchMove já emite o movimento sincronizado
+    if (e.pointerType === 'touch') return;
     if (barPointerIdRef.current !== e.pointerId) return;
     if (e.pointerType === 'mouse' && e.buttons === 0) {
       onBarPointerFinish(false);
@@ -472,7 +480,7 @@ export const Header: React.FC = () => {
       const touch = e.touches[0];
       const dx = Math.abs(touch.clientX - barStartXRef.current);
       const dy = Math.abs(touch.clientY - barStartYRef.current);
-      if (dx >= 8 && dx > dy * 0.85) {
+      if (barDraggedRef.current || (dx >= 8 && dx > dy * 0.85)) {
         if (e.cancelable) e.preventDefault();
         barDraggedRef.current = true;
         suppressBarClickUntilRef.current = performance.now() + 450;

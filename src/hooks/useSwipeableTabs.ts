@@ -136,12 +136,32 @@ export function useSwipeableTabs({
     setPeekIndex(next);
   };
 
-  const getTabButtons = (): HTMLElement[] => {
+  const tabButtonsRef = useRef<HTMLElement[]>([]);
+  const tabGeometriesRef = useRef<{ left: number; width: number }[]>([]);
+  const currentHighlightIdxRef = useRef<number>(-1);
+
+  const getTabButtons = (forceQuery = false): HTMLElement[] => {
+    if (
+      !forceQuery &&
+      tabButtonsRef.current.length > 0 &&
+      tabButtonsRef.current[0]?.isConnected
+    ) {
+      return tabButtonsRef.current;
+    }
     const container = tabsContainerRef.current;
     if (!container) return [];
     const marked = Array.from(container.querySelectorAll<HTMLElement>('[data-swipe-tab]'));
-    if (marked.length > 0) return marked;
-    return Array.from(container.querySelectorAll<HTMLElement>('button'));
+    const btns =
+      marked.length > 0 ? marked : Array.from(container.querySelectorAll<HTMLElement>('button'));
+    tabButtonsRef.current = btns;
+    return btns;
+  };
+
+  const measureTabGeometries = (buttons?: HTMLElement[]): { left: number; width: number }[] => {
+    const btns = buttons ?? getTabButtons(true);
+    const geos = btns.map((b) => ({ left: b.offsetLeft, width: b.offsetWidth }));
+    tabGeometriesRef.current = geos;
+    return geos;
   };
 
   const centerTabButton = (btn: HTMLElement | null, smooth = true) => {
@@ -156,6 +176,8 @@ export function useSwipeableTabs({
   };
 
   const syncTabButtonsHighlight = (tabBtns: HTMLElement[], highlightedIndex: number) => {
+    if (currentHighlightIdxRef.current === highlightedIndex) return;
+    currentHighlightIdxRef.current = highlightedIndex;
     tabBtns.forEach((btn, idx) => {
       const isHighlighted = idx === highlightedIndex;
       btn.classList.toggle('active', isHighlighted);
@@ -168,7 +190,7 @@ export function useSwipeableTabs({
 
   // Único efeito síncrono para posicionar ou animar a barra verde elástica:
   // - Em mudanças de idioma/quantidade de abas ou enquanto ready=false: posiciona sem animar.
-  // - Em trocas de aba (clique ou confirmação de swipe): anima com o efeito elástico de 2 fases.
+  // - Em trocas de aba (clique ou confirmação de swipe): anima com o efeito elástico na GPU.
   useLayoutEffect(() => {
     const layoutChanged = prevLayoutKeyRef.current !== layoutKey;
     prevLayoutKeyRef.current = layoutKey;
@@ -183,15 +205,17 @@ export function useSwipeableTabs({
         void track.offsetWidth;
       }
       track.style.transition = '';
-      track.style.transform = `translateX(-${safeIndex * 100}%)`;
+      track.style.transform = `translate3d(-${safeIndex * 100}%, 0, 0)`;
     }
 
-    const buttons = getTabButtons();
+    const buttons = getTabButtons(true);
     const indicator = indicatorRef.current;
     const btn = buttons[safeIndex] ?? null;
     if (!indicator || !btn) return;
 
+    currentHighlightIdxRef.current = -1;
     syncTabButtonsHighlight(buttons, safeIndex);
+    measureTabGeometries(buttons);
 
     const container = tabsContainerRef.current;
     const wasHidden = lastContainerSizeRef.current.clientWidth <= 0;
@@ -213,22 +237,14 @@ export function useSwipeableTabs({
       const curInd = indicatorRef.current;
       if (!curInd || !curBtn) return;
       syncTabButtonsHighlight(curButtons, safeIndexRef.current);
-      syncTabIndicatorToButton(curBtn, curInd, prevPosRef.current);
+      if (prevPosRef.current.width <= 0) {
+        measureTabGeometries(curButtons);
+        syncTabIndicatorToButton(curBtn, curInd, prevPosRef.current);
+      }
     });
-
-    const verifyTimerId = window.setTimeout(() => {
-      if (dragRef.current?.axis === 'h') return;
-      const curButtons = getTabButtons();
-      const curBtn = curButtons[safeIndexRef.current] ?? null;
-      const curInd = indicatorRef.current;
-      if (!curInd || !curBtn) return;
-      syncTabButtonsHighlight(curButtons, safeIndexRef.current);
-      syncTabIndicatorToButton(curBtn, curInd, prevPosRef.current);
-    }, 400);
 
     return () => {
       window.cancelAnimationFrame(rafId);
-      window.clearTimeout(verifyTimerId);
     };
   }, [safeIndex, ready, layoutKey]);
 
@@ -264,7 +280,8 @@ export function useSwipeableTabs({
         return;
       }
       lastContainerSizeRef.current = { clientWidth: cw, scrollWidth: sw };
-      const buttons = getTabButtons();
+      const buttons = getTabButtons(true);
+      measureTabGeometries(buttons);
       const idx = safeIndexRef.current;
       const btn = buttons[idx] ?? null;
       if (btn) {
@@ -314,10 +331,12 @@ export function useSwipeableTabs({
         void track.offsetWidth;
       }
       track.style.transition = '';
-      track.style.transform = `translateX(-${index * 100}%)`;
+      track.style.transform = `translate3d(-${index * 100}%, 0, 0)`;
     } else {
-      track.style.transition = 'none';
-      track.style.transform = `translateX(calc(-${index * 100}% + ${px}px))`;
+      if (track.style.transition !== 'none') {
+        track.style.transition = 'none';
+      }
+      track.style.transform = `translate3d(calc(-${index * 100}% + ${px}px), 0, 0)`;
     }
   };
 
@@ -325,6 +344,12 @@ export function useSwipeableTabs({
     const neighbor = baseIndex + dir;
     if (neighbor < 0 || neighbor >= count) {
       updatePeek(null);
+      return;
+    }
+    const alreadyAdjacent =
+      Math.abs(neighbor - safeIndex) <= 1 || Math.abs(neighbor - pager.active) <= 1;
+    if (alreadyAdjacent && pager.visited.has(neighbor)) {
+      onPeekIndex?.(neighbor);
       return;
     }
     if (peekRef.current === neighbor) return;
@@ -371,6 +396,11 @@ export function useSwipeableTabs({
     const now = performance.now();
     if (now - lastCommitTimeRef.current < 260) {
       return;
+    }
+
+    const buttons = getTabButtons(false);
+    if (tabGeometriesRef.current.length !== buttons.length) {
+      measureTabGeometries(buttons);
     }
 
     dragRef.current = {
@@ -478,17 +508,21 @@ export function useSwipeableTabs({
     d.dx = dx;
     setTrackOffset(dx, d.startIndex);
 
-    // Barra verde acompanha o movimento do dedo em tempo real e acende a nova aba
-    // ao atingir o limiar de troca (apagando a anterior)
+    // Barra verde acompanha o movimento do dedo em tempo real usando geometria
+    // em cache (zero reflow de layout por frame) e acende a nova aba ao atingir o limiar.
     const indicator = indicatorRef.current;
-    const tabButtons = getTabButtons();
-    const fromBtn = tabButtons[d.startIndex] ?? null;
-    if (indicator && fromBtn) {
+    const tabButtons = getTabButtons(false);
+    const geometries =
+      tabGeometriesRef.current.length === tabButtons.length
+        ? tabGeometriesRef.current
+        : measureTabGeometries(tabButtons);
+    const fromGeo = geometries[d.startIndex];
+    if (indicator && fromGeo) {
       const neighborIdx = Math.min(
         count - 1,
         Math.max(0, d.startIndex + (dx < 0 ? 1 : -1)),
       );
-      const toBtn = tabButtons[neighborIdx] ?? fromBtn;
+      const toGeo = geometries[neighborIdx] ?? fromGeo;
       const progress =
         neighborIdx === d.startIndex || d.width <= 0
           ? 0
@@ -500,8 +534,8 @@ export function useSwipeableTabs({
       syncTabButtonsHighlight(tabButtons, highlightIdx);
       followTabIndicator(
         indicator,
-        { left: fromBtn.offsetLeft, width: fromBtn.offsetWidth },
-        { left: toBtn.offsetLeft, width: toBtn.offsetWidth },
+        fromGeo,
+        toGeo,
         progress,
         prevPosRef.current,
       );
@@ -515,11 +549,15 @@ export function useSwipeableTabs({
 
   const settleIndicatorAt = (index: number) => {
     const indicator = indicatorRef.current;
-    const buttons = getTabButtons();
+    const buttons = getTabButtons(false);
     syncTabButtonsHighlight(buttons, index);
-    const btn = buttons[index] ?? null;
-    if (!indicator || !btn) return;
-    settleTabIndicator(indicator, btn.offsetLeft, btn.offsetWidth, prevPosRef.current);
+    const geometries =
+      tabGeometriesRef.current.length === buttons.length
+        ? tabGeometriesRef.current
+        : measureTabGeometries(buttons);
+    const geo = geometries[index];
+    if (!indicator || !geo) return;
+    settleTabIndicator(indicator, geo.left, geo.width, prevPosRef.current);
   };
 
   const finishDrag = (cancelled: boolean) => {
@@ -629,9 +667,7 @@ export function useSwipeableTabs({
         }
       } else if (d.axis === 'h') {
         if (e.cancelable) e.preventDefault();
-        if (Math.abs(touch.clientX - d.lastX) > 0.5) {
-          handlersRef.current.applyMoveCoords(touch.clientX, touch.clientY, 'touch', 1, null);
-        }
+        handlersRef.current.applyMoveCoords(touch.clientX, touch.clientY, 'touch', 1, null);
       }
     };
     const onTouchEnd = () => {

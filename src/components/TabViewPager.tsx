@@ -209,12 +209,17 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
     setPeek(next);
   };
 
-  /** Monta e EXPANDE a aba vizinha na direção do arrasto, para ela entrar
-      visível pela lateral junto com o dedo (dispara apenas 1x por direção). */
+  /** Monta e EXPANDE a aba vizinha na direção do arrasto apenas se ainda não
+      estiver expandida/montada, evitando re-render do React no meio do gesto. */
   const peekNeighbor = (baseIndex: number, dir: 1 | -1) => {
     const neighbor = baseIndex + dir;
     if (neighbor < 0 || neighbor >= PANELS.length) {
       updatePeek(null);
+      return;
+    }
+    const alreadyAdjacent =
+      Math.abs(neighbor - pager.active) <= 1 || Math.abs(neighbor - activeIndex) <= 1;
+    if (alreadyAdjacent && pager.mounted[neighbor]) {
       return;
     }
     if (peekRef.current === neighbor) return;
@@ -314,7 +319,9 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
       track.style.transition = '';
       track.style.transform = `translate3d(-${index * 100}%, 0, 0)`;
     } else {
-      track.style.transition = 'none';
+      if (track.style.transition !== 'none') {
+        track.style.transition = 'none';
+      }
       track.style.transform = `translate3d(calc(-${index * 100}% + ${px}px), 0, 0)`;
     }
   };
@@ -475,47 +482,15 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
     });
   };
 
-  const rafIdRef = useRef<number | null>(null);
-  const pendingMoveRef = useRef<{ clientX: number; clientY: number; pointerType: string; buttons: number } | null>(null);
-
-  const scheduleDragMove = (
-    clientX: number,
-    clientY: number,
-    pointerType: string,
-    buttons: number,
-  ) => {
-    pendingMoveRef.current = { clientX, clientY, pointerType, buttons };
-    if (rafIdRef.current === null) {
-      rafIdRef.current = window.requestAnimationFrame(() => {
-        rafIdRef.current = null;
-        const pending = pendingMoveRef.current;
-        if (pending && dragRef.current && !dragRef.current.finished) {
-          applyDragMove(pending.clientX, pending.clientY, pending.pointerType, pending.buttons);
-        }
-      });
-    }
-  };
-
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     // No mobile, o onTouchMove cuida dos eventos de toque sem duplicar coordenadas
     if (e.pointerType === 'touch') return;
-    scheduleDragMove(e.clientX, e.clientY, e.pointerType, e.buttons);
+    applyDragMove(e.clientX, e.clientY, e.pointerType, e.buttons);
   };
 
   const finishDrag = (cancelled: boolean) => {
-    if (rafIdRef.current !== null) {
-      window.cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
     const d = dragRef.current;
     if (!d || d.finished) return;
-
-    // Se havia um frame pendente agendado no rAF, processa antes de comitar
-    if (pendingMoveRef.current) {
-      const p = pendingMoveRef.current;
-      pendingMoveRef.current = null;
-      applyDragMove(p.clientX, p.clientY, p.pointerType, p.buttons);
-    }
 
     d.finished = true;
     dragRef.current = null;
@@ -625,8 +600,8 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
     }
   };
 
-  const handlersRef = useRef({ beginDrag, applyDragMove, scheduleDragMove, finishDrag });
-  handlersRef.current = { beginDrag, applyDragMove, scheduleDragMove, finishDrag };
+  const handlersRef = useRef({ beginDrag, applyDragMove, finishDrag });
+  handlersRef.current = { beginDrag, applyDragMove, finishDrag };
 
   useEffect(() => {
     const vp = viewportRef.current;
@@ -648,9 +623,7 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
         }
       } else if (d.axis === 'h') {
         if (e.cancelable) e.preventDefault();
-        if (Math.abs(touch.clientX - d.lastX) > 0.5) {
-          handlersRef.current.scheduleDragMove(touch.clientX, touch.clientY, 'touch', 1);
-        }
+        handlersRef.current.applyDragMove(touch.clientX, touch.clientY, 'touch', 1);
       }
     };
     const onTouchEnd = () => {
@@ -667,10 +640,6 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
     vp.addEventListener('touchend', onTouchEnd);
     vp.addEventListener('touchcancel', onTouchCancel);
     return () => {
-      if (rafIdRef.current !== null) {
-        window.cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
-      }
       vp.removeEventListener('touchmove', onTouchMove);
       vp.removeEventListener('touchend', onTouchEnd);
       vp.removeEventListener('touchcancel', onTouchCancel);

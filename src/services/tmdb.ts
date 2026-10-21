@@ -500,6 +500,14 @@ export const tmdb = {
     });
   },
 
+  async getSimilarMedia(
+    type: 'movie' | 'tv',
+    id: number,
+    page = 1,
+  ): Promise<TMDBResponse<TMDBMovie>> {
+    return fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/${type}/${id}/similar`, { page });
+  },
+
   async searchTV(query: string, page = 1): Promise<TMDBResponse<TMDBMovie>> {
     return fetchFromTMDB<TMDBResponse<TMDBMovie>>('/search/tv', {
       query,

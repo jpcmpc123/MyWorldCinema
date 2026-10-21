@@ -1,19 +1,22 @@
 /**
- * Indicador elástico (Elastic / Rubber-band Indicator) das barras de abas.
+ * Indicador elástico (Elastic / Rubber-band Indicator) das barras de abas em 60/120fps.
  *
  * Reproduz o comportamento do app do Letterboxd: ao trocar de aba a barra verde
- * NÃO translada/redimensiona como um bloco rígido. Ela se ESTICA na direção da
- * nova aba (fase 1, ~85ms) e só então a cauda alcança o destino, ENCOLHENDO
- * suavemente (fase 2, ~195ms):
+ * se ESTICA na direção da nova aba e em seguida a cauda alcança o destino,
+ * ENCOLHENDO suavemente:
  *
  *   → indo para a direita: a ponta DIREITA avança até o fim da nova aba
  *     (a barra fica esticada), depois a ponta ESQUERDA corre atrás e a largura
  *     volta ao tamanho da coluna.
- *   ← indo para a esquerda: a ponta ESQUERDA pula na frente até o início da
- *     nova aba (barra esticada), depois a ponta DIREITA encolhe até o destino.
+ *   ← indo para a esquerda: a ponta ESQUERDA avança até o início da nova aba
+ *     (barra esticada), depois a ponta DIREITA encolhe até o destino.
  *
- * A transição é escrita no `style` do elemento em cada fase (o CSS do
- * `.tab-indicator` NÃO define transition, senão o bloco rígido voltaria).
+ * Para garantir 60/120fps reais sem engasgos na thread principal:
+ * - O movimento de 2 fases roda como uma ÚNICA animação contínua no compositor
+ *   da GPU via Web Animations API (`Element.animate`), sem `setTimeout` no meio
+ *   da transição e sem queda de velocidade entre esticar e recolher.
+ * - Durante o arrasto com o dedo (`followTabIndicator`), aplica apenas
+ *   `translate3d(...) scaleX(...)` direto na camada da GPU, sem reflow síncrono.
  */
 
 export interface IndicatorPos {
@@ -29,55 +32,49 @@ interface SettledRecord {
   timestamp: number;
 }
 
-/** Timer da Fase 2 em andamento, por elemento — evita duas caudas concorrentes em cliques rápidos */
-const phaseTimers = new WeakMap<HTMLElement, number>();
-/** Timer de verificação pós-transição para garantir encaixe exato no destino final */
-const verifyTimers = new WeakMap<HTMLElement, number>();
+/** Animação WAAPI ativa no compositor da GPU por elemento */
+const activeAnimations = new WeakMap<HTMLElement, Animation>();
 /** Registro temporal do último settleTabIndicator (fim de swipe) para não reiniciar estiramento redundante */
 const recentSettles = new WeakMap<HTMLElement, SettledRecord>();
 
-/** Estica até a nova aba (fase 1) — chegada rápida, sem "overshoot" */
-const EASE_STRETCH = 'cubic-bezier(0, 0, 0.2, 1)';
-/** Cauda alcançando o destino (fase 2) — começa suave e desacelera no fim */
-const EASE_ELASTIC = 'cubic-bezier(0.4, 0, 0.2, 1)';
+/** Duração total do movimento elástico (85ms stretch + 195ms tail shrink = 280ms) */
+const ELASTIC_TOTAL_MS = 280;
+/** Fração do tempo em que o estiramento máximo é atingido (~90ms de 280ms) */
+const STRETCH_OFFSET = 0.32;
+/** Duração do encaixe direto quando o dedo já levou a ponta até a aba de destino */
+const DIRECT_SETTLE_MS = 210;
 
-/** Duração da fase de estiramento antes da cauda entrar (ms) */
-const STRETCH_MS = 85;
-/** Delay da fase 2 — igual ao STRETCH_MS: a cauda entra quando o estiramento terminou */
-const CATCH_UP_DELAY_MS = 85;
-/** Duração da fase 2 (recolhimento da cauda) em ms e string CSS */
-const TAIL_SHRINK_MS = 195;
-const TAIL_SHRINK_S = '0.195s';
+/** Curva da fase de estiramento — saída rápida e contínua sem parar no pico */
+const EASE_STRETCH_KEYFRAME = 'cubic-bezier(0.12, 0.82, 0.32, 1)';
+/** Curva da fase de recolhimento da cauda — desaceleração suave até o encaixe final */
+const EASE_TAIL_KEYFRAME = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
 /** Limite máximo de estiramento (fração da largura da aba) para cliques rápidos/saltos longos */
 const MAX_STRETCH_FACTOR = 1.85;
 
 const INDICATOR_BASE_WIDTH = 100;
 
-function clearIndicatorTimers(indicator: HTMLElement): void {
-  const phaseId = phaseTimers.get(indicator);
-  if (phaseId !== undefined) {
-    clearTimeout(phaseId);
-    phaseTimers.delete(indicator);
-  }
-  const verifyId = verifyTimers.get(indicator);
-  if (verifyId !== undefined) {
-    clearTimeout(verifyId);
-    verifyTimers.delete(indicator);
-  }
+function makeTransformString(left: number, width: number): string {
+  const scale = Math.max(0.005, width / INDICATOR_BASE_WIDTH);
+  return `translate3d(${left}px, 0, 0) scaleX(${scale})`;
 }
 
 function writeIndicatorTransform(indicator: HTMLElement, left: number, width: number): void {
-  const scale = Math.max(0.005, width / INDICATOR_BASE_WIDTH);
   if (indicator.style.width !== `${INDICATOR_BASE_WIDTH}px`) {
     indicator.style.width = `${INDICATOR_BASE_WIDTH}px`;
   }
-  indicator.style.transform = `translate3d(${left}px, 0, 0) scaleX(${scale})`;
+  indicator.style.transform = makeTransformString(left, width);
 }
 
-function flushIndicatorStyle(indicator: HTMLElement): void {
-  void indicator.offsetWidth;
-  if (typeof window !== 'undefined') {
-    void window.getComputedStyle(indicator).transform;
+function cancelActiveAnimation(indicator: HTMLElement): void {
+  const anim = activeAnimations.get(indicator);
+  if (anim) {
+    activeAnimations.delete(indicator);
+    try {
+      anim.cancel();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -88,7 +85,14 @@ function flushIndicatorStyle(indicator: HTMLElement): void {
  * nunca de uma coordenada futura ou passada que causaria teletransporte.
  */
 export function readVisualIndicatorPos(indicator: HTMLElement, fallback: IndicatorPos): IndicatorPos {
-  if (typeof window === 'undefined' || indicator.style.transform === '') {
+  if (typeof window === 'undefined') {
+    return fallback;
+  }
+  // Se não há animação em andamento e já temos prevPos válido, evita getComputedStyle desnecessário
+  if (!activeAnimations.has(indicator) && fallback.width > 0) {
+    return { left: fallback.left, width: fallback.width };
+  }
+  if (indicator.style.transform === '') {
     return fallback;
   }
   try {
@@ -106,28 +110,45 @@ export function readVisualIndicatorPos(indicator: HTMLElement, fallback: Indicat
   return fallback;
 }
 
-function scheduleFinalCommit(
+/**
+ * Executa uma animação contínua no compositor da GPU via Web Animations API,
+ * mantendo o estilo inline final já cravado no destino para nunca piscar ao concluir.
+ */
+function runCompositorAnimation(
   indicator: HTMLElement,
+  keyframes: Keyframe[],
+  durationMs: number,
   targetLeft: number,
   targetWidth: number,
   prevPos: IndicatorPos,
-  delayMs: number,
 ): void {
-  const prevVerify = verifyTimers.get(indicator);
-  if (prevVerify !== undefined) {
-    clearTimeout(prevVerify);
+  cancelActiveAnimation(indicator);
+  if (indicator.style.transition !== 'none') {
+    indicator.style.transition = 'none';
   }
-  verifyTimers.set(
-    indicator,
-    window.setTimeout(() => {
-      verifyTimers.delete(indicator);
-      if (phaseTimers.has(indicator)) return;
-      indicator.style.transition = 'none';
-      writeIndicatorTransform(indicator, targetLeft, targetWidth);
-      prevPos.left = targetLeft;
-      prevPos.width = targetWidth;
-    }, delayMs),
-  );
+  writeIndicatorTransform(indicator, targetLeft, targetWidth);
+  prevPos.left = targetLeft;
+  prevPos.width = targetWidth;
+
+  if (typeof indicator.animate === 'function') {
+    try {
+      const anim = indicator.animate(keyframes, {
+        duration: durationMs,
+        easing: 'linear',
+      });
+      activeAnimations.set(indicator, anim);
+      const cleanup = () => {
+        if (activeAnimations.get(indicator) === anim) {
+          activeAnimations.delete(indicator);
+        }
+      };
+      anim.onfinish = cleanup;
+      anim.oncancel = cleanup;
+      return;
+    } catch {
+      /* fallback CSS abaixo se WAAPI falhar */
+    }
+  }
 }
 
 /**
@@ -141,11 +162,12 @@ export function placeTabIndicator(
   prevPos?: IndicatorPos,
 ): void {
   if (width <= 0) return;
-  clearIndicatorTimers(indicator);
+  cancelActiveAnimation(indicator);
   recentSettles.delete(indicator);
-  indicator.style.transition = 'none';
+  if (indicator.style.transition !== 'none') {
+    indicator.style.transition = 'none';
+  }
   writeIndicatorTransform(indicator, left, width);
-  flushIndicatorStyle(indicator);
   if (prevPos) {
     prevPos.left = left;
     prevPos.width = width;
@@ -162,17 +184,14 @@ export function syncTabIndicatorToButton(
   prevPos: IndicatorPos,
 ): void {
   if (!targetBtn || !indicator) return;
-  if (phaseTimers.has(indicator) || verifyTimers.has(indicator)) return;
+  if (activeAnimations.has(indicator)) return;
   const targetLeft = targetBtn.offsetLeft;
   const targetWidth = targetBtn.offsetWidth;
   if (targetWidth <= 0) return;
 
-  const visual = readVisualIndicatorPos(indicator, prevPos);
   if (
     indicator.style.transform === '' ||
     prevPos.width <= 0 ||
-    Math.abs(visual.left - targetLeft) > 0.5 ||
-    Math.abs(visual.width - targetWidth) > 0.5 ||
     Math.abs(prevPos.left - targetLeft) > 0.5 ||
     Math.abs(prevPos.width - targetWidth) > 0.5
   ) {
@@ -185,6 +204,8 @@ export function syncTabIndicatorToButton(
  * com o mesmo efeito elástico do clique: a ponta da frente avança mais rápido
  * (`leadT`) e a cauda demora a largar a aba de origem (`trailT`), então no
  * meio do gesto a barra está esticada cobrindo parte das duas abas.
+ *
+ * Opera com zero reflow e zero alocação desnecessária para manter 60/120fps.
  *
  * @param progress fração `0..1` do arrasto rumo à aba vizinha (`|dx| / width`).
  */
@@ -203,7 +224,7 @@ export function followTabIndicator(
 
   // Curvas opostas: a frente dispara na saída (1 - (1-t)^2.25) e a cauda
   // segura na origem (t^2.05) — no meio do swipe (t=0.5) a frente já percorreu
-  // ~79% do caminho e a cauda só ~24%, esticando a pílula entre as duas abas.
+  // ~79% do caminho e a cauda só ~24%, esticando a barra entre as duas abas.
   const leadT = 1 - Math.pow(1 - t, 2.25);
   const trailT = Math.pow(t, 2.05);
 
@@ -225,7 +246,9 @@ export function followTabIndicator(
 
   const width = Math.max(1, right - left);
 
-  clearIndicatorTimers(indicator);
+  if (activeAnimations.has(indicator)) {
+    cancelActiveAnimation(indicator);
+  }
   recentSettles.delete(indicator);
   if (indicator.style.transition !== 'none') {
     indicator.style.transition = 'none';
@@ -239,7 +262,7 @@ export function followTabIndicator(
  * Ao soltar o dedo (commit ou cancelamento do swipe), encaixa suavemente a
  * barra verde até a aba de destino a partir do ponto exato onde o dedo a deixou.
  * Se foi um swipe rápido (fling) e a ponta da frente ainda não alcançou a aba
- * de destino, aplica o estiramento elástico em 2 fases antes de recolher a cauda.
+ * de destino, aplica o estiramento elástico contínuo na GPU antes de recolher a cauda.
  */
 export function settleTabIndicator(
   indicator: HTMLElement,
@@ -248,7 +271,6 @@ export function settleTabIndicator(
   prevPos: IndicatorPos,
 ): void {
   if (targetWidth <= 0) return;
-  clearIndicatorTimers(indicator);
 
   const visualPos = readVisualIndicatorPos(indicator, prevPos);
   const oldLeft = visualPos.width > 0 ? visualPos.left : targetLeft;
@@ -256,16 +278,16 @@ export function settleTabIndicator(
   const oldRight = oldLeft + oldWidth;
   const targetRight = targetLeft + targetWidth;
 
-  // Fixa a posição visual atual antes de iniciar a transição de encaixe
-  indicator.style.transition = 'none';
-  writeIndicatorTransform(indicator, oldLeft, oldWidth);
-  flushIndicatorStyle(indicator);
-
   recentSettles.set(indicator, {
     left: targetLeft,
     width: targetWidth,
     timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now(),
   });
+
+  if (Math.abs(oldLeft - targetLeft) < 0.5 && Math.abs(oldWidth - targetWidth) < 0.5) {
+    placeTabIndicator(indicator, targetLeft, targetWidth, prevPos);
+    return;
+  }
 
   const oldCenter = oldLeft + oldWidth / 2;
   const targetCenter = targetLeft + targetWidth / 2;
@@ -273,61 +295,90 @@ export function settleTabIndicator(
   const maxStretch = Math.max(targetWidth, oldWidth) * MAX_STRETCH_FACTOR;
 
   // Se o usuário deu um "fling" rápido e a ponta líder ainda está longe da
-  // borda final da aba de destino (> 25% da largura), estica primeiro (Fase 1)
-  // e recolhe a cauda em seguida (Fase 2), preservando o efeito elástico.
+  // borda final da aba de destino (> 25% da largura), estica e recolhe a cauda
+  // em uma única animação contínua no compositor da GPU.
   if (movingRight && targetRight - oldRight > targetWidth * 0.25) {
     const rawStretchLeft = oldLeft + Math.max(0, targetLeft - oldLeft) * 0.25;
     const minStretchLeft = targetRight - maxStretch;
     const stretchLeft = Math.min(targetLeft, Math.max(rawStretchLeft, minStretchLeft));
     const stretchedWidth = Math.max(targetWidth, targetRight - stretchLeft);
-    indicator.style.transition = `transform ${STRETCH_MS}ms ${EASE_STRETCH}`;
-    writeIndicatorTransform(indicator, stretchLeft, stretchedWidth);
-    prevPos.left = stretchLeft;
-    prevPos.width = stretchedWidth;
 
-    phaseTimers.set(
+    runCompositorAnimation(
       indicator,
-      window.setTimeout(() => {
-        phaseTimers.delete(indicator);
-        indicator.style.transition = `transform ${TAIL_SHRINK_S} ${EASE_ELASTIC}`;
-        writeIndicatorTransform(indicator, targetLeft, targetWidth);
-        prevPos.left = targetLeft;
-        prevPos.width = targetWidth;
-      }, CATCH_UP_DELAY_MS),
+      [
+        {
+          offset: 0,
+          transform: makeTransformString(oldLeft, oldWidth),
+          easing: EASE_STRETCH_KEYFRAME,
+        },
+        {
+          offset: STRETCH_OFFSET,
+          transform: makeTransformString(stretchLeft, stretchedWidth),
+          easing: EASE_TAIL_KEYFRAME,
+        },
+        {
+          offset: 1,
+          transform: makeTransformString(targetLeft, targetWidth),
+        },
+      ],
+      ELASTIC_TOTAL_MS,
+      targetLeft,
+      targetWidth,
+      prevPos,
     );
-    scheduleFinalCommit(indicator, targetLeft, targetWidth, prevPos, CATCH_UP_DELAY_MS + TAIL_SHRINK_MS + 30);
   } else if (!movingRight && oldLeft - targetLeft > targetWidth * 0.25) {
     const rawStretchRight = oldRight - Math.max(0, oldRight - targetRight) * 0.25;
     const maxStretchRight = targetLeft + maxStretch;
     const stretchRight = Math.max(targetRight, Math.min(rawStretchRight, maxStretchRight));
     const stretchedWidth = Math.max(targetWidth, stretchRight - targetLeft);
-    indicator.style.transition = `transform ${STRETCH_MS}ms ${EASE_STRETCH}`;
-    writeIndicatorTransform(indicator, targetLeft, stretchedWidth);
-    prevPos.left = targetLeft;
-    prevPos.width = stretchedWidth;
 
-    phaseTimers.set(
+    runCompositorAnimation(
       indicator,
-      window.setTimeout(() => {
-        phaseTimers.delete(indicator);
-        indicator.style.transition = `transform ${TAIL_SHRINK_S} ${EASE_ELASTIC}`;
-        writeIndicatorTransform(indicator, targetLeft, targetWidth);
-        prevPos.left = targetLeft;
-        prevPos.width = targetWidth;
-      }, CATCH_UP_DELAY_MS),
+      [
+        {
+          offset: 0,
+          transform: makeTransformString(oldLeft, oldWidth),
+          easing: EASE_STRETCH_KEYFRAME,
+        },
+        {
+          offset: STRETCH_OFFSET,
+          transform: makeTransformString(targetLeft, stretchedWidth),
+          easing: EASE_TAIL_KEYFRAME,
+        },
+        {
+          offset: 1,
+          transform: makeTransformString(targetLeft, targetWidth),
+        },
+      ],
+      ELASTIC_TOTAL_MS,
+      targetLeft,
+      targetWidth,
+      prevPos,
     );
-    scheduleFinalCommit(indicator, targetLeft, targetWidth, prevPos, CATCH_UP_DELAY_MS + TAIL_SHRINK_MS + 30);
   } else {
-    indicator.style.transition = `transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)`;
-    writeIndicatorTransform(indicator, targetLeft, targetWidth);
-    prevPos.left = targetLeft;
-    prevPos.width = targetWidth;
-    scheduleFinalCommit(indicator, targetLeft, targetWidth, prevPos, 240);
+    runCompositorAnimation(
+      indicator,
+      [
+        {
+          offset: 0,
+          transform: makeTransformString(oldLeft, oldWidth),
+          easing: EASE_TAIL_KEYFRAME,
+        },
+        {
+          offset: 1,
+          transform: makeTransformString(targetLeft, targetWidth),
+        },
+      ],
+      DIRECT_SETTLE_MS,
+      targetLeft,
+      targetWidth,
+      prevPos,
+    );
   }
 }
 
 /**
- * Move a barra até `targetBtn` com o efeito elástico de 2 fases (usado ao tocar/clicar
+ * Move a barra até `targetBtn` com o efeito elástico contínuo na GPU (usado ao tocar/clicar
  * na aba).
  *
  * @param immediate quando true, apenas posiciona (sem estirar) — usado quando
@@ -351,14 +402,13 @@ export function animateElasticIndicator(
     return;
   }
 
-  // Se `settleTabIndicator` acabou de ser chamado há poucos ms no encerramento
-  // de um swipe para exatamente este mesmo botão, não reinicia o estiramento
-  // para não cortar o encaixe suave em andamento.
+  // Se `settleTabIndicator` acabou de ser chamado no encerramento de um swipe
+  // para exatamente este mesmo botão, preserva a animação de encaixe já em curso na GPU.
   const settled = recentSettles.get(indicator);
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
   if (
     settled &&
-    now - settled.timestamp < 140 &&
+    now - settled.timestamp < 260 &&
     Math.abs(settled.left - newLeft) < 0.5 &&
     Math.abs(settled.width - newWidth) < 0.5
   ) {
@@ -375,7 +425,7 @@ export function animateElasticIndicator(
   const newRight = newLeft + newWidth;
 
   if (
-    !phaseTimers.has(indicator) &&
+    !activeAnimations.has(indicator) &&
     Math.abs(oldLeft - newLeft) < 0.5 &&
     Math.abs(oldWidth - newWidth) < 0.5
   ) {
@@ -383,90 +433,112 @@ export function animateElasticIndicator(
     return;
   }
 
-  // Uma nova animação cancela a cauda pendente da anterior.
-  clearIndicatorTimers(indicator);
-
-  // Fixa a posição visual atual no DOM com transition: none e força flush síncrono
-  // antes de iniciar a Fase 1, evitando qualquer salto ou teletransporte.
-  indicator.style.transition = 'none';
-  writeIndicatorTransform(indicator, oldLeft, oldWidth);
-  flushIndicatorStyle(indicator);
-
   // Usa o centro visual (e não apenas oldLeft) para determinar a direção real,
-  // evitando inversão quando o usuário reverte a aba no meio da Fase 1.
+  // evitando inversão quando o usuário reverte a aba no meio do movimento.
   const oldCenter = oldLeft + oldWidth / 2;
   const newCenter = newLeft + newWidth / 2;
   const movingRight = newCenter >= oldCenter;
   const maxStretch = Math.max(newWidth, oldWidth) * MAX_STRETCH_FACTOR;
 
   if (movingRight) {
-    // Se a ponta direita já alcançou ou passou de newRight (ex.: reversão rápida
-    // no meio de um estiramento), recolhe a cauda direto sem esperar a Fase 1.
     if (newRight - oldRight <= 2) {
-      indicator.style.transition = `transform ${TAIL_SHRINK_S} ${EASE_ELASTIC}`;
-      writeIndicatorTransform(indicator, newLeft, newWidth);
-      prevPos.left = newLeft;
-      prevPos.width = newWidth;
-      scheduleFinalCommit(indicator, newLeft, newWidth, prevPos, TAIL_SHRINK_MS + 30);
+      runCompositorAnimation(
+        indicator,
+        [
+          {
+            offset: 0,
+            transform: makeTransformString(oldLeft, oldWidth),
+            easing: EASE_TAIL_KEYFRAME,
+          },
+          {
+            offset: 1,
+            transform: makeTransformString(newLeft, newWidth),
+          },
+        ],
+        DIRECT_SETTLE_MS,
+        newLeft,
+        newWidth,
+        prevPos,
+      );
     } else {
-      // FASE 1 (estica para a direita): a ponta direita avança até newRight e
-      // a cauda já adianta 25% (limitando o comprimento máximo a MAX_STRETCH_FACTOR
-      // para que cliques rápidos em sequência nunca prendam a cauda na 1ª aba).
       const rawStretchLeft = oldLeft + Math.max(0, newLeft - oldLeft) * 0.25;
       const minStretchLeft = newRight - maxStretch;
       const stretchLeft = Math.min(newLeft, Math.max(rawStretchLeft, minStretchLeft));
       const stretchedWidth = Math.max(newWidth, newRight - stretchLeft);
-      indicator.style.transition = `transform ${STRETCH_MS}ms ${EASE_STRETCH}`;
-      writeIndicatorTransform(indicator, stretchLeft, stretchedWidth);
-      prevPos.left = stretchLeft;
-      prevPos.width = stretchedWidth;
 
-      // FASE 2 (encolhe a cauda): a ponta esquerda encaixa no tamanho final da coluna.
-      phaseTimers.set(
+      runCompositorAnimation(
         indicator,
-        window.setTimeout(() => {
-          phaseTimers.delete(indicator);
-          indicator.style.transition = `transform ${TAIL_SHRINK_S} ${EASE_ELASTIC}`;
-          writeIndicatorTransform(indicator, newLeft, newWidth);
-          prevPos.left = newLeft;
-          prevPos.width = newWidth;
-        }, CATCH_UP_DELAY_MS),
+        [
+          {
+            offset: 0,
+            transform: makeTransformString(oldLeft, oldWidth),
+            easing: EASE_STRETCH_KEYFRAME,
+          },
+          {
+            offset: STRETCH_OFFSET,
+            transform: makeTransformString(stretchLeft, stretchedWidth),
+            easing: EASE_TAIL_KEYFRAME,
+          },
+          {
+            offset: 1,
+            transform: makeTransformString(newLeft, newWidth),
+          },
+        ],
+        ELASTIC_TOTAL_MS,
+        newLeft,
+        newWidth,
+        prevPos,
       );
-      scheduleFinalCommit(indicator, newLeft, newWidth, prevPos, CATCH_UP_DELAY_MS + TAIL_SHRINK_MS + 30);
     }
   } else {
-    // Se a ponta esquerda já alcançou ou passou de newLeft (ex.: reversão rápida
-    // de volta para a aba da esquerda durante a Fase 1), recolhe a cauda direita direto.
     if (oldLeft - newLeft <= 2) {
-      indicator.style.transition = `transform ${TAIL_SHRINK_S} ${EASE_ELASTIC}`;
-      writeIndicatorTransform(indicator, newLeft, newWidth);
-      prevPos.left = newLeft;
-      prevPos.width = newWidth;
-      scheduleFinalCommit(indicator, newLeft, newWidth, prevPos, TAIL_SHRINK_MS + 30);
+      runCompositorAnimation(
+        indicator,
+        [
+          {
+            offset: 0,
+            transform: makeTransformString(oldLeft, oldWidth),
+            easing: EASE_TAIL_KEYFRAME,
+          },
+          {
+            offset: 1,
+            transform: makeTransformString(newLeft, newWidth),
+          },
+        ],
+        DIRECT_SETTLE_MS,
+        newLeft,
+        newWidth,
+        prevPos,
+      );
     } else {
-      // FASE 1 (estica para a esquerda): a ponta esquerda avança até newLeft e
-      // a cauda direita já adianta 25% (limitada a MAX_STRETCH_FACTOR).
       const rawStretchRight = oldRight - Math.max(0, oldRight - newRight) * 0.25;
       const maxStretchRight = newLeft + maxStretch;
       const stretchRight = Math.max(newRight, Math.min(rawStretchRight, maxStretchRight));
       const stretchedWidth = Math.max(newWidth, stretchRight - newLeft);
-      indicator.style.transition = `transform ${STRETCH_MS}ms ${EASE_STRETCH}`;
-      writeIndicatorTransform(indicator, newLeft, stretchedWidth);
-      prevPos.left = newLeft;
-      prevPos.width = stretchedWidth;
 
-      // FASE 2 (encolhe a cauda direita): só a largura encaixa no tamanho final.
-      phaseTimers.set(
+      runCompositorAnimation(
         indicator,
-        window.setTimeout(() => {
-          phaseTimers.delete(indicator);
-          indicator.style.transition = `transform ${TAIL_SHRINK_S} ${EASE_ELASTIC}`;
-          writeIndicatorTransform(indicator, newLeft, newWidth);
-          prevPos.left = newLeft;
-          prevPos.width = newWidth;
-        }, CATCH_UP_DELAY_MS),
+        [
+          {
+            offset: 0,
+            transform: makeTransformString(oldLeft, oldWidth),
+            easing: EASE_STRETCH_KEYFRAME,
+          },
+          {
+            offset: STRETCH_OFFSET,
+            transform: makeTransformString(newLeft, stretchedWidth),
+            easing: EASE_TAIL_KEYFRAME,
+          },
+          {
+            offset: 1,
+            transform: makeTransformString(newLeft, newWidth),
+          },
+        ],
+        ELASTIC_TOTAL_MS,
+        newLeft,
+        newWidth,
+        prevPos,
       );
-      scheduleFinalCommit(indicator, newLeft, newWidth, prevPos, CATCH_UP_DELAY_MS + TAIL_SHRINK_MS + 30);
     }
   }
 }

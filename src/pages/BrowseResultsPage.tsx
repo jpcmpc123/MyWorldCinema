@@ -64,8 +64,10 @@ export const BrowseResultsPage: React.FC = () => {
     | 'most_watched'
     | 'most_anticipated'
     | null;
+  // ID do filme/série de origem quando aberto a partir de "Filmes semelhantes" / "Séries semelhantes"
+  const similarTo = searchParams.get('similarTo') ? Number(searchParams.get('similarTo')) : undefined;
 
-  // Itens passados via router state pela Home: mesma ordem do carrossel
+  // Itens passados via router state pela Home ou página de filme: mesma ordem do carrossel
   const location = useLocation();
   const locationState = location.state as { initialItems?: TMDBMovie[] } | null;
   const initialItemsRef = useRef<TMDBMovie[] | null>(locationState?.initialItems ?? null);
@@ -74,7 +76,16 @@ export const BrowseResultsPage: React.FC = () => {
 
   const [viewMode, setViewMode] = useState<'grid' | 'cards'>('grid');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [items, setItems] = useState<GridItem[]>([]);
+  const [items, setItems] = useState<GridItem[]>(() => {
+    if (locationState?.initialItems?.length) {
+      const isTvMedia = (searchParams.get('type') || 'movie') === 'tv';
+      return locationState.initialItems.map((m) => ({
+        movie: normTitle(m),
+        tv: isTvMedia,
+      }));
+    }
+    return [];
+  });
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -99,6 +110,48 @@ export const BrowseResultsPage: React.FC = () => {
           releaseDateLte: released === 'released' ? today : undefined,
         };
         let next: GridItem[] = [];
+
+        // ---- Filmes / Séries semelhantes (/movie/{id}/similar ou /tv/{id}/similar)
+        if (similarTo && !Number.isNaN(similarTo)) {
+          const mediaType: 'movie' | 'tv' = type === 'tv' ? 'tv' : 'movie';
+          const res = await tmdb.getSimilarMedia(mediaType, similarTo, pageNum);
+          let rawList = res.results.map(normTitle);
+
+          if (
+            pageNum === 1 &&
+            initialItemsRef.current?.length &&
+            searchParams.toString() === initialParamsKeyRef.current
+          ) {
+            const seeded = initialItemsRef.current.map(normTitle);
+            const seededIds = new Set(seeded.map((s) => s.id));
+            rawList = [...seeded, ...rawList.filter((i) => !seededIds.has(i.id))];
+          }
+
+          if (genre) {
+            rawList = rawList.filter((m) => m.genre_ids?.includes(genre));
+          }
+          if (year) {
+            rawList = rawList.filter((m) => m.release_date?.startsWith(String(year)));
+          } else if (decade) {
+            const decPrefix = String(decade).slice(0, 3);
+            rawList = rawList.filter((m) => m.release_date?.startsWith(decPrefix));
+          }
+          if (released === 'upcoming') {
+            rawList = rawList.filter((m) => m.release_date && m.release_date >= tomorrow);
+          } else if (released === 'released') {
+            rawList = rawList.filter((m) => !m.release_date || m.release_date <= today);
+          }
+
+          next = rawList.map((m) => ({ movie: m, tv: mediaType === 'tv' }));
+
+          setItems((prev) => {
+            const merged = pageNum === 1 ? next : [...prev, ...next];
+            const seen = new Set<number>();
+            return merged.filter((i) => (seen.has(i.movie.id) ? false : (seen.add(i.movie.id), true)));
+          });
+          setHasMore(next.length > 0 && pageNum < Math.min(res.total_pages || 1, 25));
+          return;
+        }
 
         // ---- Vitrines (preset) vindas das seções da Home: fonte única
         // getSectionMedia garante ordem idêntica à Home; type=movie|tv NUNCA
@@ -173,7 +226,7 @@ export const BrowseResultsPage: React.FC = () => {
         setLoading(false);
       }
     },
-    [genre, year, decade, service, language, country, sort, type, released, preset, searchParams],
+    [genre, year, decade, service, language, country, sort, type, released, preset, similarTo, searchParams],
   );
 
   // Reload from scratch when the discovery params change
@@ -221,8 +274,10 @@ export const BrowseResultsPage: React.FC = () => {
 
   const applyFilters = (draft: FiltersDraft) => {
     const next: Record<string, string> = { ...draft };
-    // Keep the human-readable page title if it isn't part of the draft
+    // Keep the human-readable page title and origin params if not part of the draft
     if (searchParams.get('title') && !next.title) next.title = searchParams.get('title')!;
+    if (searchParams.get('similarTo') && !next.similarTo) next.similarTo = searchParams.get('similarTo')!;
+    if (searchParams.get('preset') && !next.preset) next.preset = searchParams.get('preset')!;
     setSearchParams(next);
     setFiltersOpen(false);
   };

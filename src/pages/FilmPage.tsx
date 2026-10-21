@@ -997,15 +997,24 @@ export const FilmPage: React.FC = () => {
             nem estrelas embaixo, igual ao app); DESKTOP: grade de 6 (inalterada) */}
         {displaySimilar.length > 0 && (
           <section className="similar-section md:hidden">
-            <div className="similar-header">
-              <span>{isTv ? t('film_similar_series').toUpperCase() : t('film_similar_films').toUpperCase()}</span>
-              <span aria-hidden="true">›</span>
-            </div>
+            <Link
+              to={`/browse/results?type=${isTv ? 'tv' : 'movie'}&similarTo=${movie.id}&title=${encodeURIComponent(
+                isTv ? t('film_similar_series') : t('film_similar_films'),
+              )}`}
+              state={{ initialItems: displaySimilar }}
+              className="similar-header group"
+            >
+              <span className="group-active:text-lb-green group-hover:text-white transition-colors">
+                {isTv ? t('film_similar_series').toUpperCase() : t('film_similar_films').toUpperCase()}
+              </span>
+              <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
+            </Link>
             <div data-h-scroll="true" className="similar-carousel">
               {displaySimilar.map((item) => (
                 <Link
                   key={item.id}
                   to={`${isTv ? '/tv' : '/film'}/${item.id}`}
+                  state={{ previewMovie: item }}
                   className="similar-card"
                   aria-label={item.title}
                 >
@@ -1023,9 +1032,18 @@ export const FilmPage: React.FC = () => {
 
         {movie.similar?.results && movie.similar.results.length > 0 && (
           <section className="hidden md:block mt-16 pt-8 border-t border-lb-elevated space-y-4">
-            <h2 className="text-xs uppercase tracking-widest font-bold text-lb-muted">
-              {isTv ? t('film_similar_series') : t('film_similar_films')}
-            </h2>
+            <Link
+              to={`/browse/results?type=${isTv ? 'tv' : 'movie'}&similarTo=${movie.id}&title=${encodeURIComponent(
+                isTv ? t('film_similar_series') : t('film_similar_films'),
+              )}`}
+              state={{ initialItems: displaySimilar }}
+              className="flex items-center justify-between group"
+            >
+              <h2 className="text-xs uppercase tracking-widest font-bold text-lb-muted group-hover:text-white transition-colors">
+                {isTv ? t('film_similar_series') : t('film_similar_films')}
+              </h2>
+              <ChevronRight className="w-4 h-4 text-lb-muted group-hover:text-lb-green transition-colors" />
+            </Link>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
               {movie.similar.results.slice(0, 6).map((m) => (
                 <PosterCard key={m.id} movie={m} size="fluid" showDetails tv={isTv} disableHoverActions />
