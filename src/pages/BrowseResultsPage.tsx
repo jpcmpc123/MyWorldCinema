@@ -656,10 +656,10 @@ export const BrowseResultsPage: React.FC = () => {
   const sourceOverride = similarTo ? movieOverrides[similarTo] : undefined;
   const sourcePosterUrl =
     sourceOverride?.poster ||
-    (sourceDetails?.poster_path ? tmdb.getImageUrl(sourceDetails.poster_path, 'w500') : '');
+    (sourceDetails?.poster_path ? tmdb.getImageUrl(sourceDetails.poster_path, 'w780') : '');
   const sourceBackdropUrl =
     sourceOverride?.backdrop ||
-    (sourceDetails?.backdrop_path ? tmdb.getBackdropUrl(sourceDetails.backdrop_path, 'w1280') : null);
+    (sourceDetails?.backdrop_path ? tmdb.getBackdropUrl(sourceDetails.backdrop_path, 'original') : null);
 
   const voteCount = sourceDetails?.vote_count || 1200;
   const watchedStat = Math.max(35000, voteCount * 350);
@@ -1081,9 +1081,12 @@ export const BrowseResultsPage: React.FC = () => {
                     aria-hidden="true"
                     className="pointer-events-none select-none absolute top-0 left-1/2 -translate-x-1/2 w-[420px] h-[236px] overflow-hidden z-0"
                   >
-                    <div
-                      className="w-full h-full bg-no-repeat bg-cover bg-top"
-                      style={{ backgroundImage: `url("${sourceBackdropUrl}")` }}
+                    <img
+                      src={sourceBackdropUrl}
+                      alt=""
+                      fetchPriority="high"
+                      decoding="async"
+                      className="w-full h-full object-cover object-top block"
                     />
                     <div
                       className="absolute inset-0"

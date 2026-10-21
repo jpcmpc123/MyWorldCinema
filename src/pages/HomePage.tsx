@@ -66,7 +66,7 @@ export const HomePage: React.FC = () => {
         <div className="hidden md:block relative min-h-[520px] overflow-hidden bg-lb-bg border-b border-lb-elevated">
           {featuredFilm && (
             <img
-              src={tmdb.getBackdropUrl(featuredFilm.backdrop_path, 'w1280')}
+              src={tmdb.getBackdropUrl(featuredFilm.backdrop_path, 'original')}
               alt={featuredFilm.title}
               className="absolute inset-0 w-full h-full object-cover object-top opacity-35 filter brightness-75 backdrop-mask"
               fetchPriority="high"

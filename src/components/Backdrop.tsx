@@ -58,12 +58,20 @@ export const Backdrop: React.FC<BackdropProps> = ({ src, alt = '' }) => {
         data-backdrop={src}
       >
         <div
-          className="backdropimage js-backdrop-image"
+          className="backdropimage js-backdrop-image md:!bg-none"
           style={{
             backgroundImage: `url("${src}")`,
           }}
           title={alt}
-        />
+        >
+          <img
+            src={src}
+            alt={alt}
+            fetchPriority="high"
+            decoding="async"
+            className="hidden md:block w-full h-full object-cover object-top select-none pointer-events-none"
+          />
+        </div>
         <div className="backdropmask js-backdrop-fade" />
       </div>
     </div>

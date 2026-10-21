@@ -159,7 +159,7 @@ export const SeriesDetailPage: React.FC = () => {
   const similar = show.recommendations?.results?.slice(0, 6) ?? [];
 
   const backdropUrl = show.backdrop_path
-    ? tmdb.getBackdropUrl(show.backdrop_path, 'w1280')
+    ? tmdb.getBackdropUrl(show.backdrop_path, 'original')
     : null;
   const posterUrl = show.poster_path ? tmdb.getImageUrl(show.poster_path, 'w780') : '';
   const posterSrcSet = show.poster_path

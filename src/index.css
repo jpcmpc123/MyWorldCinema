@@ -709,7 +709,7 @@ button, a, [role="button"] {
   }
 }
 
-/* Wrapper centralizado fixo em 1200px x 675px */
+/* Wrapper centralizado fixo em 1200px x 675px (usa margin-left em vez de transform para evitar sub-pixel blur no PC) */
 .backdrop-wrapper {
   z-index: 0;
   width: 1200px;
@@ -717,7 +717,7 @@ button, a, [role="button"] {
   position: absolute;
   top: 0;
   left: 50%;
-  transform: translate(-50%);
+  margin-left: -600px;
   pointer-events: none;
 }
 
@@ -726,6 +726,7 @@ button, a, [role="button"] {
     width: 100%;
     height: 100%;
     left: 0;
+    margin-left: 0;
     transform: none;
   }
 }

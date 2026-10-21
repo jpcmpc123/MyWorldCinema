@@ -302,7 +302,7 @@ export const FilmPage: React.FC = () => {
 
   const backdropUrl =
     override?.backdrop ||
-    (movie.backdrop_path ? tmdb.getBackdropUrl(movie.backdrop_path, 'w1280') : null);
+    (movie.backdrop_path ? tmdb.getBackdropUrl(movie.backdrop_path, 'original') : null);
 
   const posterPath = override?.poster || movie.poster_path;
   const posterUrl =
