@@ -1,0 +1,964 @@
+@import "tailwindcss";
+
+@theme {
+  --color-lb-bg: #14181c;
+  --color-lb-surface: #1c2228;
+  --color-lb-elevated: #2c3440;
+  --color-lb-border: #303844;
+  --color-lb-border-light: #445566;
+  --color-lb-green: #00e054;
+  --color-lb-green-hover: #00c54a;
+  --color-lb-blue: #40bcf4;
+  --color-lb-orange: #ff8000;
+  --color-lb-red: #ff3344;
+  --color-lb-text: #99aabb;
+  --color-lb-muted: #7c8ea0;
+  --color-lb-white: #ffffff;
+  --font-serif: "Tiempos Headline", "TiemposHeadlineWeb", "Playfair Display", "Source Serif 4", Georgia, serif;
+  --font-serif-text: "Tiempos Text", "TiemposTextWeb", "Source Serif 4", Georgia, serif;
+  /* Fontes do app (estilo Letterboxd): Montserrat para títulos/abas, Inter para texto */
+  --font-brand: "Montserrat", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* ---------------------------------------------------------------------------
+   LETTERBOXD OFFICIAL TYPOGRAPHY & POSTER GEOMETRY
+   Extraído de main-RDZLOlGH.css, desktop-BiM_xISF.css e production-CNiRlR8g.css
+   --------------------------------------------------------------------------- */
+.letterboxd-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  line-height: 1.2;
+  color: #ffffff;
+  text-shadow: 0 0 0.333333em rgba(0, 0, 0, 1);
+}
+
+.letterboxd-releasedate {
+  font-size: 1.0625rem; /* 17px */
+  line-height: calc(4 / 3);
+  font-weight: 300;
+  color: #99aabb;
+}
+
+.letterboxd-credits {
+  font-size: 1.0625rem; /* 17px */
+  line-height: calc(4 / 3);
+  letter-spacing: 0.02em;
+  font-weight: 300;
+  color: #99aabb;
+}
+
+.letterboxd-credits-name {
+  font-size: 1.0625rem; /* 17px */
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.letterboxd-tagline {
+  font-size: 0.8125rem; /* 13px */
+  text-transform: uppercase;
+  letter-spacing: 0.075em;
+  font-weight: 400;
+  line-height: 1.53846;
+  color: #778899;
+}
+
+.letterboxd-synopsis {
+  font-family: var(--font-serif-text);
+  font-size: 0.9375rem; /* 15px */
+  line-height: 1.66667; /* 25px */
+  font-weight: 400;
+  color: #99aabb;
+}
+
+/* Sinopse e tagline menores no mobile (páginas de filme/série) */
+@media (max-width: 767px) {
+  .letterboxd-synopsis.synopsis-mobile-sm {
+    font-size: 0.8125rem; /* 13px (antes 15px) */
+    line-height: 1.55;
+  }
+  .letterboxd-tagline.tagline-mobile-sm {
+    font-size: 0.6875rem; /* 11px (antes 13px) */
+    letter-spacing: 0.06em;
+  }
+}
+
+.letterboxd-stats-list {
+  font-size: 0.75rem; /* 12px */
+  color: #667788;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.letterboxd-poster-frame {
+  width: 230px;
+  height: 345px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 5px 25px rgba(0, 0, 0, 0.4);
+  background-color: #1c2228;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* ---------------------------------------------------------------------
+     Paleta oficial do app Letterboxd (usada por todo o app)
+     --------------------------------------------------------------------- */
+  --lb-bg-main: #14181c;
+  --lb-bg-header: #000000;
+  --lb-bottom-bar: #3d4a57;
+  --lb-bottom-pill-active: #28323c;
+  --lb-blue-active: #40bcf4;
+  --lb-green-accent: #00e054;
+  --lb-icon-inactive: #b8c5d1;
+}
+
+/* Fundo principal: azul-ardósia escuro do Letterboxd em toda a árvore base */
+html,
+body,
+#root {
+  background-color: var(--lb-bg-main) !important;
+}
+
+/* Reserva o espaço da barra de rolagem mesmo em páginas curtas, para que
+   Filmes/Séries (com scroll) e Críticas/Listas (sem scroll) tenham a mesma largura útil */
+html {
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  /* Fundo unificado em #14181C — idêntico à cor usada nos gradientes do
+     Backdrop, eliminando a linha vertical visível nas bordas do container */
+  background-color: #14181C;
+  color: var(--color-lb-text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Textura de grão de filme 35mm sobre o fundo inteiro (sutil, sem interferir no conteúdo) */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* Isolado em camada própria da GPU com contain:strict para custo zero de recomposição no scroll */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  contain: strict;
+}
+
+
+
+/* ===== Experiência mobile (PWA / app-like) ===== */
+/* Remove o highlight azul de toque do Android/iOS */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+/* Evita seleção acidental de texto ao tocar/segurar botões e links */
+button, a, [role="button"] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Hide scrollbars while keeping content scrollable (e.g. horizontal rails) */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Custom MyWorld scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-lb-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-lb-elevated);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-lb-border-light);
+}
+
+/* Visible focus ring for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--color-lb-green);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Opt out of the global green focus ring (e.g. header search pill) */
+.no-focus-ring:focus-visible {
+  outline: none;
+}
+
+/* Backdrop ambient gradient */
+.backdrop-mask {
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.9) 40%, rgba(0, 0, 0, 0.3) 70%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.9) 40%, rgba(0, 0, 0, 0.3) 70%, rgba(0, 0, 0, 0) 100%);
+}
+
+/* Skeuomorphic tactile buttons */
+.btn-log-green {
+  background: linear-gradient(to bottom, #00e054 0%, #00b843 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 3px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+.btn-log-green:hover {
+  background: linear-gradient(to bottom, #00f05a 0%, #00c54a 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 12px rgba(0, 224, 84, 0.5);
+}
+
+.btn-edit-profile {
+  background: linear-gradient(to bottom, #445566 0%, #303844 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.btn-edit-profile:hover {
+  background: linear-gradient(to bottom, #556677 0%, #3a4452 100%);
+}
+
+/* ============================================================
+   ANIMAÇÕES DE FLUIDEZ (60fps) — somente transform/opacity,
+   cubic-bezier(0.22, 1, 0.36, 1). Canal: classes utilitárias mw-*.
+   ============================================================ */
+:root {
+  --mw-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --mw-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Entrada de rota/página: surge de baixo 4px + fade (180ms)
+   ATENÇÃO ao `animation-fill-mode`: NÃO usar `both`/`forwards` aqui. Um
+   `transform` que permanece aplicado depois da animação cria um CONTAINING
+   BLOCK e passa a ancorar todo `position: fixed` descendente na página inteira
+   em vez da tela — era isso que jogava a gaveta de ações do filme para o fim da
+   página (y ≈ 1980) em vez do rodapé da tela. */
+@keyframes mwFadeInUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.mw-page-in {
+  animation: mwFadeInUp 180ms var(--mw-ease);
+}
+
+/* Slide da direita para a esquerda no celular ao abrir pôster de filme ou série */
+@keyframes mwSlideInRight {
+  from {
+    opacity: 0.85;
+    transform: translate3d(100%, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+@media (max-width: 767px) {
+  .mw-slide-in-right {
+    animation: mwSlideInRight 260ms var(--mw-ease);
+    will-change: transform, opacity;
+  }
+}
+
+
+
+/* Crossfade simples (aba ativa, trocas de conteúdo) — 150ms */
+@keyframes mwFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.mw-fade {
+  animation: mwFade 150ms var(--mw-ease);
+}
+
+/* Abertura de dropdowns/menus: opacity + scale(0.97 -> 1) */
+@keyframes mwPopIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+.mw-pop-in {
+  transform-origin: top center;
+  animation: mwPopIn 160ms var(--mw-ease);
+}
+
+/* Skeleton shimmer escuro para pôsteres/imagens carregando */
+@keyframes mwShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+/* Anima só transform (compositor, sem repintar a cada quadro) num pseudo-elemento */
+.mw-shimmer {
+  overflow: hidden;
+  background-color: #1b2228;
+}
+.mw-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.06) 50%, rgba(255, 255, 255, 0) 100%);
+  transform: translateX(-100%);
+  animation: mwShimmer 1.2s linear infinite;
+}
+
+/* Imagem que aparece suavemente ao carregar (aplicar com onLoad -> isLoaded) */
+.mw-img-fade {
+  opacity: 0;
+  transition: opacity 300ms var(--mw-ease);
+}
+.mw-img-fade.mw-loaded {
+  opacity: 1;
+}
+
+/* Gaveta sobe da base: sheet slide-up + overlay fade */
+@keyframes mwSheetUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.mw-sheet-up {
+  animation: mwSheetUp 260ms var(--mw-ease-sheet);
+}
+@keyframes mwOverlayFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.mw-overlay-fade {
+  animation: mwOverlayFade 200ms ease-out;
+}
+
+/* Pop/pulse do ícone ao ativar Watch/Like/Watchlist/Rating (250ms) */
+@keyframes mwIconPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.mw-icon-pop {
+  animation: mwIconPop 250ms var(--mw-ease);
+}
+
+/* Realce suave de cards (desktop hover + toque mobile) */
+.mw-card-lift {
+  transition: transform 200ms var(--mw-ease), box-shadow 200ms var(--mw-ease);
+}
+@media (hover: hover) and (min-width: 768px) {
+  .mw-card-lift:hover {
+    transform: translateY(-2px);
+  }
+}
+.mw-card-press {
+  transition: transform 150ms var(--mw-ease);
+}
+.mw-card-press:active {
+  transform: scale(0.96);
+}
+
+/* Respeita preferência de movimento reduzido */
+@media (prefers-reduced-motion: reduce) {
+  .mw-page-in, .mw-fade, .mw-pop-in, .mw-shimmer, .mw-shimmer::after,
+  .mw-sheet-up, .mw-overlay-fade, .mw-icon-pop {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .mw-card-lift, .mw-card-press, .mw-img-fade {
+    transition-duration: 0.01ms !important;
+  }
+  /* OBS: o .tab-indicator NÃO entra aqui de propósito. A regra antiga
+     (transition-duration: 0.01ms !important) matava o deslize da barra verde
+     em todo navegador/SO com "reduzir movimento" ativo. O deslize de 0.28s é
+     parte da identidade das abas e roda sempre (ver .tab-indicator abaixo). */
+}
+
+/* Garante que elementos mobile-only (md:hidden) nunca vazem no desktop (>= 768px) */
+@media (min-width: 768px) {
+  .md\:hidden {
+    display: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   PERFIL DE PESSOA (mobile, estilo app Letterboxd)
+   Barra de abas horizontal (scroll suave, sem scrollbar) + grade de 4 colunas
+   --------------------------------------------------------------------------- */
+.person-tabs-container {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+  background-color: #000000;
+  /* Linha divisória do rodapé desenhada como FUNDO (e não border-bottom) para
+     que o indicador verde — que é um filho — pinte POR CIMA dela e ocupe o
+     lugar da linha sob a aba ativa, como no app do Letterboxd. */
+  background-image: linear-gradient(to top, #1f2937 0, #1f2937 1px, transparent 1px);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+  /* offsetLeft das abas / indicador é medido a partir daqui */
+  position: relative;
+}
+
+.person-tabs-container::-webkit-scrollbar {
+  display: none;
+}
+
+/* Barra de abas do desktop: mesmo comportamento, sem a faixa preta do app */
+.person-tabs-container.tabs-plain {
+  background-color: transparent;
+}
+
+.person-tab {
+  flex: 0 0 auto;
+  padding: 16px 16px 12px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-synthesis: none;
+  color: #9ab;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.person-tab.active {
+  color: #ffffff !important;
+  font-weight: 500;
+}
+
+/* Barra verde deslizante (Elastic / Rubber-band Indicator).
+   Usada pela barra de abas da Home (.main-tabs-container) e pela barra de abas
+   do perfil de pessoa (.person-tabs-container).
+   ATENÇÃO: aqui NÃO existe `transition` — quem define a transição de cada fase
+   do efeito elástico (estica → cauda alcança) é o JS
+   (src/utils/tabIndicator.ts). Uma transition fixa aqui transformaria a barra
+   de volta em um bloco rígido que translada/redimensiona de uma vez só. */
+.tab-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100px;
+  height: 4px;
+  background-color: #00e054;
+  border-radius: 2px 2px 0 0;
+  transform-origin: 0 50%;
+  pointer-events: none;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translate3d(0, 0, 0);
+}
+
+/* ---------------------------------------------------------------------------
+   ESTEIRA HORIZONTAL (ViewPager / Horizontal Slide) DO CONTEÚDO DAS ABAS
+   Mobile: ao trocar de aba o painel atual sai para um lado e o novo entra pelo
+   outro (mesma sensação do app do Letterboxd), em vez de piscar com fade.
+   Estrutura montada por src/components/TabViewPager.tsx.
+   --------------------------------------------------------------------------- */
+
+/* Container que esconde o que está fora da tela */
+.tab-viewport {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: calc(100dvh - 165px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  /* Scroll vertical continua nativo (60fps, sem JS); o arrasto horizontal
+     vira evento de ponteiro para o swipe entre abas (TabViewPager). */
+  touch-action: pan-y;
+}
+
+/* Trilho que contém os painéis lado a lado e desliza */
+.tab-slider-track,
+.tab-track {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: calc(100dvh - 165px);
+  align-items: flex-start;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Cada painel de conteúdo ocupa 100% da largura da tela e toda a área útil vertical */
+.tab-panel {
+  min-width: 100%;
+  width: 100%;
+  min-height: calc(100dvh - 165px);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Painel fora da tela (já foi visitado, mas não é o ativo): altura zero para a
+   página ficar exatamente com a altura da aba ativa — sem faixa em branco no
+   fim de abas curtas. Sem content-visibility:hidden para evitar que o navegador
+   destrua e reconstrua o layout inteiro no 1º frame do arrasto lateral. */
+.tab-panel-collapsed {
+  max-height: 0;
+  min-height: 0 !important;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   BARRA DE ABAS PRINCIPAL (Home): FILMES / SÉRIES / CRÍTICAS / LISTAS
+   Container em GRID de 4 colunas iguais com o mesmo padding lateral da grade
+   de pôsteres (16px de px-4 no conteúdo + 8px de gap = 12px de padding aqui),
+   de modo que as 4 abas caiam EXATAMENTE sob as 4 colunas de pôsteres:
+     abas   → centros 57.75 / 149.25 / 240.75 / 332.25
+     pôster → centros 57.75 / 149.25 / 240.75 / 332.25
+   Isso vale para as 4 abas (nenhuma "encolhe para o centro").
+   A barra verde (.tab-indicator) é posicionada via JS (offsetLeft/offsetWidth).
+   --------------------------------------------------------------------------- */
+.main-tabs-container,
+.tabs-header {
+  position: relative;
+  display: grid;
+  /* 4 colunas iguais e encostadas: a barra verde da aba ativa vai da borda
+     até a divisa (meio) com a aba vizinha */
+  grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  background-color: #000000;
+  border-bottom: 1px solid #1f2937;
+  touch-action: pan-y;
+}
+
+/* Botões das abas: ZERO caixa — sem border, outline ou box-shadow em NENHUM
+   estado (normal, :focus, :focus-visible e .active). Era esse anel que
+   desenhava o retângulo verde em volta da aba FILMES e desalinhava a barra. */
+.main-tab-btn,
+.main-tab-btn:focus,
+.main-tab-btn:focus-visible,
+.main-tab-btn:active,
+.main-tab-btn.active {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 4px 12px;
+  margin: 0;
+  text-align: center;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.main-tab-btn {
+  /* Fonte fluida para telas estreitas (320-390px) */
+  font-family: var(--font-brand);
+  font-size: clamp(0.8rem, 3.6vw, 1rem);
+  font-weight: 400 !important;
+  font-synthesis: none;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: #9ab;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.main-tab-btn:hover {
+  color: #dbe4ee;
+}
+
+.main-tab-btn.active {
+  color: #ffffff !important;
+  font-weight: 400 !important;
+}
+
+/* O foco de teclado continua visível pela cor, sem criar caixa nenhuma */
+.main-tab-btn:focus-visible {
+  color: #ffffff !important;
+}
+
+.person-films-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 0 12px 24px;
+}
+.person-film-card {
+  aspect-ratio: 2 / 3;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-color: #1c2228;
+}
+.person-film-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------------------------------------------------------------------------
+   ESTEIRA HORIZONTAL DAS ABAS DO PERFIL DE PESSOA (mobile)
+   Mesma anatomia da esteira das abas principais da Home (TabViewPager):
+   Bio / Ator / Produção / Roteiro / Direção / … deslizam lateralmente ao trocar
+   de aba, em vez de piscar com fade. Painéis são montados por
+   src/components/ActorTabPanel.tsx.
+   --------------------------------------------------------------------------- */
+.actor-tab-viewport {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: calc(100dvh - 165px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  touch-action: pan-y pinch-zoom;
+}
+
+.actor-tab-slider-track {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: calc(100dvh - 165px);
+  align-items: flex-start;
+  will-change: transform;
+  transition: transform 0.32s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.actor-tab-panel {
+  min-width: 100%;
+  width: 100%;
+  min-height: calc(100dvh - 165px);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+/* Painel fora da tela: altura zero (a página fica com a altura da aba ativa) e
+   sem renderização — o que também evita baixar pôsteres de abas não visíveis. */
+.actor-tab-panel-collapsed {
+  max-height: 0;
+  min-height: 0 !important;
+  overflow: hidden;
+  visibility: hidden;
+  content-visibility: hidden;
+}
+
+/* Visualização em lista (alternada pelo ícone de visualização do topo) */
+.person-films-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 24px;
+}
+.person-film-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+   VINHETA DO BACKDROP (desktop) — CSS COPIADO DO PRÓPRIO LETTERBOXD
+   Fonte: página salva de /film/spider-man-brand-new-day/ (regra
+   `.backdrop-wrapper>.backdropmask:before`). A fusão não usa mask-image: são
+   DUAS camadas de gradiente da cor sólida #14181d com alfa variável —
+   1) 90deg (0% = borda esquerda) para dissolver as laterais;
+   2) vertical (padrão "to bottom"): transparente até 41,48% (a imagem aparece
+      inteira no topo) e vai ficando opaca até 78,52%, quando vira fundo sólido.
+   Os stops são os originais (a rampa longa é o que dá o degradê suave).
+   --------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   SISTEMA DE BACKDROP ORIGINAL DO LETTERBOXD
+   Extraído de: _Spider-Man: Brand New Day (Letterboxd)
+   Regras: .backdrop-container, .backdrop-wrapper, .backdropimage, .backdropmask
+   --------------------------------------------------------------------------- */
+
+/* Container geral: absoluto no topo, z-index 0, overflow oculto */
+.backdrop-container {
+  z-index: 0;
+  width: 100%;
+  height: 675px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (max-width: 767px) {
+  .backdrop-container {
+    height: 0;
+    padding-top: 56.25%; /* proporção 16:9 */
+    top: 0;
+  }
+}
+
+/* Wrapper centralizado fixo em 1200px x 675px */
+.backdrop-wrapper {
+  z-index: 0;
+  width: 1200px;
+  height: 675px;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%);
+  pointer-events: none;
+}
+
+@media (max-width: 767px) {
+  .backdrop-wrapper {
+    width: 100%;
+    height: 100%;
+    left: 0;
+    transform: none;
+  }
+}
+
+/* Camada da imagem: posição 0 0 (canto superior esquerdo), horizontal e vertical */
+.backdrop-wrapper > .backdropimage {
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-position: 0 0;
+  width: 100%;
+  height: 99.95%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+@media (max-width: 767px) {
+  .backdrop-wrapper > .backdropimage {
+    background-size: cover;
+    background-position: 0 0;
+    height: 100%;
+  }
+}
+
+/* Máscara / Vinheta oficial do Letterboxd: degradê duplo em :before */
+.backdrop-wrapper > .backdropmask {
+  padding-top: 500px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.backdrop-wrapper > .backdropmask:before {
+  content: "";
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%);
+  width: 1200px;
+  height: 675px;
+  background-image:
+    linear-gradient(
+      90deg,
+      #14181c 0%, #14181cfb 0.97%, #14181cf1 2.07833%, #14181ce1 3.29667%,
+      #14181ccd 4.60167%, #14181cb5 5.96667%, #14181c9b 7.365%, #14181c80 8.77167%,
+      #14181c65 10.16%, #14181c4b 11.505%, #14181c34 12.78%, #14181c1f 13.9583%,
+      #14181c0f 15.0167%, #14181c04 15.9283%, #14181c00 16.6667% 83.3333%,
+      #14181c04 84.0717%, #14181c0f 84.9833%, #14181c1f 86.0417%, #14181c34 87.22%,
+      #14181c4b 88.495%, #14181c65 89.84%, #14181c80 91.2283%, #14181c9b 92.635%,
+      #14181cb5 94.0333%, #14181ccd 95.3983%, #14181ce1 96.7033%, #14181cf1 97.9217%,
+      #14181cfb 99.03%, #14181c 100%
+    ),
+    linear-gradient(
+      #14181c00 41.4815%, #14181c04 43.1222%, #14181c0f 45.1481%, #14181d1f 47.5%,
+      #14181c34 50.1185%, #14181c4b 52.9518%, #14181c65 55.9407%, #14181c80 59.0259%,
+      #14181c9b 62.1518%, #14181cb5 65.2593%, #14181ccd 68.2926%, #14181ce1 71.1926%,
+      #14181cf1 73.9%, #14181cfb 76.363%, #14181c 78.5185% 100%
+    );
+}
+
+@media (max-width: 767px) {
+  .backdrop-wrapper > .backdropmask {
+    padding-top: 0;
+    position: absolute;
+    inset: 0;
+  }
+  .backdrop-wrapper > .backdropmask:before {
+    width: 100%;
+    height: 100%;
+    left: 0;
+    transform: none;
+    background-image:
+      linear-gradient(to top, #14181c 0%, #14181c 3%, rgba(20, 24, 28, 0.9) 10%, rgba(20, 24, 28, 0.55) 20%, rgba(20, 24, 28, 0.2) 32%, transparent 42%),
+      linear-gradient(to bottom, rgba(20, 24, 28, 0.35) 0%, rgba(20, 24, 28, 0.1) 8%, transparent 16%);
+  }
+}
+
+/* Transição de entrada suave (fade-in original do Letterboxd) */
+.backdrop-fade-in {
+  opacity: 0;
+  transition: opacity 0.75s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+.backdrop-fade-in.-loaded {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   CONTRASTE DA NAVBAR SOBRE O BACKDROP — CSS COPIADO DO LETTERBOXD
+   Fonte: `.site-header .site-header-bg` da página salva. É uma camada atrás do
+   header (95px) com gradiente vertical de #14181c sólido no topo até
+   transparente embaixo; opacidade 2/3 parada e 0.85 quando o header está em
+   hover/foco (a variável --bg-alpha deles). Só é renderizada quando o header
+   fica transparente por cima do backdrop (/film/:id e /tv/:id).
+   --------------------------------------------------------------------------- */
+.site-header-bg {
+  pointer-events: none;
+  height: 95px;
+  opacity: var(--bg-alpha, 0.85);
+  background-color: transparent;
+  background-image: linear-gradient(
+    #14181c 0%, #14181cf1 16.56%, #14181ccc 30.85%, #14181c9b 43.77%,
+    #14181c64 56.23%, #14181c33 69.15%, #14181c0e 83.44%, #14181c00 100%
+  );
+  background-repeat: repeat-x;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  transition: opacity 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+header:not(:hover):not(:focus-within) > .site-header-bg {
+  --bg-alpha: calc(2 / 3);
+}
+
+/* ---------------------------------------------------------------------------
+   SIMILAR FILMS / SIMILAR SERIES — carrossel horizontal do filme (mobile)
+   Exatamente 20 pôsteres, sem títulos/estrelas embaixo (só a capa clicável),
+   igual ao app. Montado em src/pages/FilmPage.tsx.
+   --------------------------------------------------------------------------- */
+.similar-section {
+  padding: 16px 0;
+  border-top: 1px solid #222a33;
+  /* Linha vai de borda a borda no mobile (a página tem px-4 de margem) */
+  margin: 0 -16px;
+}
+
+.similar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #89a;
+}
+
+.similar-carousel {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 0 16px 8px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.similar-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.similar-card {
+  flex: 0 0 92px;
+  aspect-ratio: 2 / 3;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #1c2228;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+.similar-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------------------------------------------------------------------------
+   BOTTOM NAVIGATION BAR — cores exatas do app Letterboxd
+   Barra azul-acinzentada (sem border-top), 60px, e pílula do item ativo.
+   A navegação/rotas continuam as mesmas (apenas aparência).
+   --------------------------------------------------------------------------- */
+.bottom-nav {
+  /* !important garante a cor/borda mesmo que alguma classe utilitária escape */
+  background-color: var(--lb-bottom-bar) !important;
+  border-top: none !important;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  /* 0 8px laterais + área segura do gesto (Android/iOS) abaixo dos ícones.
+     content-box mantém os 60px de altura ÚTEIS para os ícones. */
+  padding: 0 8px env(safe-area-inset-bottom, 0px);
+  box-sizing: content-box;
+}
+
+.bottom-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 34px;
+  border-radius: 9999px;
+  background-color: transparent;
+  color: var(--lb-icon-inactive);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.bottom-nav-item.active {
+  background-color: var(--lb-bottom-pill-active);
+  color: var(--lb-blue-active);
+}
+
+/* Botão central de Log: mesma pegada dos itens, círculo vazado verde */
+.bottom-nav-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 34px;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.bottom-nav-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--lb-green-accent);
+  border-radius: 50%;
+  color: var(--lb-green-accent);
+  background-color: transparent;
+  transition: transform 0.15s ease;
+}
+.bottom-nav-add:active .bottom-nav-add-btn {
+  transform: scale(0.92);
+}
+
+
+
