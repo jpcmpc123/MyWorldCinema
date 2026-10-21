@@ -18,6 +18,7 @@ interface ActionBottomSheetProps {
   onClose: () => void;
   movie: ActionBottomSheetTarget;
   onPickImage?: (mode: 'poster' | 'backdrop') => void;
+  onViewPoster?: () => void;
 }
 
 const clamp = (min: number, max: number, val: number) => Math.min(max, Math.max(min, val));
@@ -37,6 +38,7 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
   onClose,
   movie,
   onPickImage,
+  onViewPoster,
 }) => {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -177,6 +179,10 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
 
   const handleViewPoster = () => {
     onClose();
+    if (onViewPoster) {
+      onViewPoster();
+      return;
+    }
     if (posterPath) {
       setShowPosterLightbox(true);
     }

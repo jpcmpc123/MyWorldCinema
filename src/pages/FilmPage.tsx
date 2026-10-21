@@ -1182,6 +1182,7 @@ export const FilmPage: React.FC = () => {
         onClose={() => setShowActionSheet(false)}
         movie={{ id: movie.id, title: movie.title, release_date: movie.release_date }}
         onPickImage={(mode) => setImagePicker(mode)}
+        onViewPoster={() => setShowPosterLightbox(true)}
       />
 
       {/* Visualização ampliada do pôster (Mobile: largura total + zoom + swipe-down | PC: lightbox com X) */}
