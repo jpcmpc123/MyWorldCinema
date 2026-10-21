@@ -438,9 +438,20 @@ export const SeriesDetailPage: React.FC = () => {
             {/* Similar */}
             {similar.length > 0 && (
               <section className="pt-4 space-y-2">
-                <h2 className="text-[11px] uppercase tracking-wider font-bold text-lb-text border-b border-lb-elevated pb-1.5">
-                  {t('film_similar_series')}
-                </h2>
+                <Link
+                  to={`/browse/results?type=tv&similarTo=${show.id}&title=${encodeURIComponent(
+                    t('film_similar_series'),
+                  )}`}
+                  state={{ initialItems: similar, sourceMovie: show }}
+                  className="flex items-center justify-between border-b border-lb-elevated pb-1.5 group"
+                >
+                  <h2 className="text-[11px] uppercase tracking-wider font-bold text-lb-text group-hover:text-white transition-colors">
+                    {t('film_similar_series')}
+                  </h2>
+                  <span className="text-[11px] uppercase tracking-wider text-[#667788] group-hover:text-white transition-colors">
+                    {t('common_all')}
+                  </span>
+                </Link>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
                   {similar.map((m) => (
                     <PosterCard key={m.id} movie={m} size="fluid" tv disableHoverActions />

@@ -1095,7 +1095,7 @@ export const FilmPage: React.FC = () => {
                     to={`/browse/results?type=${isTv ? 'tv' : 'movie'}&similarTo=${movie.id}&title=${encodeURIComponent(
                       isTv ? t('film_similar_series') : t('film_similar_films'),
                     )}`}
-                    state={{ initialItems: displaySimilar }}
+                    state={{ initialItems: displaySimilar, sourceMovie: movie }}
                     className="similar-header group"
                   >
                     <span className="group-active:text-lb-green group-hover:text-white transition-colors">
@@ -1131,7 +1131,7 @@ export const FilmPage: React.FC = () => {
                     to={`/browse/results?type=${isTv ? 'tv' : 'movie'}&similarTo=${movie.id}&title=${encodeURIComponent(
                       isTv ? t('film_similar_series') : t('film_similar_films'),
                     )}`}
-                    state={{ initialItems: displaySimilar }}
+                    state={{ initialItems: displaySimilar, sourceMovie: movie }}
                     className="flex items-center justify-between border-b border-[#445566]/60 pb-1.5 group"
                   >
                     <h2 className="text-xs uppercase tracking-[0.08em] font-normal text-[#99aabb] group-hover:text-white transition-colors">

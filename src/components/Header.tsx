@@ -784,7 +784,7 @@ export const Header: React.FC = () => {
             </Link>
           )}
 
-          {/* Desktop Navigation Links (funções do site: FILMES, SÉRIES, LISTAS) */}
+          {/* Desktop Navigation Links (funções do site: FILMES, SÉRIES, CRÍTICAS, LISTAS) */}
           <nav
             aria-label={t('nav_main')}
             className="hidden md:flex items-center gap-4 text-[12px] font-bold uppercase tracking-[0.075em]"
@@ -806,6 +806,16 @@ export const Header: React.FC = () => {
               }`}
             >
               {t('nav_series')}
+            </Link>
+            <Link
+              to="/reviews"
+              className={`whitespace-nowrap shrink-0 transition-colors ${
+                location.pathname.startsWith('/reviews') || location.pathname.startsWith('/review/')
+                  ? 'text-white'
+                  : 'text-[#99aabb] hover:text-white'
+              }`}
+            >
+              {t('nav_reviews')}
             </Link>
             <Link
               to="/lists"

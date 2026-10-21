@@ -705,6 +705,16 @@ async function curateSimilarForDetails(
           page: 1,
         })
       : Promise.resolve({ results: [] as TMDBMovie[], page: 1, total_pages: 1, total_results: 0 }),
+    fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/${type}/${details.id}/similar`, { page: 2 }),
+    genreIds.length > 0
+      ? fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/discover/${type}`, {
+          with_genres: genreIds.slice(0, 2).join(','),
+          ...(keywordIds.length > 0 ? { with_keywords: keywordIds.slice(0, 5).join('|') } : {}),
+          sort_by: 'popularity.desc',
+          'vote_count.gte': type === 'tv' ? 35 : 90,
+          page: 2,
+        })
+      : Promise.resolve({ results: [] as TMDBMovie[], page: 1, total_pages: 1, total_results: 0 }),
   ]);
 
   const collectionData =
@@ -728,8 +738,12 @@ async function curateSimilarForDetails(
 
   const recPage2 =
     extraCalls[1].status === 'fulfilled' ? extraCalls[1].value.results || [] : [];
-  const kwDiscover =
+  const kwDiscover1 =
     extraCalls[2].status === 'fulfilled' ? extraCalls[2].value.results || [] : [];
+  const simPage2 =
+    extraCalls[3].status === 'fulfilled' ? extraCalls[3].value.results || [] : [];
+  const kwDiscover2 =
+    extraCalls[4].status === 'fulfilled' ? extraCalls[4].value.results || [] : [];
 
   const profile: SimilarSourceProfile = {
     id: details.id,
@@ -748,10 +762,10 @@ async function curateSimilarForDetails(
   const collectionIdSet = new Set(collectionParts.map((m) => m.id));
   const rankedAll = rankSimilarCandidates(profile, {
     recommendations: [...(details.recommendations?.results || []), ...recPage2],
-    keywordDiscover: kwDiscover,
-    similar: details.similar?.results || [],
+    keywordDiscover: [...kwDiscover1, ...kwDiscover2],
+    similar: [...(details.similar?.results || []), ...simPage2],
   });
-  const ranked = rankedAll.filter((m) => !collectionIdSet.has(m.id));
+  const ranked = rankedAll.filter((m) => !collectionIdSet.has(m.id)).slice(0, 80);
 
   profile.rankedPool = ranked;
   similarProfileCache.set(cacheKey, profile);
@@ -836,6 +850,58 @@ export const tmdb = {
     };
   },
 
+  async discoverByKeywordsOrGenres(
+    type: 'movie' | 'tv',
+    options: {
+      genreIds?: number[];
+      keywordIds?: number[];
+      excludeId?: number;
+      decade?: number;
+      providerId?: number;
+      page?: number;
+    },
+  ): Promise<{ results: TMDBMovie[]; total_results: number }> {
+    const params: Record<string, string | number | undefined> = {
+      sort_by: 'popularity.desc',
+      'vote_count.gte': type === 'tv' ? 20 : 40,
+      include_adult: 'false',
+      page: options.page || 1,
+    };
+    if (type === 'tv') {
+      params.without_genres = TV_EXCLUDED_GENRES;
+      params['first_air_date.lte'] = TMDB_TODAY;
+      if (options.decade) {
+        params['first_air_date.gte'] = `${options.decade}-01-01`;
+        params['first_air_date.lte'] = `${options.decade + 9}-12-31`;
+      }
+    } else {
+      params['primary_release_date.lte'] = TMDB_TODAY;
+      if (options.decade) {
+        params['primary_release_date.gte'] = `${options.decade}-01-01`;
+        params['primary_release_date.lte'] = `${options.decade + 9}-12-31`;
+      }
+    }
+    if (options.providerId) {
+      params.with_watch_providers = options.providerId;
+      params.watch_region = 'US';
+    }
+    if (options.genreIds && options.genreIds.length > 0) {
+      params.with_genres = options.genreIds.join(',');
+    }
+    if (options.keywordIds && options.keywordIds.length > 0) {
+      params.with_keywords = options.keywordIds.join('|');
+    }
+
+    const res = await fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/discover/${type}`, params);
+    const items = (res.results || [])
+      .map(normalizeMediaItem)
+      .filter((m) => Boolean(m.poster_path) && m.id !== options.excludeId);
+    return {
+      results: items,
+      total_results: Math.max(res.total_results || items.length, items.length),
+    };
+  },
+
   async getSimilarMedia(
     type: 'movie' | 'tv',
     id: number,
@@ -862,7 +928,7 @@ export const tmdb = {
         page: 1,
         results: profile.rankedPool,
         total_pages: 5,
-        total_results: Math.max(profile.rankedPool.length, 60),
+        total_results: Math.max(profile.rankedPool.length, 80),
       };
     }
 
