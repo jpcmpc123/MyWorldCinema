@@ -604,12 +604,12 @@ export const Header: React.FC = () => {
         )}
 
         {/* Mobile-only (páginas principais): título centrado "MyWorld"
-            Ajustado: recuado mais 0.5mm para cima (translate-y-[2px]) e afastado das abas */}
+            Ajustado: subido mais 0.5mm (alinhado exatamente ao centro) */}
         {isMainPage && (
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="md:hidden absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 translate-y-[2px] text-white text-[20px] font-bold tracking-[-0.01em] cursor-pointer leading-none whitespace-nowrap"
+            className="md:hidden absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 text-white text-[20px] font-bold tracking-[-0.01em] cursor-pointer leading-none whitespace-nowrap"
             style={{ fontFamily: 'var(--font-brand)' }}
           >
             MyWorld
