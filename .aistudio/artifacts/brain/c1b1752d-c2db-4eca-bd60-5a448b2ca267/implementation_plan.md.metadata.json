@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de implementação para eliminar o estado incompleto na tela de detalhes de filmes/séries, acelerar o carregamento da API do TMDB removendo payloads pesados e bloqueios em série, e corrigir a animação de deslize (slide suave de 340ms da direita para a esquerda).",
-  "updatedAt":  "2026-10-21T16:22:23.034514126Z",
+  "summary":  "Remoção da linha intermediária duplicada entre as avaliações e as abas, e ajuste da linha superior com margem e espaçamento para posicioná-la mais abaixo.",
+  "updatedAt":  "2026-10-21T21:04:19.030990002Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

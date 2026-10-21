@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Eye,
@@ -32,6 +32,21 @@ import { ActionBottomSheet } from '../components/ActionBottomSheet';
 import { PosterLightbox } from '../components/PosterLightbox';
 import { openPersonProfile, personRoleFromJob, type PersonRole } from '../utils/personNav';
 import { useIsMobile } from '../hooks/useIsMobile';
+import {
+  animateElasticIndicator,
+  placeTabIndicator,
+  type IndicatorPos,
+} from '../utils/tabIndicator';
+
+export type TabKey = 'cast' | 'crew' | 'details' | 'genres' | 'releases';
+
+const FILM_MOBILE_TABS: { key: TabKey; labelKey: TranslationKey }[] = [
+  { key: 'cast', labelKey: 'tab_cast' },
+  { key: 'crew', labelKey: 'tab_crew' },
+  { key: 'details', labelKey: 'tab_details' },
+  { key: 'genres', labelKey: 'tab_genres' },
+  { key: 'releases', labelKey: 'tab_releases' },
+];
 
 function formatNumber(num: number): string {
   if (num >= 1_000_000) {
@@ -184,7 +199,131 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     const alreadyReady = areAllUrlsLoaded(urls);
     if (assetsReady !== alreadyReady) setAssetsReady(alreadyReady);
   }
-  const [activeTab, setActiveTab] = useState<'cast' | 'crew' | 'details' | 'genres' | 'releases'>('cast');
+  const [activeTab, setActiveTab] = useState<TabKey>('cast');
+  const [outgoingTab, setOutgoingTab] = useState<TabKey | null>(null);
+  const [tabSlidePhase, setTabSlidePhase] = useState<'idle' | 'prepare' | 'run'>('idle');
+  const [tabSlideDirection, setTabSlideDirection] = useState<'forward' | 'backward'>('forward');
+  const tabSlideTimerRef = useRef<number | null>(null);
+
+  // Elastic green indicator refs for mobile tabs
+  const filmTabsContainerRef = useRef<HTMLDivElement | null>(null);
+  const filmTabButtonsRef = useRef<Map<TabKey, HTMLButtonElement>>(new Map());
+  const filmIndicatorRef = useRef<HTMLSpanElement | null>(null);
+  const filmPrevPosRef = useRef<IndicatorPos>({ left: 0, width: 0 });
+  const filmTabMountedRef = useRef<boolean>(false);
+
+  // Reset tab when film changes
+  useEffect(() => {
+    setActiveTab('cast');
+    setOutgoingTab(null);
+    setTabSlidePhase('idle');
+    filmPrevPosRef.current = { left: 0, width: 0 };
+    filmTabMountedRef.current = false;
+  }, [movieId]);
+
+  const handleSelectTab = (nextTab: TabKey) => {
+    if (nextTab === activeTab) return;
+    if (tabSlideTimerRef.current) {
+      window.clearTimeout(tabSlideTimerRef.current);
+      tabSlideTimerRef.current = null;
+    }
+
+    const tabOrder: TabKey[] = ['cast', 'crew', 'details', 'genres', 'releases'];
+    const prevIdx = tabOrder.indexOf(activeTab);
+    const nextIdx = tabOrder.indexOf(nextTab);
+    const direction = nextIdx >= prevIdx ? 'forward' : 'backward';
+
+    setOutgoingTab(activeTab);
+    setActiveTab(nextTab);
+    setTabSlideDirection(direction);
+    setTabSlidePhase('prepare');
+
+    const targetBtn = filmTabButtonsRef.current.get(nextTab);
+    if (filmTabsContainerRef.current && targetBtn) {
+      const container = filmTabsContainerRef.current;
+      const targetScroll = targetBtn.offsetLeft - container.clientWidth / 2 + targetBtn.clientWidth / 2;
+      container.scrollTo({ left: Math.max(0, targetScroll), behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    if (tabSlidePhase !== 'prepare') return;
+    let raf2 = 0;
+    const raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        setTabSlidePhase('run');
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      if (raf2) window.cancelAnimationFrame(raf2);
+    };
+  }, [tabSlidePhase]);
+
+  useEffect(() => {
+    if (tabSlidePhase !== 'run') return;
+    tabSlideTimerRef.current = window.setTimeout(() => {
+      setOutgoingTab(null);
+      setTabSlidePhase('idle');
+      tabSlideTimerRef.current = null;
+    }, 340);
+    return () => {
+      if (tabSlideTimerRef.current) {
+        window.clearTimeout(tabSlideTimerRef.current);
+        tabSlideTimerRef.current = null;
+      }
+    };
+  }, [tabSlidePhase]);
+
+  // Obtém as coordenadas da barra verde: para 'cast' (1ª aba), começa encostada na borda esquerda da tela (left: 0)
+  // e vai até o fim de Cast, exatamente como na captura do aplicativo oficial Letterboxd.
+  const getFilmIndicatorGeometry = (tabKey: TabKey): IndicatorPos | null => {
+    const targetBtn = filmTabButtonsRef.current.get(tabKey);
+    if (!targetBtn) return null;
+    if (tabKey === 'cast') {
+      return {
+        left: 0,
+        width: targetBtn.offsetLeft + targetBtn.offsetWidth,
+      };
+    }
+    return {
+      left: targetBtn.offsetLeft,
+      width: targetBtn.offsetWidth,
+    };
+  };
+
+  // Posiciona a barra verde com animação elástica contínua na GPU ao trocar de aba
+  useLayoutEffect(() => {
+    if (!isMobile) return;
+    const indicator = filmIndicatorRef.current;
+    const geo = getFilmIndicatorGeometry(activeTab);
+    if (!indicator || !geo) return;
+
+    if (!filmTabMountedRef.current || filmPrevPosRef.current.width <= 0) {
+      filmTabMountedRef.current = true;
+      placeTabIndicator(indicator, geo.left, geo.width, filmPrevPosRef.current);
+    } else {
+      animateElasticIndicator(geo, indicator, filmPrevPosRef.current, false);
+    }
+  }, [activeTab, isMobile, movie?.id]);
+
+  // Recalcula o indicador sem estirar ao redimensionar ou trocar orientação de tela
+  useEffect(() => {
+    if (!isMobile) return;
+    const updateIndicatorImmediate = () => {
+      const indicator = filmIndicatorRef.current;
+      const geo = getFilmIndicatorGeometry(activeTab);
+      if (indicator && geo) {
+        placeTabIndicator(indicator, geo.left, geo.width, filmPrevPosRef.current);
+      }
+    };
+    window.addEventListener('resize', updateIndicatorImmediate);
+    const t = window.setTimeout(updateIndicatorImmediate, 120);
+    return () => {
+      window.removeEventListener('resize', updateIndicatorImmediate);
+      window.clearTimeout(t);
+    };
+  }, [activeTab, isMobile]);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showTrailerModal, setShowTrailerModal] = useState(false);
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
@@ -742,7 +881,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
             {/* RATINGS — mobile only: label à esquerda, estrela verde na base,
                 barras verticais cinzas no meio, média grande + 5 estrelas à direita */}
-            <div className="md:hidden border-t border-white/10 border-b border-[#232a32] pt-3 pb-4 mt-4 -mx-4 px-4">
+            <div className="md:hidden border-t border-white/10 pt-3 pb-3 mt-4 -mx-4 px-4">
               <span className="text-[11px] uppercase tracking-wider text-[#9ab]">{t('ratings')}</span>
               {(() => {
                 const avg = isOdyssey ? 4.01 : movie.vote_average ? movie.vote_average / 2 : 3.8;
@@ -780,7 +919,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
             {/* Pílula de status (mobile): só quando o usuário já assistiu ao filme — abre ActionBottomSheet */}
             {watched && (
-              <div className="md:hidden border-b border-[#232a32] -mx-4 px-4 py-3.5">
+              <div className="md:hidden border-t border-[#232a32] -mx-4 px-4 py-3.5">
                 <button
                   type="button"
                   onClick={() => setShowActionSheet(true)}
@@ -873,36 +1012,105 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             )}
 
             {/* App-style tabs — MOBILE ONLY: Cast / Crew / Details / Genre / Releases */}
-            <div className="md:hidden pt-4">
-              {/* Só a barra de abas sai da margem (borda a borda); o conteúdo abaixo não */}
-              <div className="-mx-4">
-              <div className="flex items-center gap-5 px-4 border-b border-lb-elevated text-[11px] uppercase font-bold tracking-wider overflow-x-auto no-scrollbar">
-                {(
-                  [
-                    ['cast', t('tab_cast')],
-                    ['crew', t('tab_crew')],
-                    ['details', t('tab_details')],
-                    ['genres', t('tab_genres')],
-                    ['releases', t('tab_releases')],
-                  ] as const
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setActiveTab(key)}
-                    className={`pb-2 -mb-[1px] transition-colors cursor-pointer whitespace-nowrap ${
-                      activeTab === key
-                        ? 'text-white border-b-2 border-lb-green'
-                        : 'text-lb-muted hover:text-white'
+            <div className="md:hidden pt-0 mt-[6px]">
+              {/* Barra de abas: borda a borda (-mx-4) no estilo oficial do Letterboxd (Foto de referência) */}
+              <div className="-mx-4 bg-[#14181c]">
+                <div
+                  ref={filmTabsContainerRef}
+                  className="relative flex items-center justify-start gap-5 sm:gap-6 px-4 border-t border-b border-[#232a32] overflow-x-auto overflow-y-hidden no-scrollbar overscroll-none select-none py-0"
+                  style={{ touchAction: 'pan-x pan-y' }}
+                >
+                  {FILM_MOBILE_TABS.map(({ key, labelKey }) => {
+                    const isActive = activeTab === key;
+                    return (
+                      <button
+                        key={key}
+                        ref={(el) => {
+                          if (el) filmTabButtonsRef.current.set(key, el);
+                          else filmTabButtonsRef.current.delete(key);
+                        }}
+                        type="button"
+                        onClick={() => handleSelectTab(key)}
+                        className={`relative pt-2 pb-2.5 px-0 transition-colors cursor-pointer whitespace-nowrap text-[14.5px] sm:text-[15px] leading-tight tracking-normal outline-none focus:outline-none ${
+                          isActive
+                            ? 'text-white font-bold'
+                            : 'text-[#738290] hover:text-white font-medium'
+                        }`}
+                      >
+                        {t(labelKey)}
+                      </button>
+                    );
+                  })}
+                  {/* Barrinha verde elástica deslizante: para 'cast' começa encostada na borda esquerda (left: 0) */}
+                  <span
+                    ref={filmIndicatorRef}
+                    className={`tab-indicator !h-[2.5px] ${
+                      activeTab === 'cast' ? '!rounded-l-none !rounded-r-full' : '!rounded-full'
                     }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+                    aria-hidden="true"
+                  />
+                </div>
               </div>
 
-              <div className="py-3">
-                <FilmTabContent activeTab={activeTab} movie={movie} isTv={isTv} numberOfSeasons={numberOfSeasons} mobile />
+              {/* Conteúdo com a transição de slide suave de 340ms (mesmo efeito de transição entre páginas).
+                  Sem listeners de toque/arrasto: zero swipe com o dedo, apenas clique nas abas. */}
+              <div className="relative overflow-hidden py-3 min-h-[160px]">
+                {/* Painel sainte durante a transição */}
+                {outgoingTab && tabSlidePhase !== 'idle' && (
+                  <div
+                    key={`outgoing-${outgoingTab}`}
+                    className="absolute inset-x-0 top-0 w-full pointer-events-none z-10"
+                    style={{
+                      transform:
+                        tabSlidePhase === 'run'
+                          ? tabSlideDirection === 'forward'
+                            ? 'translate3d(-100%, 0, 0)'
+                            : 'translate3d(100%, 0, 0)'
+                          : 'translate3d(0, 0, 0)',
+                      transition:
+                        tabSlidePhase === 'run'
+                          ? 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)'
+                          : 'none',
+                      willChange: 'transform',
+                    }}
+                    aria-hidden="true"
+                  >
+                    <FilmTabContent
+                      activeTab={outgoingTab}
+                      movie={movie}
+                      isTv={isTv}
+                      numberOfSeasons={numberOfSeasons}
+                      mobile
+                    />
+                  </div>
+                )}
+
+                {/* Painel ativo / entrante */}
+                <div
+                  key={`incoming-${activeTab}`}
+                  className="w-full relative z-20"
+                  style={{
+                    transform:
+                      outgoingTab && tabSlidePhase === 'prepare'
+                        ? tabSlideDirection === 'forward'
+                          ? 'translate3d(100%, 0, 0)'
+                          : 'translate3d(-100%, 0, 0)'
+                        : 'translate3d(0, 0, 0)',
+                    transition:
+                      outgoingTab && tabSlidePhase === 'run'
+                        ? 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)'
+                        : 'none',
+                    willChange: outgoingTab ? 'transform' : undefined,
+                  }}
+                >
+                  <FilmTabContent
+                    activeTab={activeTab}
+                    movie={movie}
+                    isTv={isTv}
+                    numberOfSeasons={numberOfSeasons}
+                    mobile
+                  />
+                </div>
               </div>
             </div>
 
@@ -1402,8 +1610,6 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 // COMPONENTES COMPARTILHADOS DAS 5 ABAS (desktop + mobile)
 // Cast / Crew / Details (TMDB + IMDb) / Genres+Themes / Releases
 // ===========================================================================
-
-type TabKey = 'cast' | 'crew' | 'details' | 'genres' | 'releases';
 
 // ---- Badge de classificação indicativa -------------------------------------
 // Cores oficiais brasileiras: L verde, 10 azul, 12 amarelo, 14 laranja,

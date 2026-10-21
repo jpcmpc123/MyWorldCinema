@@ -385,13 +385,13 @@ export function settleTabIndicator(
  *                  a mudança vem de medida (resize/idioma/montagem) e não de troca de aba.
  */
 export function animateElasticIndicator(
-  targetBtn: HTMLElement,
+  targetBtn: HTMLElement | IndicatorPos,
   indicator: HTMLElement,
   prevPos: IndicatorPos,
   immediate = false,
 ): void {
-  const newLeft = targetBtn.offsetLeft;
-  const newWidth = targetBtn.offsetWidth;
+  const newLeft = 'left' in targetBtn ? targetBtn.left : targetBtn.offsetLeft;
+  const newWidth = 'width' in targetBtn ? targetBtn.width : targetBtn.offsetWidth;
 
   if (newWidth <= 0) return;
 
