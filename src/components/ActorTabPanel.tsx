@@ -4,7 +4,7 @@ import { Eye } from 'lucide-react';
 import { tmdb, type TMDBPersonMovieCredit } from '../services/tmdb';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../i18n/LanguageContext';
-import type { PersonRole } from '../utils/personNav';
+import { matchesPersonGenreFilter, type PersonRole } from '../utils/personNav';
 
 /** Filmes renderizados antes do botão "ver mais" (evita listas gigantes). */
 export const INITIAL_VISIBLE = 60;
@@ -20,6 +20,7 @@ interface ActorTabPanelProps {
   personName: string;
   biography: string | null;
   profileImg: string | null;
+  onOpenPhoto?: () => void;
   /* Filtros/ordenação/visualização compartilhados pela página */
   decadeFilter: string | null;
   genreFilter: number | null;
@@ -32,7 +33,7 @@ interface ActorTabPanelProps {
 /**
  * Conteúdo de UM painel da esteira horizontal (ViewPager) das abas do perfil de
  * pessoa — layout do app mobile:
- *   • aba Bio ....... foto 92x138 + biografia completa
+ *   • aba Bio ....... foto 92x138 (clicável em tela cheia) + biografia completa
  *   • demais abas ... N FILMS + % assistida, grade de 4 colunas (ou lista)
  *                     e o botão "ver mais"
  *
@@ -46,6 +47,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
   personName,
   biography,
   profileImg,
+  onOpenPhoto,
   decadeFilter,
   genreFilter,
   sortBy,
@@ -59,7 +61,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
   // ---- Filtros + ordenação da filmografia desta aba ------------------------
   const visibleFilms = useMemo(() => {
     let list = items;
-    if (genreFilter) list = list.filter((f) => f.genre_ids?.includes(genreFilter));
+    if (genreFilter) list = list.filter((f) => matchesPersonGenreFilter(f.genre_ids, genreFilter));
     if (decadeFilter) list = list.filter((f) => f.release_date?.startsWith(decadeFilter.slice(0, 3)));
     const sorted = [...list];
     sorted.sort((a, b) => {
@@ -73,11 +75,6 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
 
   const listed = showAllFilms ? visibleFilms : visibleFilms.slice(0, INITIAL_VISIBLE);
 
-  // Quantos FILMES e quantas SÉRIES há nesta aba (o rótulo de contagem muda
-  // quando a lista é só de séries — caso da aba "Criador").
-  const seriesCount = visibleFilms.reduce((n, f) => n + (f.media_type === 'tv' ? 1 : 0), 0);
-  const filmCount = visibleFilms.length - seriesCount;
-
   // ---- % assistida desta lista (ícone de olho azul da barra de status) -----
   const watchedPct = useMemo(() => {
     if (visibleFilms.length === 0) return 0;
@@ -89,8 +86,9 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
   // Série (media_type 'tv') abre /tv/{id}; filme abre /film/{id}.
   const posterCard = (film: TMDBPersonMovieCredit, className = '') => (
     <Link
-      key={film.id}
+      key={`${film.media_type ?? 'movie'}-${film.id}`}
       to={`${film.media_type === 'tv' ? '/tv' : '/film'}/${film.id}`}
+      state={{ initialMovie: film, fromPoster: true }}
       className={`person-film-card relative block ${className}`}
     >
       {film.poster_path ? (
@@ -127,13 +125,20 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
         }
       >
         {profileImg && (
-          <img
-            src={profileImg}
-            alt={personName}
-            loading="lazy"
-            decoding="async"
-            className="w-[92px] h-[138px] object-cover rounded-md border border-white/12 bg-[#1c2228]"
-          />
+          <button
+            type="button"
+            onClick={onOpenPhoto}
+            aria-label={personName}
+            className="w-[92px] h-[138px] rounded-md overflow-hidden border border-white/12 bg-[#1c2228] cursor-pointer active:scale-[0.97] transition-transform p-0 block"
+          >
+            <img
+              src={profileImg}
+              alt={personName}
+              loading="lazy"
+              decoding="async"
+              className="w-full h-full object-cover"
+            />
+          </button>
         )}
         <p className="m-0 text-[#9ab] text-[0.92rem] leading-[1.55] whitespace-pre-line">
           {biography || t('person_bio_empty')}
@@ -154,13 +159,10 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
 
   return (
     <>
-      {/* Sub-barra de status: N FILMS/SÉRIES + % assistida */}
+      {/* Sub-barra de status: total unificado + % assistida */}
       <div className="flex items-center justify-between px-3 py-2.5 text-[0.78rem] text-[#9ab]">
         <span className="uppercase tracking-[0.05em]">
-          {seriesCount > 0 && filmCount === 0
-            ? `${seriesCount} ${t('person_series_label')}`
-            : `${filmCount} ${t('person_films_label')}`}
-          {filmCount > 0 && seriesCount > 0 ? ` + ${seriesCount} ${t('person_series_label')}` : ''}
+          {visibleFilms.length} {t('person_films_label')}
         </span>
         <span className="flex items-center gap-1.5">
           <Eye className="w-3.5 h-3.5 text-[#40bcf4]" aria-hidden="true" />
@@ -173,11 +175,12 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
       ) : (
         <div className="person-films-list">
           {listed.map((f) => (
-            <div key={f.id} className="person-film-row">
+            <div key={`${f.media_type ?? 'movie'}-${f.id}`} className="person-film-row">
               {posterCard(f, 'w-16 flex-none')}
               <div className="min-w-0">
                 <Link
                   to={`${f.media_type === 'tv' ? '/tv' : '/film'}/${f.id}`}
+                  state={{ initialMovie: f, fromPoster: true }}
                   className="block text-sm font-semibold text-white truncate"
                 >
                   {f.title}

@@ -1045,24 +1045,6 @@ export const tmdb = {
     const person = await fetchFromTMDB<TMDBPersonDetails>(`/person/${id}`, {
       append_to_response: 'movie_credits,tv_credits',
     });
-    // SÉRIES: a API devolve `name`/`first_air_date` (e não title/release_date).
-    // Normaliza e marca media_type para o clique abrir /tv/{id} — sem isto o
-    // criador de uma série não tem onde aparecer na página de pessoa.
-    const normalizeTv = (list?: TMDBPersonMovieCredit[]) =>
-      (list ?? []).map((c) => {
-        const raw = c as unknown as { name?: string; original_name?: string; first_air_date?: string };
-        return {
-          ...c,
-          title: c.title || raw.name || '',
-          original_title: c.original_title || raw.original_name || raw.name || '',
-          release_date: c.release_date || raw.first_air_date || '',
-          media_type: 'tv' as const,
-        };
-      });
-    if (person.tv_credits) {
-      person.tv_credits.cast = normalizeTv(person.tv_credits.cast);
-      person.tv_credits.crew = normalizeTv(person.tv_credits.crew);
-    }
     if (tmdbLanguage !== 'en-US' && !person.biography) {
       try {
         const en = await fetchFromTMDB<TMDBPersonDetails>(`/person/${id}`, {
@@ -1075,6 +1057,52 @@ export const tmdb = {
       } catch {
         /* mantém vazio — a Bio mostra aviso de indisponível */
       }
+    }
+
+    // SÉRIES: a API devolve `name`/`first_air_date` (e não title/release_date).
+    // Normaliza e marca media_type: 'tv' para o clique abrir /tv/{id} e filtra
+    // talk-shows, telejornais, reality shows e aparições de entrevista ("Self").
+    const SELF_GUEST_RE =
+      /^(self|himself|herself|ele mesmo|ela mesma|archive footage)(\b|\s*[-–—(])/i;
+
+    const normalizeTv = (list?: TMDBPersonMovieCredit[], isCast = false) =>
+      (list ?? [])
+        .filter((c) => {
+          if (!c.poster_path) return false;
+          if (c.genre_ids?.some((g) => TV_EXCLUDED_GENRE_IDS.has(g))) return false;
+          if (isCast && c.character && SELF_GUEST_RE.test(c.character.trim())) return false;
+          return true;
+        })
+        .map((c) => {
+          const raw = c as unknown as {
+            name?: string;
+            original_name?: string;
+            first_air_date?: string;
+          };
+          return {
+            ...c,
+            title: c.title || raw.name || '',
+            original_title: c.original_title || raw.original_name || raw.name || '',
+            release_date: c.release_date || raw.first_air_date || '',
+            media_type: 'tv' as const,
+          };
+        });
+
+    const normalizeMovie = (list?: TMDBPersonMovieCredit[]) =>
+      (list ?? [])
+        .filter((c) => Boolean(c.poster_path))
+        .map((c) => ({
+          ...c,
+          media_type: 'movie' as const,
+        }));
+
+    if (person.movie_credits) {
+      person.movie_credits.cast = normalizeMovie(person.movie_credits.cast);
+      person.movie_credits.crew = normalizeMovie(person.movie_credits.crew);
+    }
+    if (person.tv_credits) {
+      person.tv_credits.cast = normalizeTv(person.tv_credits.cast, true);
+      person.tv_credits.crew = normalizeTv(person.tv_credits.crew, false);
     }
     return person;
   },

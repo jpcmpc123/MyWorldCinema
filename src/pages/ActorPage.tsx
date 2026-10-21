@@ -3,10 +3,12 @@ import { useLocation, useNavigate, useParams, useSearchParams } from 'react-rout
 import { ArrowLeft, LayoutGrid, List, Loader2, Share2, SlidersHorizontal } from 'lucide-react';
 import { tmdb, type TMDBPersonDetails, type TMDBPersonMovieCredit } from '../services/tmdb';
 import { PosterCard } from '../components/PosterCard';
+import { PosterLightbox } from '../components/PosterLightbox';
 import { useLanguage, type TranslationKey } from '../i18n/LanguageContext';
 import {
   PERSON_ROLE_ORDER,
   isPersonRole,
+  matchesPersonGenreFilter,
   personRoleFromDepartment,
   personRoleFromJob,
   type PersonRole,
@@ -113,6 +115,7 @@ export function ActorPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showAllFilms, setShowAllFilms] = useState(false);
+  const [showPhotoLightbox, setShowPhotoLightbox] = useState(false);
 
   // Barra de abas: container com scroll horizontal + botão de cada aba
   const tabsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -145,6 +148,7 @@ export function ActorPage() {
     setBioExpanded(false);
     setFiltersOpen(false);
     setShowAllFilms(false);
+    setShowPhotoLightbox(false);
     setDecadeFilter(null);
     setGenreFilter(null);
     // Nova pessoa = aguarda a definição da aba inicial antes de animar
@@ -168,35 +172,40 @@ export function ActorPage() {
     };
   }, [id, t]);
 
-  // ---- Actor: SOMENTE movie_credits.cast, sem duplicatas -------------------
+  // ---- Actor: FILMES + SÉRIES juntos (movie_credits.cast + tv_credits.cast)
   const castFilms = useMemo(() => {
-    const seen = new Set<number>();
-    return (person?.movie_credits?.cast ?? [])
+    const seen = new Set<string>();
+    const combined = [
+      ...(person?.movie_credits?.cast ?? []),
+      ...(person?.tv_credits?.cast ?? []),
+    ];
+    return combined
       .filter((m) => {
-        if (seen.has(m.id)) return false;
-        seen.add(m.id);
+        const key = `${m.media_type ?? 'movie'}:${m.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
         return true;
       })
       .sort((a, b) => b.popularity - a.popularity);
   }, [person]);
 
   // ---- Equipe: agrupada por job (nunca misturada com atuação) --------------
-  // FILMES e SÉRIES entram na MESMA lista de cada cargo (é o que permite a aba
-  // "Criador" existir: o job 'Creator' só aparece em tv_credits).
+  // FILMES e SÉRIES entram na MESMA lista de cada cargo.
   const crewByRole = useMemo(() => {
     const lists = new Map<PersonRole, TMDBPersonMovieCredit[]>();
-    const seen = new Map<PersonRole, Set<number>>();
+    const seen = new Map<PersonRole, Set<string>>();
     const crew = [...(person?.movie_credits?.crew ?? []), ...(person?.tv_credits?.crew ?? [])];
     for (const credit of crew) {
       const role = personRoleFromJob(credit.job);
       if (!role) continue;
       let ids = seen.get(role);
       if (!ids) {
-        ids = new Set<number>();
+        ids = new Set<string>();
         seen.set(role, ids);
       }
-      if (ids.has(credit.id)) continue; // mesmo título, jobs equivalentes
-      ids.add(credit.id);
+      const key = `${credit.media_type ?? 'movie'}:${credit.id}`;
+      if (ids.has(key)) continue; // mesmo título, jobs equivalentes
+      ids.add(key);
       const list = lists.get(role) ?? [];
       list.push(credit);
       lists.set(role, list);
@@ -294,7 +303,7 @@ export function ActorPage() {
 
   const visibleFilms = useMemo(() => {
     let list = tabItems;
-    if (genreFilter) list = list.filter((f) => f.genre_ids?.includes(genreFilter));
+    if (genreFilter) list = list.filter((f) => matchesPersonGenreFilter(f.genre_ids, genreFilter));
     if (decadeFilter) list = list.filter((f) => f.release_date?.startsWith(decadeFilter.slice(0, 3)));
     const sorted = [...list];
     sorted.sort((a, b) => {
@@ -453,6 +462,22 @@ export function ActorPage() {
   const profileImg = person.profile_path
     ? tmdb.getProfileUrl(person.profile_path, 'h632')
     : null;
+  const profileImgLarge = person.profile_path
+    ? tmdb.getProfileUrl(person.profile_path, 'original')
+    : null;
+  const profileImgSrcSet = person.profile_path
+    ? `${tmdb.getProfileUrl(person.profile_path, 'w185')} 185w, ${tmdb.getProfileUrl(person.profile_path, 'h632')} 632w, ${tmdb.getProfileUrl(person.profile_path, 'original')} 1280w`
+    : undefined;
+
+  const photoLightbox = (
+    <PosterLightbox
+      open={showPhotoLightbox}
+      src={profileImgLarge || profileImg || ''}
+      srcSet={profileImgSrcSet}
+      alt={person.name}
+      onClose={() => setShowPhotoLightbox(false)}
+    />
+  );
 
   // Filtros (selects) — usados na barra do desktop e no painel recolhível do mobile
   const decadeGenreSelects = (
@@ -648,6 +673,7 @@ export function ActorPage() {
                       personName={person.name}
                       biography={person.biography}
                       profileImg={profileImg}
+                      onOpenPhoto={() => setShowPhotoLightbox(true)}
                       decadeFilter={decadeFilter}
                       genreFilter={genreFilter}
                       sortBy={sortBy}
@@ -661,6 +687,8 @@ export function ActorPage() {
             })}
           </div>
         </div>
+
+        {photoLightbox}
       </div>
     );
   }
@@ -699,13 +727,21 @@ export function ActorPage() {
       {activeTab === 'Bio' ? (
         <div key={activeTab} className="mw-fade flex flex-col lg:flex-row gap-8 py-6">
           {profileImg && (
-            <img
-              src={profileImg}
-              alt={person.name}
-              loading="lazy"
-              decoding="async"
-              className="w-[180px] h-[270px] object-cover rounded border border-lb-elevated shadow-md shrink-0"
-            />
+            <button
+              type="button"
+              onClick={() => setShowPhotoLightbox(true)}
+              aria-label={person.name}
+              className="w-[180px] h-[270px] rounded border border-lb-elevated shadow-md shrink-0 overflow-hidden cursor-pointer group relative p-0"
+            >
+              <img
+                src={profileImg}
+                alt={person.name}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
+              <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded transition-all pointer-events-none" />
+            </button>
           )}
           <div className="min-w-0">
             <h3 className="text-[11px] font-bold uppercase tracking-widest text-lb-muted mb-3">
@@ -732,7 +768,7 @@ export function ActorPage() {
                   <div className="grid grid-cols-4 lg:grid-cols-5 gap-3">
                     {listed.map((film) => (
                       <PosterCard
-                        key={film.id}
+                        key={`${film.media_type ?? 'movie'}-${film.id}`}
                         movie={{
                           id: film.id,
                           title: film.title,
@@ -740,6 +776,7 @@ export function ActorPage() {
                           release_date: film.release_date,
                           vote_average: film.vote_average,
                         }}
+                        tv={film.media_type === 'tv'}
                         size="fluid"
                       />
                     ))}
@@ -757,13 +794,21 @@ export function ActorPage() {
             {/* Right: Sidebar (foto + biografia resumida, como antes) */}
             <aside className="w-full lg:w-56 xl:w-64 flex-shrink-0 flex flex-col gap-4">
               {profileImg && (
-                <img
-                  loading="lazy"
-                  decoding="async"
-                  src={profileImg}
-                  alt={person.name}
-                  className="w-full max-w-64 lg:max-w-none mx-auto rounded border border-lb-elevated shadow-md object-cover"
-                />
+                <button
+                  type="button"
+                  onClick={() => setShowPhotoLightbox(true)}
+                  aria-label={person.name}
+                  className="w-full max-w-64 lg:max-w-none mx-auto rounded border border-lb-elevated shadow-md overflow-hidden cursor-pointer group relative p-0 block"
+                >
+                  <img
+                    loading="lazy"
+                    decoding="async"
+                    src={profileImg}
+                    alt={person.name}
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded transition-all pointer-events-none" />
+                </button>
               )}
 
               {person.biography && (
@@ -803,6 +848,8 @@ export function ActorPage() {
           </div>
         </>
       )}
+
+      {photoLightbox}
     </div>
   );
 }
