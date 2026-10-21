@@ -1,9 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Globe } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export const Footer: React.FC = () => {
-  const { t } = useLanguage();
+  const { language, toggleLanguage, t } = useLanguage();
   return (
     <footer className="hidden md:block mt-20 border-t border-lb-elevated bg-lb-bg text-lb-muted text-xs py-10">
       <div className="max-w-[950px] mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6">
@@ -13,6 +14,15 @@ export const Footer: React.FC = () => {
           <Link to="/lists" className="hover:text-white transition-colors whitespace-nowrap">{t('nav_lists')}</Link>
           <Link to="/diary" className="hover:text-white transition-colors whitespace-nowrap">{t('hdr_diary')}</Link>
           <Link to="/watchlist" className="hover:text-white transition-colors whitespace-nowrap">{t('hdr_watchlist')}</Link>
+          <button
+            type="button"
+            onClick={toggleLanguage}
+            className="inline-flex items-center gap-1 hover:text-white transition-colors cursor-pointer"
+            title={language === 'pt-BR' ? 'English (US)' : 'Português (Brasil)'}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>{language === 'pt-BR' ? 'Português (BR)' : 'English (US)'}</span>
+          </button>
         </div>
 
         <div className="flex flex-col md:items-end text-center md:text-right gap-1 text-[11px]">

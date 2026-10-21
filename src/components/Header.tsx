@@ -523,8 +523,8 @@ export const Header: React.FC = () => {
         overBackdrop
           ? 'hidden md:block absolute inset-x-0 top-0 z-50 bg-transparent select-none'
           : !(isMainPage || isProfileArea || isSettingsRoute)
-            ? 'hidden md:block sticky top-0 z-50 bg-black border-b border-lb-elevated shadow-md select-none'
-            : 'sticky top-0 z-50 bg-black border-b border-lb-elevated shadow-md select-none'
+            ? 'hidden md:block sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none'
+            : 'sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none'
       }
     >
       {/* Camada de contraste da navbar sobre o backdrop — MESMA receita do
@@ -532,17 +532,19 @@ export const Header: React.FC = () => {
           #14181c (sólido no topo) até transparente, opacidade 2/3 parada e
           0.85 no hover. Só existe nas rotas com backdrop (filme/série). */}
       {overBackdrop && <div className="site-header-bg hidden md:block" aria-hidden="true" />}
-      <div className={`relative max-w-[950px] mx-auto px-4 h-[52px] md:h-[72px] flex items-center justify-between gap-4 ${
+      <div className={`relative max-w-[950px] mx-auto px-4 h-[52px] md:h-[72px] flex items-center justify-between md:justify-center gap-4 ${
+        isAuthenticated ? 'md:gap-14' : 'md:gap-12'
+      } ${
         overBackdrop ? '[text-shadow:0_1px_3px_rgba(0,0,0,0.8)] [&_svg]:drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''
       }`}>
         {/* Mobile-only (páginas de detalhe): os botões ← e ⋮ flutuantes são
             renderizados pela própria FilmPage (o ⋮ abre o ActionBottomSheet) */}
 
-        {/* Zone 1 (Left): Brand Logo — apenas Desktop */}
+        {/* Zone 1 (Left): Brand Logo — apenas Desktop (proporção e peso visual do Letterboxd) */}
         <Link to="/" className="hidden md:flex items-center gap-2.5 shrink-0 group">
           <svg
             viewBox="0 0 32 32"
-            className="w-7 h-7 shrink-0 drop-shadow-[0_2px_6px_rgba(0,224,84,0.35)] transition-transform duration-300 group-hover:rotate-6"
+            className="w-8 h-8 shrink-0 drop-shadow-[0_2px_6px_rgba(0,224,84,0.3)] transition-transform duration-300 group-hover:rotate-6"
             aria-hidden="true"
           >
             <defs>
@@ -553,14 +555,17 @@ export const Header: React.FC = () => {
               </linearGradient>
             </defs>
             {/* Globe */}
-            <circle cx="16" cy="16" r="13" fill="url(#mw-globe)" />
-            <ellipse cx="16" cy="16" rx="6" ry="13" fill="none" stroke="#14181c" strokeOpacity="0.35" strokeWidth="1.2" />
-            <line x1="3.2" y1="16" x2="28.8" y2="16" stroke="#14181c" strokeOpacity="0.35" strokeWidth="1.2" />
-            <path d="M5.2 9h21.6M5.2 23h21.6" stroke="#14181c" strokeOpacity="0.25" strokeWidth="1.1" fill="none" />
+            <circle cx="16" cy="16" r="13.5" fill="url(#mw-globe)" />
+            <ellipse cx="16" cy="16" rx="6.2" ry="13.5" fill="none" stroke="#14181c" strokeOpacity="0.35" strokeWidth="1.2" />
+            <line x1="2.8" y1="16" x2="29.2" y2="16" stroke="#14181c" strokeOpacity="0.35" strokeWidth="1.2" />
+            <path d="M4.8 9h22.4M4.8 23h22.4" stroke="#14181c" strokeOpacity="0.25" strokeWidth="1.1" fill="none" />
             {/* Shine */}
             <ellipse cx="10.5" cy="9.5" rx="4" ry="2.6" fill="#ffffff" opacity="0.25" transform="rotate(-20 10.5 9.5)" />
           </svg>
-          <span className="font-extrabold text-[22px] tracking-tight text-white whitespace-nowrap leading-none">
+          <span
+            className="font-extrabold text-[26px] tracking-[-0.03em] text-white whitespace-nowrap leading-none"
+            style={{ fontFamily: 'var(--font-brand)' }}
+          >
             My<span className="text-lb-green">World</span>
           </span>
         </Link>
@@ -633,40 +638,44 @@ export const Header: React.FC = () => {
         )}
 
         {/* Zone 2 (Right — Desktop Unified Navigation Cluster + Mobile Right Actions):
-            No PC segue exatamente o formato Letterboxd:
-            [Avatar + USERNAME ⌄]  ⚡  FILMS  SERIES  LISTS  🔍  [+ LOG ⌄] */}
+            • Logado:    [Avatar + USERNAME ⌄]  ⚡  FILMES  SÉRIES  LISTAS  🔍  [+ REGISTRAR ⌄]
+            • Deslogado: ENTRAR  CRIAR CONTA  FILMES  SÉRIES  LISTAS  [          🔍] */}
         <div
           className={`${
             overBackdrop || isSearchRoute || isProfileArea || isSettingsRoute
               ? 'hidden md:flex'
               : 'flex'
           }${
-            isMainPage ? ' ml-auto md:ml-auto' : ' md:ml-auto'
-          } items-center gap-3 md:gap-5 text-[12px] font-bold uppercase tracking-[0.08em] shrink-0`}
+            isMainPage ? ' ml-auto md:ml-0' : ' md:ml-0'
+          } items-center gap-3 md:gap-4 text-[12px] font-bold uppercase tracking-[0.075em] shrink-0`}
         >
-          {/* User Profile Dropdown (Desktop) or Sign In (Mobile/Desktop when logged out) */}
+          {/* User Profile Dropdown (Desktop) or Sign In + Create Account (when logged out) */}
           {!isAuthenticated ? (
-            <div className="flex items-center gap-2.5">
-              {/* Seletor de idioma (desktop + rotas secundárias mobile; na Home mobile já fica à esquerda) */}
-              <button
-                type="button"
-                onClick={toggleLanguage}
-                aria-label={t('nav_language_label')}
-                title={language === 'pt-BR' ? 'English (US)' : 'Português (Brasil)'}
-                className={`${isMainPage ? 'hidden md:flex' : 'flex'} min-h-[32px] text-[11px] text-[#9ab] hover:text-white border border-white/10 rounded px-2 py-1 items-center gap-1 bg-white/5 cursor-pointer transition-colors`}
-              >
-                <Globe className="w-3.5 h-3.5" />
-                <span>{language === 'pt-BR' ? 'PT' : 'EN'}</span>
-              </button>
+            <div className="flex items-center gap-2.5 md:gap-4">
+              {/* Seletor de idioma nas rotas secundárias do mobile (na Home mobile já fica à esquerda) */}
+              {!isMainPage && (
+                <button
+                  type="button"
+                  onClick={toggleLanguage}
+                  aria-label={t('nav_language_label')}
+                  title={language === 'pt-BR' ? 'English (US)' : 'Português (Brasil)'}
+                  className="md:hidden flex min-h-[32px] text-[11px] text-[#9ab] hover:text-white border border-white/10 rounded px-2 py-1 items-center gap-1 bg-white/5 cursor-pointer transition-colors"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>{language === 'pt-BR' ? 'PT' : 'EN'}</span>
+                </button>
+              )}
               <Link
                 to="/signin"
-                className={`${isMainPage ? 'hidden md:flex' : 'flex'} min-h-[36px] items-center px-1.5 text-[11px] md:text-[12px] whitespace-nowrap transition-colors ${
-                  location.pathname === '/signin' || location.pathname === '/signup'
-                    ? 'text-white font-bold'
-                    : 'text-[#99aabb] hover:text-white'
-                }`}
+                className="flex min-h-[36px] md:min-h-0 items-center px-1.5 md:px-0 text-[11px] md:text-[12px] whitespace-nowrap transition-colors text-[#99aabb] hover:text-white"
               >
                 {t('nav_sign_in')}
+              </Link>
+              <Link
+                to="/signup"
+                className="hidden md:flex items-center text-[12px] whitespace-nowrap transition-colors text-[#99aabb] hover:text-white"
+              >
+                {t('nav_create_account')}
               </Link>
             </div>
           ) : (
@@ -679,7 +688,7 @@ export const Header: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsUserMenuOpen((v) => !v)}
-                className={`flex items-center gap-2 py-1.5 px-2 rounded-t-[3px] transition-colors cursor-pointer ${
+                className={`flex items-center gap-1.5 py-1.5 px-2 -mx-2 rounded-t-[3px] transition-colors cursor-pointer ${
                   isUserMenuOpen
                     ? 'bg-[#899aa9] text-white'
                     : 'text-[#99aabb] hover:text-white'
@@ -691,21 +700,21 @@ export const Header: React.FC = () => {
                   className="w-6 h-6 rounded-full object-cover border border-white/20 shrink-0"
                 />
                 <span
-                  className={`text-[12px] font-bold tracking-[0.08em] uppercase whitespace-nowrap transition-colors ${
+                  className={`text-[12px] font-bold tracking-[0.075em] uppercase whitespace-nowrap transition-colors ${
                     isUserMenuOpen ? 'text-white' : 'text-[#99aabb] hover:text-white'
                   }`}
                 >
                   {displayUsername}
                 </span>
                 <ChevronDown
-                  className={`w-3.5 h-3.5 stroke-[2.5] transition-colors ${
+                  className={`w-3.5 h-3.5 -ml-0.5 stroke-[2.5] transition-colors ${
                     isUserMenuOpen ? 'text-white' : 'text-[#99aabb]'
                   }`}
                 />
               </button>
 
               {isUserMenuOpen && (
-                <div className="absolute left-0 top-full w-[196px] bg-[#899aa9] rounded-b-[3px] rounded-tr-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)] border-t border-[#6c7c8b] py-1.5 z-50 text-[13px] font-normal normal-case tracking-normal select-none">
+                <div className="absolute left-0 top-full -ml-2 w-[196px] bg-[#899aa9] rounded-b-[3px] rounded-tr-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)] border-t border-[#6c7c8b] py-1.5 z-50 text-[13px] font-normal normal-case tracking-normal select-none">
                   {[
                     { label: t('nav_home'), to: '/' },
                     { label: t('nav_profile'), to: `/${encodeURIComponent(displayUsername)}` },
@@ -728,6 +737,19 @@ export const Header: React.FC = () => {
 
                   <div className="border-t border-[#738494] my-1.5" />
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleLanguage();
+                      setIsUserMenuOpen(false);
+                    }}
+                    className="w-full text-left flex items-center justify-between px-4 py-[5px] text-[#1f272e] hover:bg-[#677786] hover:text-white transition-colors cursor-pointer"
+                  >
+                    <span>{t('nav_language_tick')}</span>
+                    <span className="text-[11px] font-bold uppercase opacity-80">
+                      {language === 'pt-BR' ? 'PT' : 'EN'}
+                    </span>
+                  </button>
                   <Link
                     to="/settings"
                     onClick={() => setIsUserMenuOpen(false)}
@@ -750,19 +772,22 @@ export const Header: React.FC = () => {
             </div>
           )}
 
-          {/* Activity Zap Icon (Desktop) */}
-          <Link
-            to={`/${encodeURIComponent(displayUsername)}?tab=activity`}
-            className="hidden md:flex items-center justify-center text-[#99aabb] hover:text-white transition-colors"
-            title={t('nav_activity')}
-          >
-            <Zap className="w-4 h-4 fill-current text-transparent" />
-          </Link>
+          {/* Activity Zap Icon (Desktop — exibido apenas quando logado, igual ao Letterboxd) */}
+          {isAuthenticated && (
+            <Link
+              to="/activity"
+              className="hidden md:flex items-center justify-center text-[#99aabb] hover:text-white transition-colors"
+              title={t('nav_activity')}
+              aria-label={t('nav_activity')}
+            >
+              <Zap className="w-[15px] h-[15px] fill-current stroke-[1.8]" />
+            </Link>
+          )}
 
-          {/* Desktop Navigation Links (apenas as funcionalidades existentes no site: FILMS, SERIES, LISTS) */}
+          {/* Desktop Navigation Links (funções do site: FILMES, SÉRIES, LISTAS) */}
           <nav
             aria-label={t('nav_main')}
-            className="hidden md:flex items-center gap-5 text-[12px] font-bold uppercase tracking-[0.08em]"
+            className="hidden md:flex items-center gap-4 text-[12px] font-bold uppercase tracking-[0.075em]"
           >
             <Link
               to="/films"
@@ -794,9 +819,52 @@ export const Header: React.FC = () => {
             </Link>
           </nav>
 
-          {/* Search Icon & Typeahead — desktop only (no mobile a busca vive na BottomNav/rota /search) */}
+          {/* Search — quando deslogado exibe a pílula escura aberta (igual ao Letterboxd sem login);
+              quando logado exibe a lupa que expande ao clicar */}
           <div ref={searchRef} className="relative hidden md:block">
-            {isSearchExpanded ? (
+            {!isAuthenticated ? (
+              <form
+                onSubmit={submitSearch}
+                className="group flex items-center h-[30px] w-[150px] rounded-full bg-[#2c3440]/90 hover:bg-[#343e4c] focus-within:bg-white transition-colors px-3"
+              >
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitSearch(e);
+                    if (e.key === 'Escape') {
+                      setIsSearchOpen(false);
+                      setSearchQuery('');
+                    }
+                  }}
+                  aria-label={t('search_placeholder')}
+                  className="no-focus-ring flex-1 min-w-0 h-full bg-transparent text-xs text-[#99aabb] focus:text-gray-900 placeholder-transparent border-0 outline-none p-0 normal-case tracking-normal font-normal"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSearchResults([]);
+                      setIsSearchOpen(false);
+                    }}
+                    aria-label={t('search_clear')}
+                    className="ml-1 shrink-0 text-[#899aa9] group-focus-within:text-gray-500 hover:text-white cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    aria-label={t('search_placeholder')}
+                    className="ml-1 shrink-0 text-[#899aa9] group-focus-within:text-gray-600 hover:text-white cursor-pointer"
+                  >
+                    <Search className="w-3.5 h-3.5 stroke-[2.2]" />
+                  </button>
+                )}
+              </form>
+            ) : isSearchExpanded ? (
               <form
                 onSubmit={submitSearch}
                 className="flex items-center h-7 bg-white rounded-full px-2.5 w-36 sm:w-44"
@@ -843,11 +911,11 @@ export const Header: React.FC = () => {
             ) : (
               <button
                 onClick={() => setIsSearchExpanded(true)}
-                className="text-[#99aabb] hover:text-white p-1 transition-colors cursor-pointer flex items-center justify-center"
+                className="text-[#99aabb] hover:text-white p-0.5 transition-colors cursor-pointer flex items-center justify-center"
                 title={t('search_label')}
                 aria-label={t('search_label')}
               >
-                <Search className="w-4 h-4 stroke-[2.2]" />
+                <Search className="w-[17px] h-[17px] stroke-[2.2]" />
               </button>
             )}
 
@@ -893,24 +961,26 @@ export const Header: React.FC = () => {
             )}
           </div>
 
-          {/* "+ LOG ⌄" Split Green Button — desktop only */}
-          <div className="hidden md:flex items-center">
-            <button
-              onClick={() => openLogModal()}
-              className="bg-[#00b020] hover:bg-[#00c030] flex items-center gap-1 text-white font-bold text-[12px] px-2.5 h-[26px] rounded-l-[3px] cursor-pointer tracking-[0.06em] whitespace-nowrap shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[3]" />
-              <span>{t('nav_log')}</span>
-            </button>
-            <button
-              onClick={() => navigate('/lists/new')}
-              title={t('create_list_title')}
-              aria-label={t('create_list_title')}
-              className="bg-[#00a01d] hover:bg-[#00b522] px-1.5 h-[26px] rounded-r-[3px] border-l border-black/20 text-white cursor-pointer flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] transition-colors"
-            >
-              <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
-            </button>
-          </div>
+          {/* "+ LOG ⌄" / "+ REGISTRAR ⌄" Split Green Button — exibido apenas quando logado, igual ao Letterboxd */}
+          {isAuthenticated && (
+            <div className="hidden md:flex items-center">
+              <button
+                onClick={() => openLogModal()}
+                className="bg-[#00b020] hover:bg-[#00c030] flex items-center gap-1 text-white font-bold uppercase text-[12px] px-2.5 h-[26px] rounded-l-[3px] cursor-pointer tracking-[0.06em] whitespace-nowrap shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                <span>{t('nav_log')}</span>
+              </button>
+              <button
+                onClick={() => navigate('/list/new')}
+                title={t('create_list_title')}
+                aria-label={t('create_list_title')}
+                className="bg-[#009d1c] hover:bg-[#00b020] px-1.5 h-[26px] rounded-r-[3px] border-l border-black/15 text-white cursor-pointer flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] transition-colors"
+              >
+                <ChevronDown className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
