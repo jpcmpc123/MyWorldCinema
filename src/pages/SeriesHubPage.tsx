@@ -443,7 +443,7 @@ export const SeriesHubPage: React.FC = () => {
               return (
                 <div key={show.id} className="flex flex-col space-y-2">
                   {/* Poster */}
-                  <PosterCard movie={show} size="fluid" tv />
+                  <PosterCard movie={show} size="fluid" tv priority />
 
                   {/* Triple Stats (Watched, Rating, Liked) */}
                   <div className="flex items-center justify-between text-[11px] font-semibold pt-1 px-1">
@@ -506,8 +506,8 @@ export const SeriesHubPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2">
-          {justReviewedSeries.map((m) => (
-            <PosterCard key={m.id} movie={m} size="fluid" tv />
+          {justReviewedSeries.map((m, idx) => (
+            <PosterCard key={m.id} movie={m} size="fluid" tv priority={idx < 6} />
           ))}
         </div>
       </section>

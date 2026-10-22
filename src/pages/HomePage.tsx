@@ -149,7 +149,7 @@ export const HomePage: React.FC = () => {
             ) : (
               <div className="grid grid-cols-4 gap-2.5">
                 {popularThisWeek.map((movie) => (
-                  <PosterCard key={movie.id} movie={movie} size="fluid" enableLongPressActions />
+                  <PosterCard key={movie.id} movie={movie} size="fluid" enableLongPressActions priority />
                 ))}
               </div>
             )}

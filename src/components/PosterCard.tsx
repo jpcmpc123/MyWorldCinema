@@ -26,6 +26,7 @@ interface PosterCardProps {
   disableHoverActions?: boolean;
   faded?: boolean;
   linkState?: Record<string, unknown>;
+  priority?: boolean;
 }
 
 const PosterCardBase: React.FC<PosterCardProps> = ({
@@ -37,6 +38,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   disableHoverActions = false,
   faded = false,
   linkState,
+  priority = false,
 }) => {
   const openActionSheet = useOpenActionSheet();
   const { watched, liked, inWatchlist, rating, overridePoster } = useMovieState(movie.id);
@@ -84,8 +86,16 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const year = rawDate ? rawDate.slice(0, 4) : '';
   const tooltipLabel = year ? `${displayTitle} (${year})` : displayTitle;
 
-  // Fade-in do pôster: shimmer escuro enquanto carrega, imagem surge suave
+  // Estado de carregamento do pôster: exibe o nome do filme/série centralizado
+  // (padrão Letterboxd mobile) enquanto a imagem carrega ou caso falhe/não exista
   const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setIsLoaded(false);
+    setHasError(false);
+  }, [displayPosterPath]);
+
   const longPressHandlers = useLongPress(
     () => {
       if (enableLongPressActions) {
@@ -145,7 +155,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
 
       {/* Poster Wrapper */}
       <div
-        className={`relative aspect-[2/3] rounded-[4px] bg-lb-surface border border-white/12 transition-[box-shadow,opacity] duration-150 shadow-md ${
+        className={`relative aspect-[2/3] rounded-[4px] bg-[#232a31] border border-white/12 transition-[box-shadow,opacity] duration-150 shadow-md ${
           !disableHoverActions
             ? menuOpen
               ? 'ring-2 ring-[#ddeeff]'
@@ -167,7 +177,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
           onPointerDown={handlePrefetch}
           onMouseEnter={handlePrefetch}
           onTouchStart={handlePrefetch}
-          className={`block w-full h-full rounded-[4px] overflow-hidden transition-opacity duration-150 ${
+          className={`relative block w-full h-full rounded-[4px] overflow-hidden transition-opacity duration-150 ${
             faded
               ? menuOpen
                 ? 'opacity-100'
@@ -175,38 +185,44 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
               : ''
           }`}
         >
-          {displayPosterPath ? (
-            <>
-              {/* Skeleton shimmer escuro atrás do pôster enquanto carrega */}
-              {!isLoaded && <div className="absolute inset-0 mw-shimmer" aria-hidden="true" />}
-              <img
-                ref={(el) => {
-                  if (el && el.complete && el.naturalWidth > 0 && !isLoaded) {
-                    setIsLoaded(true);
-                  }
-                }}
-                src={tmdb.getImageUrl(displayPosterPath, 'w500')}
-                srcSet={`${tmdb.getImageUrl(displayPosterPath, 'w185')} 185w, ${tmdb.getImageUrl(displayPosterPath, 'w342')} 342w, ${tmdb.getImageUrl(displayPosterPath, 'w500')} 500w, ${tmdb.getImageUrl(displayPosterPath, 'w780')} 780w`}
-                sizes={
-                  size === 'sm'
-                    ? '96px'
-                    : size === 'lg'
-                      ? '(max-width: 640px) 192px, 280px'
-                      : '(max-width: 640px) 25vw, (max-width: 1024px) 22vw, 240px'
-                }
-                alt={displayTitle}
-                onLoad={() => setIsLoaded(true)}
-                className={`w-full h-full object-cover transition-opacity duration-300 ${
-                  isLoaded ? 'opacity-100' : 'opacity-0'
-                }`}
-                loading="lazy"
-                decoding="async"
-              />
-            </>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center p-2 text-center text-[11px] text-lb-muted bg-lb-surface">
-              <span className="line-clamp-3">{displayTitle}</span>
+          {/* Título centralizado (estilo Letterboxd) exibido enquanto o pôster carrega ou se ausente */}
+          {(!isLoaded || !displayPosterPath || hasError) && (
+            <div
+              className="absolute inset-0 flex items-center justify-center p-2 text-center bg-[#232a31] select-none"
+              aria-hidden={Boolean(displayPosterPath && !hasError)}
+            >
+              <span className="text-[11px] sm:text-xs leading-[1.3] font-normal text-[#9ab] line-clamp-4 break-words">
+                {displayTitle}
+              </span>
             </div>
+          )}
+
+          {displayPosterPath && !hasError && (
+            <img
+              ref={(el) => {
+                if (el && el.complete && el.naturalWidth > 0 && !isLoaded) {
+                  setIsLoaded(true);
+                }
+              }}
+              src={tmdb.getImageUrl(displayPosterPath, size === 'lg' ? 'w500' : 'w342')}
+              srcSet={`${tmdb.getImageUrl(displayPosterPath, 'w185')} 185w, ${tmdb.getImageUrl(displayPosterPath, 'w342')} 342w, ${tmdb.getImageUrl(displayPosterPath, 'w500')} 500w`}
+              sizes={
+                size === 'sm'
+                  ? '96px'
+                  : size === 'lg'
+                    ? '(max-width: 640px) 192px, 280px'
+                    : '(max-width: 640px) 105px, (max-width: 1024px) 160px, 220px'
+              }
+              alt={displayTitle}
+              onLoad={() => setIsLoaded(true)}
+              onError={() => setHasError(true)}
+              className={`relative z-10 w-full h-full object-cover transition-opacity duration-200 ${
+                isLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : 'auto'}
+              decoding="async"
+            />
           )}
         </Link>
 

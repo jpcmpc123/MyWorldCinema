@@ -2,14 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Eye, Star, Heart, ChevronDown } from 'lucide-react';
 import { tmdb, type TMDBMovie } from '../services/tmdb';
+import { tabDataCache } from '../services/tabDataCache';
 import { PosterCard } from '../components/PosterCard';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export const FilmsHubPage: React.FC = () => {
   const { t } = useLanguage();
-  const [popularFilms, setPopularFilms] = useState<TMDBMovie[]>([]);
-  const [justReviewedFilms, setJustReviewedFilms] = useState<TMDBMovie[]>([]);
-  const [, setLoading] = useState(true);
+  const [cachedHub] = useState(() => tabDataCache.getFilmsHub());
+  const [popularFilms, setPopularFilms] = useState<TMDBMovie[]>(() =>
+    cachedHub ? cachedHub.popular.slice(0, 16) : [],
+  );
+  const [justReviewedFilms, setJustReviewedFilms] = useState<TMDBMovie[]>(() =>
+    cachedHub ? cachedHub.mostAnticipated.slice(0, 12) : [],
+  );
+  const [, setLoading] = useState(() => !cachedHub);
 
   // Search input in "{t('find_a_film').toUpperCase()}"
   const [findQuery, setFindQuery] = useState('');
@@ -66,6 +72,7 @@ export const FilmsHubPage: React.FC = () => {
         // "Just reviewed" do hub desktop passa a ser também curado por data:
         // nada de lançados na fileira de inéditos
         const hub = await tmdb.getFilmsHubSections();
+        tabDataCache.setFilmsHub(hub);
         setPopularFilms(hub.popular.slice(0, 16));
         setJustReviewedFilms(hub.mostAnticipated.slice(0, 12));
       } catch (err) {
@@ -408,7 +415,7 @@ export const FilmsHubPage: React.FC = () => {
               return (
                 <div key={movie.id} className="flex flex-col space-y-2">
                   {/* Poster */}
-                  <PosterCard movie={movie} size="fluid" />
+                  <PosterCard movie={movie} size="fluid" priority />
 
                   {/* MyWorld Triple Stats (Watched, Rating, Liked) */}
                   <div className="flex items-center justify-between text-[11px] font-semibold pt-1 px-1">
@@ -474,8 +481,8 @@ export const FilmsHubPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2">
-          {justReviewedFilms.map((m) => (
-            <PosterCard key={m.id} movie={m} size="fluid" />
+          {justReviewedFilms.map((m, idx) => (
+            <PosterCard key={m.id} movie={m} size="fluid" priority={idx < 6} />
           ))}
         </div>
       </section>

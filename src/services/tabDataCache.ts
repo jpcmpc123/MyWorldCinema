@@ -14,17 +14,34 @@ const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutos
 let memoryFilmsHub: HubSectionsData | null = null;
 let memorySeriesHub: HubSectionsData | null = null;
 
-const FILMS_KEY = 'mw_cache_films_hub_v2';
-const SERIES_KEY = 'mw_cache_series_hub_v2';
+const FILMS_KEY = 'mw_cache_films_hub_v6';
+const SERIES_KEY = 'mw_cache_series_hub_v6';
 
-function readSession(key: string): HubSectionsData | null {
+if (typeof window !== 'undefined') {
+  try {
+    for (const k of [
+      'mw_cache_films_hub_v2',
+      'mw_cache_series_hub_v2',
+      'mw_cache_films_hub_v5',
+      'mw_cache_series_hub_v5',
+    ]) {
+      window.sessionStorage.removeItem(k);
+      window.localStorage.removeItem(k);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function readStorage(key: string): HubSectionsData | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.sessionStorage.getItem(key);
+    const raw = window.sessionStorage.getItem(key) || window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as HubSectionsData;
     if (Date.now() - parsed.timestamp > CACHE_TTL_MS) {
       window.sessionStorage.removeItem(key);
+      window.localStorage.removeItem(key);
       return null;
     }
     return parsed;
@@ -33,12 +50,18 @@ function readSession(key: string): HubSectionsData | null {
   }
 }
 
-function writeSession(key: string, data: HubSectionsData): void {
+function writeStorage(key: string, data: HubSectionsData): void {
   if (typeof window === 'undefined') return;
+  const serialized = JSON.stringify(data);
   try {
-    window.sessionStorage.setItem(key, JSON.stringify(data));
+    window.sessionStorage.setItem(key, serialized);
   } catch {
     /* sessionStorage cheio ou desabilitado */
+  }
+  try {
+    window.localStorage.setItem(key, serialized);
+  } catch {
+    /* localStorage cheio ou desabilitado */
   }
 }
 
@@ -47,10 +70,10 @@ export const tabDataCache = {
     if (memoryFilmsHub && Date.now() - memoryFilmsHub.timestamp < CACHE_TTL_MS) {
       return memoryFilmsHub;
     }
-    const fromSession = readSession(FILMS_KEY);
-    if (fromSession) {
-      memoryFilmsHub = fromSession;
-      return fromSession;
+    const fromStorage = readStorage(FILMS_KEY);
+    if (fromStorage) {
+      memoryFilmsHub = fromStorage;
+      return fromStorage;
     }
     return null;
   },
@@ -61,17 +84,17 @@ export const tabDataCache = {
       timestamp: Date.now(),
     };
     memoryFilmsHub = entry;
-    writeSession(FILMS_KEY, entry);
+    writeStorage(FILMS_KEY, entry);
   },
 
   getSeriesHub(): HubSectionsData | null {
     if (memorySeriesHub && Date.now() - memorySeriesHub.timestamp < CACHE_TTL_MS) {
       return memorySeriesHub;
     }
-    const fromSession = readSession(SERIES_KEY);
-    if (fromSession) {
-      memorySeriesHub = fromSession;
-      return fromSession;
+    const fromStorage = readStorage(SERIES_KEY);
+    if (fromStorage) {
+      memorySeriesHub = fromStorage;
+      return fromStorage;
     }
     return null;
   },
@@ -82,38 +105,30 @@ export const tabDataCache = {
       timestamp: Date.now(),
     };
     memorySeriesHub = entry;
-    writeSession(SERIES_KEY, entry);
+    writeStorage(SERIES_KEY, entry);
   },
 
   /**
    * Pré-carrega assincronamente as vitrines das abas principais
-   * sem bloquear a renderização nem causar travamentos.
+   * priorizando Filmes primeiro para não disputar conexões na abertura.
    */
   async preloadAll(): Promise<void> {
-    const needFilms = !tabDataCache.getFilmsHub();
-    const needSeries = !tabDataCache.getSeriesHub();
-
-    const tasks: Promise<unknown>[] = [];
-    if (needFilms) {
-      tasks.push(
-        tmdb.getFilmsHubSections().then((hub) => {
-          tabDataCache.setFilmsHub(hub);
-        }).catch((err) => {
-          console.warn('[tabDataCache] Falha ao pré-carregar filmes:', err);
-        })
-      );
+    if (!tabDataCache.getFilmsHub()) {
+      try {
+        const hub = await tmdb.getFilmsHubSections();
+        tabDataCache.setFilmsHub(hub);
+      } catch (err) {
+        console.warn('[tabDataCache] Falha ao pré-carregar filmes:', err);
+      }
     }
-    if (needSeries) {
-      tasks.push(
-        tmdb.getSeriesHubSections().then((hub) => {
-          tabDataCache.setSeriesHub(hub);
-        }).catch((err) => {
-          console.warn('[tabDataCache] Falha ao pré-carregar séries:', err);
-        })
-      );
-    }
-    if (tasks.length > 0) {
-      await Promise.allSettled(tasks);
+    if (!tabDataCache.getSeriesHub()) {
+      try {
+        const hub = await tmdb.getSeriesHubSections();
+        tabDataCache.setSeriesHub(hub);
+      } catch (err) {
+        console.warn('[tabDataCache] Falha ao pré-carregar séries:', err);
+      }
     }
   },
 };
+

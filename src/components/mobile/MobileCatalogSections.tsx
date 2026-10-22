@@ -81,12 +81,19 @@ const PosterRail: React.FC<{ movies: TMDBMovie[]; isSeries: boolean; children?: 
 }) => (
   <div
     data-h-scroll="true"
-    className="flex gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory -mx-4 px-4 scroll-px-4 [contain:content]"
+    className="flex gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory -mx-4 px-4 scroll-px-4"
   >
-    {movies.slice(0, 18).map((m) => (
+    {movies.slice(0, 18).map((m, idx) => (
       <div key={m.id} className={`${ITEM_W} snap-start`}>
         <PosterShell>
-          <PosterCard movie={m} size="fluid" showDetails={false} tv={isSeries} enableLongPressActions />
+          <PosterCard
+            movie={m}
+            size="fluid"
+            showDetails={false}
+            tv={isSeries}
+            enableLongPressActions
+            priority={idx < 6}
+          />
         </PosterShell>
         {children?.(m)}
       </div>

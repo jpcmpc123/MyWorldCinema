@@ -508,436 +508,406 @@ const isFuture = (m: TMDBMovie) => {
 //  3. Títulos em forte ascensão no Trending Diário e Semanal
 // ---------------------------------------------------------------------------
 const popularWeekPoolCache = new Map<string, { items: TMDBMovie[]; expires: number }>();
+const popularWeekInFlight = new Map<string, Promise<TMDBMovie[]>>();
+let filmsHubInFlight: Promise<{
+  popular: TMDBMovie[];
+  highestRated: TMDBMovie[];
+  mostWatched: TMDBMovie[];
+  mostAnticipated: TMDBMovie[];
+}> | null = null;
+let seriesHubInFlight: Promise<{
+  popular: TMDBMovie[];
+  highestRated: TMDBMovie[];
+  mostWatched: TMDBMovie[];
+  mostAnticipated: TMDBMovie[];
+}> | null = null;
 
 async function buildCuratedPopularMoviesPool(batchIndex = 0): Promise<TMDBMovie[]> {
-  const cacheKey = `movie:pop_week_pool:${batchIndex}:${tmdbLanguage}`;
+  const cacheKey = `movie:pop_week_pool_v6:${batchIndex}:${tmdbLanguage}`;
   const cached = popularWeekPoolCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) {
     return cached.items;
   }
 
-  const p1 = batchIndex * 2 + 1;
-  const p2 = batchIndex * 2 + 2;
-  const discPage = batchIndex + 1;
+  const inflight = popularWeekInFlight.get(cacheKey);
+  if (inflight) return inflight;
 
-  const date65DaysAgo = daysOffsetIso(-65);
-  const date110DaysAgo = daysOffsetIso(-110);
-  const date150DaysAgo = daysOffsetIso(-150);
-  const date210DaysAgo = daysOffsetIso(-210);
+  const task = (async () => {
+    const discPage = batchIndex + 1;
+    const date60DaysAgo = daysOffsetIso(-60);
+    const date120DaysAgo = daysOffsetIso(-120);
 
-  const emptyRes: TMDBResponse<TMDBMovie> = {
-    page: 1,
-    results: [],
-    total_pages: 1,
-    total_results: 0,
-  };
+    const emptyRes: TMDBResponse<TMDBMovie> = {
+      page: 1,
+      results: [],
+      total_pages: 1,
+      total_results: 0,
+    };
 
-  const [
-    nowPlayingRes1,
-    nowPlayingRes2,
-    theatricalDiscRes,
-    digitalDiscRes,
-    streamingDiscRes,
-    trendDayRes,
-    trendWeekRes1,
-    trendWeekRes2,
-    popularRes,
-  ] = await Promise.all([
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/movie/now_playing', { page: p1 }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/movie/now_playing', { page: p2 }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
-      with_release_type: '2|3',
-      'primary_release_date.gte': date65DaysAgo,
-      'primary_release_date.lte': TMDB_TODAY,
-      sort_by: 'popularity.desc',
-      'vote_count.gte': 12,
-      include_adult: 'false',
-      page: discPage,
-    }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
-      with_release_type: '4|5|6',
-      'release_date.gte': date110DaysAgo,
-      'release_date.lte': TMDB_TODAY,
-      'primary_release_date.gte': date210DaysAgo,
-      'primary_release_date.lte': TMDB_TODAY,
-      sort_by: 'popularity.desc',
-      'vote_count.gte': 20,
-      include_adult: 'false',
-      page: discPage,
-    }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
-      with_watch_monetization_types: 'flatrate|rent|buy',
-      watch_region: 'US',
-      'primary_release_date.gte': date150DaysAgo,
-      'primary_release_date.lte': TMDB_TODAY,
-      sort_by: 'popularity.desc',
-      'vote_count.gte': 25,
-      include_adult: 'false',
-      page: discPage,
-    }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/trending/movie/day', { page: discPage }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/trending/movie/week', { page: p1 }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/trending/movie/week', { page: p2 }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/movie/popular', { page: discPage }).catch(() => emptyRes),
-  ]);
+    // IMPORTANTE sobre o /discover/movie do TMDB:
+    // Para que `with_release_type` funcione de verdade (separando tipo 3 = Cinema
+    // de tipo 4 = Digital/Streaming), é OBRIGATÓRIO usar `region` + `release_date.gte/lte`.
+    // Apenas 5 chamadas leves em paralelo (~220ms) entregam todo o pool de cinema + digital + trending.
+    const [
+      theatricalBR,
+      theatricalUS,
+      digitalUS,
+      digitalBR,
+      trendWeekRes,
+    ] = await Promise.all([
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+        with_release_type: '3',
+        region: 'BR',
+        'release_date.gte': date60DaysAgo,
+        'release_date.lte': TMDB_TODAY,
+        sort_by: 'popularity.desc',
+        'vote_count.gte': 10,
+        include_adult: 'false',
+        page: discPage,
+      }).catch(() => emptyRes),
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+        with_release_type: '3',
+        region: 'US',
+        'release_date.gte': date60DaysAgo,
+        'release_date.lte': TMDB_TODAY,
+        sort_by: 'popularity.desc',
+        'vote_count.gte': 10,
+        include_adult: 'false',
+        page: discPage,
+      }).catch(() => emptyRes),
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+        with_release_type: '4|5|6',
+        region: 'US',
+        'release_date.gte': date120DaysAgo,
+        'release_date.lte': TMDB_TODAY,
+        sort_by: 'popularity.desc',
+        include_adult: 'false',
+        page: discPage,
+      }).catch(() => emptyRes),
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+        with_release_type: '4|5|6',
+        region: 'BR',
+        'release_date.gte': date120DaysAgo,
+        'release_date.lte': TMDB_TODAY,
+        sort_by: 'popularity.desc',
+        include_adult: 'false',
+        page: discPage,
+      }).catch(() => emptyRes),
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>('/trending/movie/week', { page: discPage }).catch(() => emptyRes),
+    ]);
 
-  const theatricalList = [
-    ...(nowPlayingRes1.results || []),
-    ...(nowPlayingRes2.results || []),
-    ...(theatricalDiscRes.results || []),
-  ].map(normalizeMediaItem);
+    const theatricalList = [
+      ...(theatricalBR.results || []),
+      ...(theatricalUS.results || []),
+    ].map(normalizeMediaItem);
 
-  const streamingList = [
-    ...(digitalDiscRes.results || []),
-    ...(streamingDiscRes.results || []),
-  ].map(normalizeMediaItem);
+    const digitalAndStreamingList = [
+      ...(digitalUS.results || []),
+      ...(digitalBR.results || []),
+    ].map(normalizeMediaItem);
 
-  const trendDayList = (trendDayRes.results || []).map(normalizeMediaItem);
-  const trendWeekList = [
-    ...(trendWeekRes1.results || []),
-    ...(trendWeekRes2.results || []),
-  ].map(normalizeMediaItem);
-  const popularList = (popularRes.results || []).map(normalizeMediaItem);
+    const trendWeekList = (trendWeekRes.results || []).map(normalizeMediaItem);
 
-  const theatricalRankMap = new Map<number, number>();
-  theatricalList.forEach((m, idx) => {
-    if (!theatricalRankMap.has(m.id)) theatricalRankMap.set(m.id, idx);
-  });
+    const theatricalRankMap = new Map<number, number>();
+    theatricalList.forEach((m, idx) => {
+      if (!theatricalRankMap.has(m.id)) theatricalRankMap.set(m.id, idx);
+    });
 
-  const streamingRankMap = new Map<number, number>();
-  streamingList.forEach((m, idx) => {
-    if (!streamingRankMap.has(m.id)) streamingRankMap.set(m.id, idx);
-  });
+    const digitalRankMap = new Map<number, number>();
+    digitalAndStreamingList.forEach((m, idx) => {
+      if (!digitalRankMap.has(m.id)) digitalRankMap.set(m.id, idx);
+    });
 
-  const trendDayRankMap = new Map<number, number>();
-  trendDayList.forEach((m, idx) => {
-    if (!trendDayRankMap.has(m.id)) trendDayRankMap.set(m.id, idx);
-  });
+    const trendWeekRankMap = new Map<number, number>();
+    trendWeekList.forEach((m, idx) => {
+      if (!trendWeekRankMap.has(m.id)) trendWeekRankMap.set(m.id, idx);
+    });
 
-  const trendWeekRankMap = new Map<number, number>();
-  trendWeekList.forEach((m, idx) => {
-    if (!trendWeekRankMap.has(m.id)) trendWeekRankMap.set(m.id, idx);
-  });
-
-  const popularRankMap = new Map<number, number>();
-  popularList.forEach((m, idx) => {
-    if (!popularRankMap.has(m.id)) popularRankMap.set(m.id, idx);
-  });
-
-  const candidatesMap = new Map<number, TMDBMovie>();
-  for (const list of [theatricalList, streamingList, trendDayList, trendWeekList, popularList]) {
-    for (const item of list) {
-      if (item && item.id && !candidatesMap.has(item.id)) {
-        candidatesMap.set(item.id, item);
-      }
-    }
-  }
-
-  const scored: { movie: TMDBMovie; score: number }[] = [];
-
-  for (const cand of candidatesMap.values()) {
-    if (!cand.poster_path) continue;
-    const d = itemDate(cand);
-    // Bloqueia inéditos futuros (vão para Most Anticipated)
-    if (!d || d > TMDB_TODAY) continue;
-
-    const ageDays = daysSinceDate(d);
-    const votes = cand.vote_count || 0;
-    const rating = cand.vote_average || 0;
-    const pop = cand.popularity || 0;
-
-    // Piso dinâmico de votos: lançamentos recentíssimos nos cinemas têm menos votos acumulados
-    const minVotesRequired = ageDays <= 21 ? 8 : ageDays <= 60 ? 15 : 25;
-    if (votes < minVotesRequired) continue;
-    if (votes < 60 && rating > 0 && rating < 4.6) continue;
-
-    const thRank = theatricalRankMap.get(cand.id);
-    const stRank = streamingRankMap.get(cand.id);
-    const tdRank = trendDayRankMap.get(cand.id);
-    const twRank = trendWeekRankMap.get(cand.id);
-    const popRank = popularRankMap.get(cand.id);
-
-    const isCurrentTheatrical = thRank !== undefined && ageDays >= -1 && ageDays <= 75;
-    const isRecentStreaming = stRank !== undefined && ageDays >= 0 && ageDays <= 165;
-    const inTrending = tdRank !== undefined || twRank !== undefined;
-
-    let score = 0;
-
-    // 1. PRIORIDADE MÁXIMA: Grandes lançamentos em cartaz nos cinemas
-    if (isCurrentTheatrical && thRank !== undefined) {
-      score += Math.max(150, 315 - thRank * 2.8);
-
-      // Multiplicador de grande lançamento / blockbuster em cartaz
-      if (inTrending || popRank !== undefined || votes >= 100 || pop >= 75) {
-        score += 170;
-      }
-      if (votes >= 350 || (inTrending && votes >= 60)) {
-        score += 85;
-      }
-
-      // Curva de frescor na janela de cinema
-      if (ageDays <= 21) {
-        score += 110;
-      } else if (ageDays <= 45) {
-        score += 80;
-      } else {
-        score += 45;
+    // Ao mesclar candidatos de múltiplas regiões (ex.: BR estreia quinta-feira, US sexta-feira),
+    // preserva sempre a data já lançada (<= TMDB_TODAY) mais antiga para não descartar
+    // estreias da semana no Brasil cujo lançamento nos EUA é 1 dia depois.
+    const candidatesMap = new Map<number, TMDBMovie>();
+    for (const list of [theatricalList, digitalAndStreamingList, trendWeekList]) {
+      for (const item of list) {
+        if (!item || !item.id) continue;
+        const existing = candidatesMap.get(item.id);
+        if (!existing) {
+          candidatesMap.set(item.id, { ...item });
+        } else {
+          const newDate = itemDate(item);
+          const oldDate = itemDate(existing);
+          if (
+            newDate &&
+            newDate <= TMDB_TODAY &&
+            (!oldDate || oldDate > TMDB_TODAY || newDate < oldDate)
+          ) {
+            existing.release_date = newDate;
+          }
+        }
       }
     }
 
-    // 2. SEGUNDA PRIORIDADE: Filmes recém-lançados no streaming / digital
-    if (isRecentStreaming && stRank !== undefined) {
-      score += Math.max(85, 195 - stRank * 2.4);
+    const scored: { movie: TMDBMovie; score: number }[] = [];
 
-      if (ageDays <= 125 && inTrending) {
-        score += 135;
-      } else if (ageDays <= 95 && votes >= 50) {
-        score += 65;
+    for (const cand of candidatesMap.values()) {
+      if (!cand.poster_path) continue;
+      const d = itemDate(cand);
+      // Bloqueia inéditos futuros (vão para Most Anticipated)
+      if (!d || d > TMDB_TODAY) continue;
+
+      const ageDays = daysSinceDate(d);
+      const votes = cand.vote_count || 0;
+      const rating = cand.vote_average || 0;
+      const pop = cand.popularity || 0;
+
+      // Piso de votos para garantir que apenas lançamentos reais e relevantes entrem
+      const minVotesRequired = ageDays <= 25 ? 20 : 30;
+      if (votes < minVotesRequired) continue;
+      if (votes < 70 && rating > 0 && rating < 4.8) continue;
+
+      // Evita que relançamentos comemorativos (ex.: Avengers Endgame 2019 Encore) sejam
+      // tratados como estreias inéditas de cinema
+      const isOldReRelease = ageDays > 180;
+
+      const thRank = !isOldReRelease ? theatricalRankMap.get(cand.id) : undefined;
+      const digRank = digitalRankMap.get(cand.id);
+      const twRank = trendWeekRankMap.get(cand.id);
+      const inTrending = twRank !== undefined;
+
+      // Classificação estrita em 3 escalões mutuamente exclusivos:
+      // 1. EXCLUSIVO NOS CINEMAS AGORA: Teve estreia Type 3 (Cinema) nos últimos 65 dias
+      //    e AINDA NÃO saiu no Digital/Streaming (Type 4/5/6).
+      const isExclusiveCinemaNow =
+        thRank !== undefined && digRank === undefined && ageDays >= -1 && ageDays <= 65;
+
+      // 2. TRANSIÇÃO CINEMA -> STREAMING RECENTE: Estreou nos cinemas recentemente e
+      //    acabou de chegar ao Digital/Streaming (ou blockbuster recente com alto volume de votos no digital).
+      const isCinemaToStreamingRecent =
+        !isExclusiveCinemaNow &&
+        ((thRank !== undefined && digRank !== undefined && ageDays <= 135) ||
+          (thRank === undefined && digRank !== undefined && votes >= 500 && ageDays <= 135));
+
+      // 3. ORIGINAL DE STREAMING: Foi direto para Digital/Flatrate sem janela ampla de cinema.
+      const isDirectStreamingOriginal =
+        !isExclusiveCinemaNow && !isCinemaToStreamingRecent && digRank !== undefined;
+
+      let score = 0;
+
+      if (isExclusiveCinemaNow && thRank !== undefined) {
+        // Escalão 1 (Topo absoluto): Filmes lançados recentemente no cinema e ainda inéditos em streaming
+        score += 750 - Math.min(180, thRank * 3.5);
+        if (inTrending) score += 160;
+        if (ageDays <= 21) score += 110;
+        else if (ageDays <= 45) score += 70;
+      } else if (isCinemaToStreamingRecent) {
+        // Escalão 2: Grandes filmes de cinema que saíram recentemente no streaming/digital
+        score += 460 - Math.min(140, (digRank ?? 20) * 2.5);
+        if (inTrending) score += 110;
+      } else if (isDirectStreamingOriginal) {
+        // Escalão 3: Filmes originais lançados direto no streaming
+        score += 220 - Math.min(90, (digRank ?? 20) * 2.0);
       }
-    } else if (!isCurrentTheatrical && ageDays >= 0 && ageDays <= 110 && inTrending) {
-      // Filmes recentes no Trending mesmo que não listados no lote 1 do discover digital
-      score += 155;
+
+      // Bônus de momento semanal
+      if (twRank !== undefined) {
+        score += Math.max(20, 140 - twRank * 2.5);
+      }
+
+      // Relevância de público e nota
+      score += Math.min(90, Math.log10(Math.max(10, votes)) * 25);
+      score += Math.min(60, Math.sqrt(Math.max(1, pop)) * 3.2);
+      if (rating >= 6.2) {
+        score += (rating - 5.8) * 14;
+      } else if (rating > 0 && rating < 5.2) {
+        score -= 35;
+      }
+
+      if (ageDays > 365) {
+        score -= 200;
+      } else if (ageDays > 165) {
+        score -= 80;
+      }
+
+      scored.push({ movie: cand, score });
     }
 
-    // 3. TERCEIRA PRIORIDADE: Momento Semanal e Diário (Trending)
-    if (twRank !== undefined) {
-      score += Math.max(35, 165 - twRank * 2.5);
-    }
-    if (tdRank !== undefined) {
-      score += Math.max(30, 125 - tdRank * 3.2);
-    }
-    if (popRank !== undefined) {
-      score += Math.max(15, 65 - popRank * 1.8);
-    }
+    scored.sort((a, b) => b.score - a.score || (b.movie.popularity || 0) - (a.movie.popularity || 0));
+    const items = scored.map((s) => s.movie);
+    popularWeekPoolCache.set(cacheKey, { items, expires: Date.now() + TMDB_CACHE_TTL_MS });
+    return items;
+  })().finally(() => {
+    popularWeekInFlight.delete(cacheKey);
+  });
 
-    // 4. Bônus de consenso entre cinema, streaming e trending
-    if (isCurrentTheatrical && isRecentStreaming) {
-      score += 85;
-    }
-    if (tdRank !== undefined && twRank !== undefined) {
-      score += 60;
-    }
-
-    // 5. Relevância de público e qualidade
-    score += Math.min(105, Math.log10(Math.max(10, votes)) * 28);
-    score += Math.min(70, Math.sqrt(Math.max(1, pop)) * 3.8);
-    if (rating >= 6.2) {
-      score += (rating - 5.8) * 16;
-    } else if (rating > 0 && rating < 5.2) {
-      score -= 35;
-    }
-
-    // 6. Decaimento para filmes antigos de catálogo (evita que filmes de anos
-    // anteriores fiquem na frente dos lançamentos atuais de cinema e streaming)
-    if (ageDays > 365) {
-      score -= 145;
-    } else if (ageDays > 165) {
-      score -= 60;
-    }
-
-    scored.push({ movie: cand, score });
-  }
-
-  scored.sort((a, b) => b.score - a.score || (b.movie.popularity || 0) - (a.movie.popularity || 0));
-  const items = scored.map((s) => s.movie);
-  popularWeekPoolCache.set(cacheKey, { items, expires: Date.now() + TMDB_CACHE_TTL_MS });
-  return items;
+  popularWeekInFlight.set(cacheKey, task);
+  return task;
 }
 
 async function buildCuratedPopularSeriesPool(batchIndex = 0): Promise<TMDBMovie[]> {
-  const cacheKey = `tv:pop_week_pool:${batchIndex}:${tmdbLanguage}`;
+  const cacheKey = `tv:pop_week_pool_v6:${batchIndex}:${tmdbLanguage}`;
   const cached = popularWeekPoolCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) {
     return cached.items;
   }
 
-  const p1 = batchIndex * 2 + 1;
-  const p2 = batchIndex * 2 + 2;
-  const discPage = batchIndex + 1;
+  const inflight = popularWeekInFlight.get(cacheKey);
+  if (inflight) return inflight;
 
-  const date21DaysAgo = daysOffsetIso(-21);
-  const date120DaysAgo = daysOffsetIso(-120);
+  const task = (async () => {
+    const discPage = batchIndex + 1;
+    const date21DaysAgo = daysOffsetIso(-21);
+    const date120DaysAgo = daysOffsetIso(-120);
 
-  const emptyRes: TMDBResponse<TMDBMovie> = {
-    page: 1,
-    results: [],
-    total_pages: 1,
-    total_results: 0,
-  };
+    const emptyRes: TMDBResponse<TMDBMovie> = {
+      page: 1,
+      results: [],
+      total_pages: 1,
+      total_results: 0,
+    };
 
-  const [
-    onAirRes1,
-    onAirRes2,
-    recentEpisodesDiscRes,
-    recentStreamingDiscRes,
-    trendDayRes,
-    trendWeekRes1,
-    trendWeekRes2,
-    popularRes,
-  ] = await Promise.all([
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/tv/on_the_air', { page: p1 }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/tv/on_the_air', { page: p2 }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/tv', {
-      'air_date.gte': date21DaysAgo,
-      'air_date.lte': TMDB_TOMORROW,
-      'first_air_date.lte': TMDB_TODAY,
-      without_genres: TV_EXCLUDED_GENRES,
-      sort_by: 'popularity.desc',
-      'vote_count.gte': 15,
-      include_adult: 'false',
-      page: discPage,
-    }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/tv', {
-      with_watch_monetization_types: 'flatrate',
-      watch_region: 'US',
-      'first_air_date.gte': date120DaysAgo,
-      'first_air_date.lte': TMDB_TODAY,
-      without_genres: TV_EXCLUDED_GENRES,
-      sort_by: 'popularity.desc',
-      'vote_count.gte': 12,
-      include_adult: 'false',
-      page: discPage,
-    }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/trending/tv/day', { page: discPage }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/trending/tv/week', { page: p1 }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/trending/tv/week', { page: p2 }).catch(() => emptyRes),
-    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/tv/popular', { page: discPage }).catch(() => emptyRes),
-  ]);
+    const [
+      onAirRes,
+      recentEpisodesDiscRes,
+      recentStreamingDiscRes,
+      trendWeekRes,
+    ] = await Promise.all([
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>('/tv/on_the_air', { page: discPage }).catch(() => emptyRes),
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/tv', {
+        'air_date.gte': date21DaysAgo,
+        'air_date.lte': TMDB_TOMORROW,
+        'first_air_date.lte': TMDB_TODAY,
+        without_genres: TV_EXCLUDED_GENRES,
+        sort_by: 'popularity.desc',
+        'vote_count.gte': 15,
+        include_adult: 'false',
+        page: discPage,
+      }).catch(() => emptyRes),
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/tv', {
+        with_watch_monetization_types: 'flatrate',
+        watch_region: 'US',
+        'first_air_date.gte': date120DaysAgo,
+        'first_air_date.lte': TMDB_TODAY,
+        without_genres: TV_EXCLUDED_GENRES,
+        sort_by: 'popularity.desc',
+        'vote_count.gte': 12,
+        include_adult: 'false',
+        page: discPage,
+      }).catch(() => emptyRes),
+      fetchFromTMDB<TMDBResponse<TMDBMovie>>('/trending/tv/week', { page: discPage }).catch(() => emptyRes),
+    ]);
 
-  const onAirList = [
-    ...(onAirRes1.results || []),
-    ...(onAirRes2.results || []),
-    ...(recentEpisodesDiscRes.results || []),
-  ].map(normalizeMediaItem);
+    const onAirList = [
+      ...(onAirRes.results || []),
+      ...(recentEpisodesDiscRes.results || []),
+    ].map(normalizeMediaItem);
 
-  const recentStreamingList = (recentStreamingDiscRes.results || []).map(normalizeMediaItem);
-  const trendDayList = (trendDayRes.results || []).map(normalizeMediaItem);
-  const trendWeekList = [
-    ...(trendWeekRes1.results || []),
-    ...(trendWeekRes2.results || []),
-  ].map(normalizeMediaItem);
-  const popularList = (popularRes.results || []).map(normalizeMediaItem);
+    const recentStreamingList = (recentStreamingDiscRes.results || []).map(normalizeMediaItem);
+    const trendWeekList = (trendWeekRes.results || []).map(normalizeMediaItem);
 
-  const onAirRankMap = new Map<number, number>();
-  onAirList.forEach((m, idx) => {
-    if (!onAirRankMap.has(m.id)) onAirRankMap.set(m.id, idx);
-  });
+    const onAirRankMap = new Map<number, number>();
+    onAirList.forEach((m, idx) => {
+      if (!onAirRankMap.has(m.id)) onAirRankMap.set(m.id, idx);
+    });
 
-  const streamingRankMap = new Map<number, number>();
-  recentStreamingList.forEach((m, idx) => {
-    if (!streamingRankMap.has(m.id)) streamingRankMap.set(m.id, idx);
-  });
+    const streamingRankMap = new Map<number, number>();
+    recentStreamingList.forEach((m, idx) => {
+      if (!streamingRankMap.has(m.id)) streamingRankMap.set(m.id, idx);
+    });
 
-  const trendDayRankMap = new Map<number, number>();
-  trendDayList.forEach((m, idx) => {
-    if (!trendDayRankMap.has(m.id)) trendDayRankMap.set(m.id, idx);
-  });
+    const trendWeekRankMap = new Map<number, number>();
+    trendWeekList.forEach((m, idx) => {
+      if (!trendWeekRankMap.has(m.id)) trendWeekRankMap.set(m.id, idx);
+    });
 
-  const trendWeekRankMap = new Map<number, number>();
-  trendWeekList.forEach((m, idx) => {
-    if (!trendWeekRankMap.has(m.id)) trendWeekRankMap.set(m.id, idx);
-  });
-
-  const popularRankMap = new Map<number, number>();
-  popularList.forEach((m, idx) => {
-    if (!popularRankMap.has(m.id)) popularRankMap.set(m.id, idx);
-  });
-
-  const candidatesMap = new Map<number, TMDBMovie>();
-  for (const list of [onAirList, recentStreamingList, trendDayList, trendWeekList, popularList]) {
-    for (const item of list) {
-      if (item && item.id && !candidatesMap.has(item.id)) {
-        candidatesMap.set(item.id, item);
-      }
-    }
-  }
-
-  const scored: { movie: TMDBMovie; score: number }[] = [];
-
-  for (const cand of candidatesMap.values()) {
-    if (!cand.poster_path) continue;
-    if (cand.genre_ids?.some((g) => TV_EXCLUDED_GENRE_IDS.has(g))) continue;
-
-    const d = itemDate(cand);
-    if (!d || d > TMDB_TODAY) continue;
-
-    const ageDays = daysSinceDate(d);
-    const votes = cand.vote_count || 0;
-    const rating = cand.vote_average || 0;
-    const pop = cand.popularity || 0;
-
-    const minVotesRequired = ageDays <= 35 ? 8 : 20;
-    if (votes < minVotesRequired) continue;
-    if (votes < 40 && rating > 0 && rating < 4.8) continue;
-
-    const oaRank = onAirRankMap.get(cand.id);
-    const stRank = streamingRankMap.get(cand.id);
-    const tdRank = trendDayRankMap.get(cand.id);
-    const twRank = trendWeekRankMap.get(cand.id);
-    const popRank = popularRankMap.get(cand.id);
-
-    const isAiringNow = oaRank !== undefined;
-    const isRecentStreaming = stRank !== undefined || (ageDays >= 0 && ageDays <= 120);
-    const inTrending = tdRank !== undefined || twRank !== undefined;
-
-    let score = 0;
-
-    // 1. Séries exibindo episódios novos na semana
-    if (isAiringNow && oaRank !== undefined) {
-      score += Math.max(130, 275 - oaRank * 2.5);
-      if (inTrending || votes >= 80 || pop >= 65) {
-        score += 155;
+    const candidatesMap = new Map<number, TMDBMovie>();
+    for (const list of [onAirList, recentStreamingList, trendWeekList]) {
+      for (const item of list) {
+        if (item && item.id && !candidatesMap.has(item.id)) {
+          candidatesMap.set(item.id, item);
+        }
       }
     }
 
-    // 2. Séries recém-lançadas no streaming / novas estreias
-    if (isRecentStreaming) {
-      if (stRank !== undefined) {
-        score += Math.max(85, 210 - stRank * 2.4);
-      } else {
-        score += 120;
+    const scored: { movie: TMDBMovie; score: number }[] = [];
+
+    for (const cand of candidatesMap.values()) {
+      if (!cand.poster_path) continue;
+      if (cand.genre_ids?.some((g) => TV_EXCLUDED_GENRE_IDS.has(g))) continue;
+
+      const d = itemDate(cand);
+      if (!d || d > TMDB_TODAY) continue;
+
+      const ageDays = daysSinceDate(d);
+      const votes = cand.vote_count || 0;
+      const rating = cand.vote_average || 0;
+      const pop = cand.popularity || 0;
+
+      const minVotesRequired = ageDays <= 35 ? 8 : 20;
+      if (votes < minVotesRequired) continue;
+      if (votes < 40 && rating > 0 && rating < 4.8) continue;
+
+      const oaRank = onAirRankMap.get(cand.id);
+      const stRank = streamingRankMap.get(cand.id);
+      const twRank = trendWeekRankMap.get(cand.id);
+
+      const isAiringNow = oaRank !== undefined;
+      const isRecentStreaming = stRank !== undefined || (ageDays >= 0 && ageDays <= 120);
+      const inTrending = twRank !== undefined;
+
+      let score = 0;
+
+      // 1. Séries exibindo episódios novos na semana
+      if (isAiringNow && oaRank !== undefined) {
+        score += Math.max(130, 275 - oaRank * 2.5);
+        if (inTrending || votes >= 80 || pop >= 65) {
+          score += 155;
+        }
       }
-      if (ageDays <= 45) {
-        score += 95;
-      } else if (ageDays <= 90) {
-        score += 55;
+
+      // 2. Séries recém-lançadas no streaming / novas estreias
+      if (isRecentStreaming) {
+        if (stRank !== undefined) {
+          score += Math.max(85, 210 - stRank * 2.4);
+        } else {
+          score += 120;
+        }
+        if (ageDays <= 45) {
+          score += 95;
+        } else if (ageDays <= 90) {
+          score += 55;
+        }
       }
+
+      // 3. Momento no Trending Semanal
+      if (twRank !== undefined) {
+        score += Math.max(35, 185 - twRank * 2.5);
+      }
+
+      // 4. Escala de público e nota
+      score += Math.min(100, Math.log10(Math.max(10, votes)) * 26);
+      score += Math.min(65, Math.sqrt(Math.max(1, pop)) * 3.5);
+      if (rating >= 6.5) {
+        score += (rating - 6.0) * 15;
+      }
+
+      // 5. Penaliza séries antigas já encerradas que não estão com novos episódios no ar
+      if (!isAiringNow && ageDays > 365) {
+        score -= 115;
+      }
+
+      scored.push({ movie: cand, score });
     }
 
-    // 3. Momento no Trending Semanal e Diário
-    if (twRank !== undefined) {
-      score += Math.max(35, 170 - twRank * 2.5);
-    }
-    if (tdRank !== undefined) {
-      score += Math.max(30, 130 - tdRank * 3.0);
-    }
-    if (popRank !== undefined) {
-      score += Math.max(15, 60 - popRank * 1.6);
-    }
+    scored.sort((a, b) => b.score - a.score || (b.movie.popularity || 0) - (a.movie.popularity || 0));
+    const items = scored.map((s) => s.movie);
+    popularWeekPoolCache.set(cacheKey, { items, expires: Date.now() + TMDB_CACHE_TTL_MS });
+    return items;
+  })().finally(() => {
+    popularWeekInFlight.delete(cacheKey);
+  });
 
-    if (tdRank !== undefined && twRank !== undefined) {
-      score += 55;
-    }
-
-    // 4. Escala de público e nota
-    score += Math.min(100, Math.log10(Math.max(10, votes)) * 26);
-    score += Math.min(65, Math.sqrt(Math.max(1, pop)) * 3.5);
-    if (rating >= 6.5) {
-      score += (rating - 6.0) * 15;
-    }
-
-    // 5. Penaliza séries antigas já encerradas que não estão com novos episódios no ar
-    if (!isAiringNow && ageDays > 365) {
-      score -= 115;
-    }
-
-    scored.push({ movie: cand, score });
-  }
-
-  scored.sort((a, b) => b.score - a.score || (b.movie.popularity || 0) - (a.movie.popularity || 0));
-  const items = scored.map((s) => s.movie);
-  popularWeekPoolCache.set(cacheKey, { items, expires: Date.now() + TMDB_CACHE_TTL_MS });
-  return items;
+  popularWeekInFlight.set(cacheKey, task);
+  return task;
 }
 
 // ---------------------------------------------------------------------------
@@ -2291,7 +2261,7 @@ export const tmdb = {
       ...extraFilters,
       ...presetParams,
       page,
-      pagesToFetch: preset === 'highest_rated' && page === 1 ? 2 : 1,
+      pagesToFetch: 1,
     });
 
     // Pós-filtro JS obrigatório por preset
@@ -2324,22 +2294,28 @@ export const tmdb = {
     mostWatched: TMDBMovie[];
     mostAnticipated: TMDBMovie[];
   }> {
-    const [popRes, ratedRes, watchedRes, anticipatedRes] = await Promise.all([
-      this.getSectionMedia('movie', 'popular_week', 1),
-      this.getSectionMedia('movie', 'highest_rated', 1),
-      this.getSectionMedia('movie', 'most_watched', 1),
-      this.getSectionMedia('movie', 'most_anticipated', 1),
-    ]);
+    if (filmsHubInFlight) return filmsHubInFlight;
+    filmsHubInFlight = (async () => {
+      const [popRes, ratedRes, watchedRes, anticipatedRes] = await Promise.all([
+        this.getSectionMedia('movie', 'popular_week', 1),
+        this.getSectionMedia('movie', 'highest_rated', 1),
+        this.getSectionMedia('movie', 'most_watched', 1),
+        this.getSectionMedia('movie', 'most_anticipated', 1),
+      ]);
 
-    const popular = popRes.results;
-    const highestRated = ratedRes.results;
-    const mostWatched = watchedRes.results;
+      const popular = popRes.results;
+      const highestRated = ratedRes.results;
+      const mostWatched = watchedRes.results;
 
-    // Desduplicação: Most anticipated nunca compartilha itens das outras vitrines
-    const seenIds = new Set([...popular, ...highestRated, ...mostWatched].map((m) => m.id));
-    const mostAnticipated = anticipatedRes.results.filter((m) => !seenIds.has(m.id));
+      // Desduplicação: Most anticipated nunca compartilha itens das outras vitrines
+      const seenIds = new Set([...popular, ...highestRated, ...mostWatched].map((m) => m.id));
+      const mostAnticipated = anticipatedRes.results.filter((m) => !seenIds.has(m.id));
 
-    return { popular, highestRated, mostWatched, mostAnticipated };
+      return { popular, highestRated, mostWatched, mostAnticipated };
+    })().finally(() => {
+      filmsHubInFlight = null;
+    });
+    return filmsHubInFlight;
   },
 
   /** Aba Series: mesmas regras usando first_air_date + anti talk-show/news/reality */
@@ -2349,21 +2325,27 @@ export const tmdb = {
     mostWatched: TMDBMovie[];
     mostAnticipated: TMDBMovie[];
   }> {
-    const [popRes, ratedRes, watchedRes, anticipatedRes] = await Promise.all([
-      this.getSectionMedia('tv', 'popular_week', 1),
-      this.getSectionMedia('tv', 'highest_rated', 1),
-      this.getSectionMedia('tv', 'most_watched', 1),
-      this.getSectionMedia('tv', 'most_anticipated', 1),
-    ]);
+    if (seriesHubInFlight) return seriesHubInFlight;
+    seriesHubInFlight = (async () => {
+      const [popRes, ratedRes, watchedRes, anticipatedRes] = await Promise.all([
+        this.getSectionMedia('tv', 'popular_week', 1),
+        this.getSectionMedia('tv', 'highest_rated', 1),
+        this.getSectionMedia('tv', 'most_watched', 1),
+        this.getSectionMedia('tv', 'most_anticipated', 1),
+      ]);
 
-    const popular = popRes.results;
-    const highestRated = ratedRes.results;
-    const mostWatched = watchedRes.results;
+      const popular = popRes.results;
+      const highestRated = ratedRes.results;
+      const mostWatched = watchedRes.results;
 
-    const seenIds = new Set([...popular, ...highestRated, ...mostWatched].map((m) => m.id));
-    const mostAnticipated = anticipatedRes.results.filter((m) => !seenIds.has(m.id));
+      const seenIds = new Set([...popular, ...highestRated, ...mostWatched].map((m) => m.id));
+      const mostAnticipated = anticipatedRes.results.filter((m) => !seenIds.has(m.id));
 
-    return { popular, highestRated, mostWatched, mostAnticipated };
+      return { popular, highestRated, mostWatched, mostAnticipated };
+    })().finally(() => {
+      seriesHubInFlight = null;
+    });
+    return seriesHubInFlight;
   },
 
   // Detalhes de serie normalizados para o formato de filme (title/name etc.)
