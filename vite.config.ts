@@ -216,16 +216,14 @@ function imdbApiPlugin() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  // CAPACITOR=true → APK (file:// precisa de caminhos relativos);
-  // GitHub Actions → usa automaticamente /<nome-do-repo>/ (ex: /MyWorldGoggle/);
-  // demais ambientes → '/'
   base: process.env.CAPACITOR === 'true'
     ? './'
-    : process.env.VITE_BASE_PATH
-      ? process.env.VITE_BASE_PATH
-      : process.env.GITHUB_REPOSITORY
-        ? `/${process.env.GITHUB_REPOSITORY.split('/')[1]}/`
-        : '/',
+    : (process.env.VITE_BASE_PATH || '/'),
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    allowedHosts: true,
+  },
   plugins: [
     react(),
     tailwindcss(),

@@ -690,23 +690,22 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
           backdropUrl ? 'pt-[calc(56.25vw+11px)] md:pt-[472px]' : 'pt-20'
         }`}
       >
-        <div className="flex flex-col md:grid md:grid-cols-[230px_390px_230px] md:gap-x-[50px] md:gap-y-[30px] items-start">
+        <div className="flex flex-col md:flex-row md:gap-x-[50px] items-start">
 
           {/* ========================================================
               LEFT COLUMN (w-[230px]): Poster, Stats Bar, Where to Watch (Desktop only)
+              Sticky: acompanha o rolamento da página até o fim do conteúdo
               ======================================================== */}
           {!isMobile && (
-            <div
-              className={`w-full md:w-[230px] md:col-start-1 md:row-start-1 ${
-                hasBottomSections ? 'md:row-span-3' : 'md:row-span-2'
-              } md:sticky md:top-6 md:self-start flex-shrink-0 flex flex-col items-center md:items-start`}
+            <aside
+              className="hidden md:flex w-[230px] flex-shrink-0 flex-col items-start sticky top-6 self-start z-10"
             >
               {/* Film Poster (230x345px standard Letterboxd frame) */}
               <button
                 type="button"
                 onClick={() => setShowPosterLightbox(true)}
                 aria-label={t('view_poster')}
-                className="hidden md:block letterboxd-poster-frame overflow-hidden flex-shrink-0 cursor-pointer group relative"
+                className="letterboxd-poster-frame overflow-hidden flex-shrink-0 cursor-pointer group relative"
               >
                 <img
                   fetchPriority="high"
@@ -719,7 +718,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
               </button>
 
               {/* Production Statistics List — 10px below poster, 12px font, #667788 */}
-              <div className="hidden md:flex w-[230px] items-center justify-between mt-2.5 py-1 letterboxd-stats-list select-none">
+              <div className="flex w-[230px] items-center justify-between mt-2.5 py-1 letterboxd-stats-list select-none">
                 <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${watchedStat.toLocaleString()} ${t('film_stat_watched')}`}>
                   <Eye className="w-4 h-4 text-lb-green" />
                   <span className="font-normal">{formatNumber(watchedStat)}</span>
@@ -739,7 +738,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
               </div>
 
               {/* Where to Watch — desktop only */}
-              <div className="hidden md:block w-[230px] max-w-full mt-4 space-y-2.5">
+              <div className="w-[230px] max-w-full mt-4 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold tracking-wider uppercase text-lb-muted">
                     {t('film_where_watch')}
@@ -758,14 +757,18 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                 {/* Providers Pill Box */}
                 <WhereToWatch providers={movie['watch/providers']} />
               </div>
-            </div>
+            </aside>
           )}
 
           {/* ========================================================
-              MASTHEAD: Title + Year + Director
-              (ocupa 670px: colunas do centro e da direita — padrão Letterboxd)
+              RIGHT CONTENT AREA (w-[670px] no desktop):
+              1. Masthead: Title + Year + Director (670px)
+              2. Row: Center Column (390px) + Right Sidebar (230px)
+              3. Bottom: Related Films + Similar Films (670px)
               ======================================================== */}
-          <div className="w-full md:col-span-2 min-w-0 md:mt-[-3px] flex max-md:items-start max-md:relative md:items-baseline justify-between gap-4">
+          <div className="w-full md:w-[670px] min-w-0 flex flex-col">
+            {/* Masthead: Title + Year + Director */}
+            <div className="w-full min-w-0 md:mt-[-3px] flex max-md:items-start max-md:relative md:items-baseline justify-between gap-4">
             {/* DESKTOP Masthead: Title (32px serif bold) + Year + Directed by (sem horas e sem idade no PC) */}
             <div className="hidden md:block flex-1 min-w-0">
               <h1 className="letterboxd-title text-[32px] inline mr-3">
@@ -874,10 +877,12 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             </button>
           </div>
 
-          {/* ========================================================
-              CENTER COLUMN (w-[390px] no desktop): Synopsis, Tabs, Reviews
-              ======================================================== */}
-          <div className="w-full md:w-[390px] min-w-0 space-y-3">
+          {/* Content Row: Center (390px) + Right Actions (230px) */}
+          <div className="flex flex-col md:flex-row md:gap-x-[50px] items-start md:mt-[30px]">
+            {/* ========================================================
+                CENTER COLUMN (w-[390px] no desktop): Synopsis, Tabs, Reviews
+                ======================================================== */}
+            <div className="w-full md:w-[390px] min-w-0 space-y-3">
             {/* Tagline — Letterboxd: 13px uppercase tracking-[0.075em] #778899 */}
             {movie.tagline && movie.tagline.trim().length > 0 && (
               <h4 className="letterboxd-tagline tagline-mobile-sm mt-[-2px] max-md:mt-6 mb-[10px]">
@@ -1415,16 +1420,15 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
               />
             </div>
           )}
+          </div>
 
           {/* ========================================================
               BOTTOM SECTIONS (Mobile & Desktop):
               1. RELATED FILMS (Filmes da mesma coleção/franquia, entre Reviews e Similar)
               2. SIMILAR FILMS (Filmes/Séries semelhantes)
-              No PC ficam em md:col-start-2 md:col-span-2 (670px à direita
-              da coluna do pôster), permitindo que o pôster desça junto até o fim.
               ======================================================== */}
           {hasBottomSections && (
-            <div className="w-full md:col-start-2 md:col-span-2 min-w-0 md:space-y-10 md:pt-4">
+            <div className="w-full min-w-0 md:space-y-10 md:pt-8">
               {/* 1. RELATED FILMS — MOBILE */}
               {relatedFilms.length > 0 && collectionId && (
                 <section className="similar-section md:hidden">
@@ -1558,6 +1562,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
               )}
             </div>
           )}
+          </div>
         </div>
       </div>
 

@@ -301,10 +301,12 @@ button, a, [role="button"] {
 
 @media (min-width: 768px) {
   .mw-slide-in-right,
-  .mw-slide-in-left,
-  .md\:mw-slide-in-left {
+  .mw-slide-in-left {
     animation: mwSlideFromRightDesktop 340ms cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform, opacity;
+  }
+  .md\:mw-slide-in-left {
+    animation: mwSlideFromRightDesktop 340ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 }
 

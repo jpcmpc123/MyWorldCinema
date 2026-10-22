@@ -182,7 +182,7 @@ export const SeriesDetailPage: React.FC = () => {
       >
         <div className="flex flex-col md:flex-row gap-6 md:gap-[50px] items-start">
           {/* LEFT: poster + where to watch */}
-          <div className="w-full md:w-[230px] flex-shrink-0 flex flex-col items-center md:items-start">
+          <div className="w-full md:w-[230px] flex-shrink-0 flex flex-col items-center md:items-start md:sticky md:top-6 md:self-start z-10">
             <div className="hidden md:block letterboxd-poster-frame overflow-hidden flex-shrink-0">
               {posterUrl ? (
                 <img

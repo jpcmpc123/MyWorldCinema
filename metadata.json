@@ -1,0 +1,8 @@
+{
+  "name": "My World",
+  "description": "Social film & series discovery, tracking, reviews, and diary platform.",
+  "prompt": "Social film discovery and review app",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
