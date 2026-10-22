@@ -110,7 +110,7 @@ export const SeriesHubPage: React.FC = () => {
   };
 
   const handlePrevCarousel = () => {
-    setCarouselIndex((prev) => Math.max(0, prev - 4));
+    setCarouselIndex((prev) => (prev - 4 < 0 ? Math.max(0, popularSeries.length - 4) : prev - 4));
   };
 
   const handleNextCarousel = () => {
@@ -408,14 +408,27 @@ export const SeriesHubPage: React.FC = () => {
 
         <div className="relative group/carousel">
           {/* Left Arrow Button */}
-          {carouselIndex > 0 && (
+          {popularSeries.length > 4 && (
             <button
               onClick={handlePrevCarousel}
-              className="absolute left-0 sm:-left-5 top-1/2 -translate-y-1/2 z-20 text-lb-muted hover:text-white transition-colors cursor-pointer p-1"
+              className="absolute -left-5 sm:-left-7 md:-left-8 top-[calc(50%-17px)] -translate-y-1/2 z-20 text-[#667788] hover:text-white transition-colors cursor-pointer p-1.5 focus:outline-none select-none"
               title={t('common_previous')}
               aria-label={t('common_previous')}
             >
-              <ChevronLeft className="w-6 h-6" />
+              <svg
+                className="w-4 h-9 sm:w-[18px] sm:h-[40px]"
+                viewBox="0 0 16 36"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M11 6L3 18L11 30"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           )}
 
@@ -453,14 +466,27 @@ export const SeriesHubPage: React.FC = () => {
           </div>
 
           {/* Right Arrow Button */}
-          {carouselIndex + 4 < popularSeries.length && (
+          {popularSeries.length > 4 && (
             <button
               onClick={handleNextCarousel}
-              className="absolute right-0 sm:-right-5 top-1/2 -translate-y-1/2 z-20 text-lb-muted hover:text-white transition-colors cursor-pointer p-1"
+              className="absolute -right-5 sm:-right-7 md:-right-8 top-[calc(50%-17px)] -translate-y-1/2 z-20 text-[#667788] hover:text-white transition-colors cursor-pointer p-1.5 focus:outline-none select-none"
               title={t('common_next')}
               aria-label={t('common_next')}
             >
-              <ChevronRight className="w-6 h-6" />
+              <svg
+                className="w-4 h-9 sm:w-[18px] sm:h-[40px]"
+                viewBox="0 0 16 36"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M5 6L13 18L5 30"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
           )}
         </div>
