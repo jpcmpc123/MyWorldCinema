@@ -4,7 +4,6 @@ import { Search, Plus, X, ChevronDown, Zap, Settings, Globe, Check } from 'lucid
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
-import { tmdb, type TMDBMovie } from '../services/tmdb';
 import {
   animateElasticIndicator,
   followTabIndicator,
@@ -44,9 +43,6 @@ export const Header: React.FC<HeaderProps> = ({
   const location = useLocation();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
@@ -62,9 +58,6 @@ export const Header: React.FC<HeaderProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setIsSearchOpen(false);
-      }
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setIsUserMenuOpen(false);
       }
@@ -74,53 +67,18 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   useEffect(() => {
-    setIsSearchOpen(false);
     setIsUserMenuOpen(false);
     setIsSearchExpanded(false);
     setSearchQuery('');
   }, [location.pathname]);
 
-  // Live Typeahead search
-  useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.length < 2) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const res = await tmdb.searchMovies(searchQuery.trim(), 1);
-        setSearchResults(res.results.slice(0, 6));
-        setIsSearchOpen(true);
-      } catch (err) {
-        console.error('Search error:', err);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  const handleMovieSelect = (id: number) => {
-    setIsSearchOpen(false);
-    setSearchQuery('');
-    navigate(`/film/${id}`);
-  };
-
   /**
-   * Submissão da busca (Enter no input, clique na lupa ou "Ver todos os
-   * resultados"): fecha o dropdown rápido e abre a PÁGINA de resultados
-   * (/search?q=…) — sem sair do tema nem quebrar o header.
+   * Submissão da busca (Enter no input ou clique na lupa):
+   * abre a PÁGINA inteira de resultados (/search?q=…).
    */
   const submitSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
     const q = searchQuery.trim() || searchParam.trim();
-    setIsSearchOpen(false);
-    setIsSearching(false);
-    setSearchResults([]);
     if (!q) {
       navigate('/search');
       return;
@@ -888,7 +846,6 @@ export const Header: React.FC<HeaderProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') submitSearch(e);
                     if (e.key === 'Escape') {
-                      setIsSearchOpen(false);
                       setSearchQuery('');
                     }
                   }}
@@ -900,8 +857,6 @@ export const Header: React.FC<HeaderProps> = ({
                     type="button"
                     onClick={() => {
                       setSearchQuery('');
-                      setSearchResults([]);
-                      setIsSearchOpen(false);
                     }}
                     aria-label={t('search_clear')}
                     className="ml-1 shrink-0 text-[#899aa9] group-focus-within:text-gray-500 hover:text-white cursor-pointer"
@@ -926,9 +881,7 @@ export const Header: React.FC<HeaderProps> = ({
                     type="button"
                     onClick={() => {
                       setIsSearchExpanded(false);
-                      setIsSearchOpen(false);
                       setSearchQuery('');
-                      setSearchResults([]);
                     }}
                     className="text-[#99aabb] hover:text-white p-0.5 transition-all duration-200 cursor-pointer flex items-center justify-center"
                     title={t('search_clear')}
@@ -1011,47 +964,6 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* Typeahead Dropdown */}
-            {isSearchOpen && (
-              <div className="absolute right-0 top-9 w-72 sm:w-80 bg-lb-surface border border-lb-elevated rounded shadow-2xl overflow-hidden z-50 mw-pop-in [text-shadow:none] [&_svg]:!drop-shadow-none">
-                <div className="px-3 py-1.5 bg-lb-bg border-b border-lb-elevated text-[10px] uppercase font-bold text-lb-muted flex justify-between">
-                  <span>
-                    {t('search_showing_matches')} “{searchQuery}”
-                  </span>
-                  {isSearching && <span className="text-lb-green animate-pulse">{t('search_searching')}</span>}
-                </div>
-                <div className="max-h-72 overflow-y-auto divide-y divide-lb-elevated/60 normal-case">
-                  {searchResults.map((m) => (
-                    <button
-                      type="button"
-                      key={m.id}
-                      onClick={() => handleMovieSelect(m.id)}
-                      className="p-2 flex items-center gap-2.5 hover:bg-lb-elevated cursor-pointer w-full text-left"
-                    >
-                      <img
-                        src={tmdb.getImageUrl(m.poster_path, 'w92')}
-                        alt={m.title}
-                        className="w-8 h-12 object-cover rounded bg-lb-bg shrink-0"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-white truncate">{m.title}</p>
-                        <p className="text-[11px] text-lb-muted tabular-nums">{m.release_date?.slice(0, 4)}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => submitSearch()}
-                  className="w-full text-center py-2 bg-lb-bg border-t border-lb-elevated text-[10px] uppercase font-bold tracking-wider text-lb-green hover:bg-lb-elevated transition-colors cursor-pointer"
-                >
-                  {t('search_view_all')}
-                </button>
               </div>
             )}
           </div>

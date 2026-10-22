@@ -258,13 +258,17 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
               : ''
           }`}
         >
-          {/* Título centralizado (estilo Letterboxd) exibido enquanto o pôster carrega ou se ausente */}
+          {/* Título centralizado (estilo Letterboxd mobile) exibido no celular enquanto o pôster carrega, ou caso ausente/erro */}
           {(!isLoaded || !displayPosterPath || hasError) && (
             <div
               className="absolute inset-0 flex items-center justify-center p-2 text-center bg-[#232a31] select-none"
               aria-hidden={Boolean(displayPosterPath && !hasError)}
             >
-              <span className="text-[11px] sm:text-xs leading-[1.3] font-normal text-[#9ab] line-clamp-4 break-words">
+              <span
+                className={`text-[11px] sm:text-xs leading-[1.3] font-normal text-[#9ab] line-clamp-4 break-words ${
+                  displayPosterPath && !hasError ? 'md:hidden' : ''
+                }`}
+              >
                 {displayTitle}
               </span>
             </div>

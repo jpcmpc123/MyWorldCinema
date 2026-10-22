@@ -139,9 +139,14 @@ export function ActorPage() {
   }, [location.state, searchParams]);
 
   // ---- Fetch: pessoa + filmografia em UMA chamada --------------------------
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
+
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
+    window.scrollTo(0, 0);
     setLoading(true);
     setError(null);
     setPerson(null);
@@ -261,6 +266,7 @@ export function ActorPage() {
     const initialKey = match ? match.key : (firstFilmTab?.key ?? 'Bio');
     setActiveTab(initialKey);
     setRoleReady(true);
+    window.scrollTo(0, 0);
   }, [person, tabs, requestedRole]);
 
   const roleTabs = useMemo(() => tabs.filter((tab) => tab.key !== 'Bio'), [tabs]);

@@ -197,6 +197,7 @@ function AppShell() {
       setOutgoingState(null);
       setSlidePhase('idle');
       setCommittedLocation(location);
+      window.scrollTo(0, 0);
       return;
     }
 
