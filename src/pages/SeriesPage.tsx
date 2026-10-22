@@ -74,6 +74,7 @@ export const SeriesPage: React.FC = () => {
     parsedDecade !== undefined ? Array.from({ length: 10 }, (_, i) => parsedDecade + i) : [];
 
   const sortOptions = [
+    { label: `${t('cat_series_popularity')} (${t('hub_this_week').toUpperCase()})`, value: 'popularity.desc' },
     { label: t('cat_series_popularity'), value: 'vote_count.desc' },
     { label: t('cat_average_rating'), value: 'vote_average.desc' },
     { label: t('cat_air_newest'), value: 'first_air_date.desc' },
@@ -92,15 +93,31 @@ export const SeriesPage: React.FC = () => {
       setLoading(true);
       window.scrollTo(0, 0);
       try {
-        const res = await tmdb.discoverTVBatch({
-          genreId: currentGenre,
-          year: parsedYear,
-          decade: parsedYear ? undefined : parsedDecade,
-          providerId: currentProvider,
-          sortBy: currentSort,
-          page: currentPage,
-          pagesToFetch: 6,
-        });
+        const isWeeklyTrending =
+          currentSort === 'popularity.desc' &&
+          !currentGenre &&
+          parsedYear === undefined &&
+          parsedDecade === undefined &&
+          !currentProvider;
+
+        const res = isWeeklyTrending
+          ? await tmdb.getCuratedPopularBatch('tv', currentPage, 72)
+          : currentSort === 'popularity.desc'
+          ? await tmdb.getSectionMedia('tv', 'popular_week', currentPage, {
+              genreId: currentGenre,
+              year: parsedYear,
+              decade: parsedYear ? undefined : parsedDecade,
+              providerId: currentProvider,
+            })
+          : await tmdb.discoverTVBatch({
+              genreId: currentGenre,
+              year: parsedYear,
+              decade: parsedYear ? undefined : parsedDecade,
+              providerId: currentProvider,
+              sortBy: currentSort,
+              page: currentPage,
+              pagesToFetch: 6,
+            });
         setMovies(res.results);
         setTotalResults(res.total_results > 0 ? res.total_results : 42000);
         setTotalPages(Math.max(1, Math.min(res.total_pages, 500)));

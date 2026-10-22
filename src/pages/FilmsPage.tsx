@@ -83,6 +83,7 @@ export const FilmsPage: React.FC = () => {
     parsedDecade !== undefined ? Array.from({ length: 10 }, (_, i) => parsedDecade + i) : [];
 
   const sortOptions = [
+    { label: `${t('cat_film_popularity')} (${t('hub_this_week').toUpperCase()})`, value: 'popularity.desc' },
     { label: t('cat_film_popularity'), value: 'vote_count.desc' },
     { label: t('cat_average_rating'), value: 'vote_average.desc' },
     { label: t('cat_release_newest'), value: 'primary_release_date.desc' },
@@ -108,9 +109,16 @@ export const FilmsPage: React.FC = () => {
           parsedDecade === undefined &&
           !currentProvider;
 
-        // Fetch up to 6 TMDb pages (~72-80 movies) to fill 6 complete rows of 12
+        // Fetch up to 72 movies to fill 6 complete rows of 12
         const res = isWeeklyTrending
-          ? await tmdb.getTrendingBatch('week', currentPage, 6)
+          ? await tmdb.getCuratedPopularBatch('movie', currentPage, 72)
+          : currentSort === 'popularity.desc'
+          ? await tmdb.getSectionMedia('movie', 'popular_week', currentPage, {
+              genreId: currentGenre,
+              year: parsedYear,
+              decade: parsedYear ? undefined : parsedDecade,
+              providerId: currentProvider,
+            })
           : await tmdb.discoverMoviesBatch({
               genreId: currentGenre,
               year: parsedYear,

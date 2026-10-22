@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to redesign the desktop Person/Actor page to match the official Letterboxd two-column layout shown in reference images 2 and 3, including the role dropdown with credit counts, inline filter menus (Decade, Genre, Service, Sort, Watched visibility), and the right-hand sidebar with portrait photo, expandable biography with English/Wikipedia fallback, and external reference links.",
-  "updatedAt":  "2026-10-22T01:12:35.463379985Z",
+  "summary":  "Plano de implementação do motor inteligente de ranking para o \"Popular da Semana\" (Filmes e Séries) combinando sinais de Cinema em Cartaz, Estreias Recentes no Streaming/Digital e Tendências Diárias/Semanais do TMDB.",
+  "updatedAt":  "2026-10-22T12:48:04.193534493Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
