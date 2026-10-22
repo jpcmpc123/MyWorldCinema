@@ -414,8 +414,8 @@ export const SearchPage: React.FC = () => {
   // Memória de scroll por aba para o termo atualmente carregado
   const tabScrollRef = useRef<Partial<Record<SearchFilter, number>>>({});
   const loadedTermRef = useRef<string>('');
-  const activeFilterRef = useRef<SearchFilter>(filter);
-  activeFilterRef.current = filter;
+  const prevFilterRef = useRef<SearchFilter>(filter);
+  const isRestoringScrollRef = useRef(false);
 
   const setFilter = (next: SearchFilter) => {
     if (next !== filter) {
@@ -461,40 +461,6 @@ export const SearchPage: React.FC = () => {
   const [loadingFilter, setLoadingFilter] = useState<SearchFilter | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchLoadSeq, setSearchLoadSeq] = useState(0);
-
-  const scrollSearchToTop = () => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-  };
-
-  // Salva continuamente onde o usuário parou na aba atual
-  useEffect(() => {
-    const onScroll = () => {
-      if (mobileMode === 'typing' || !isMobile) {
-        tabScrollRef.current[activeFilterRef.current] = window.scrollY;
-      }
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [isMobile, mobileMode]);
-
-  // Ao alternar de aba (ex.: Filmes -> Séries -> Filmes), mantém/restaura onde estava parado sem ir para o topo
-  useLayoutEffect(() => {
-    const savedY = tabScrollRef.current[filter];
-    if (savedY !== undefined) {
-      window.scrollTo({ top: savedY, left: 0, behavior: 'auto' });
-      document.documentElement.scrollTop = savedY;
-      document.body.scrollTop = savedY;
-    }
-  }, [filter]);
-
-  // Vai para o topo dos pôsteres APENAS quando uma nova busca terminar de carregar novos filmes/séries
-  useLayoutEffect(() => {
-    if (searchLoadSeq > 0) {
-      scrollSearchToTop();
-    }
-  }, [searchLoadSeq]);
 
   const prefetchFilter = (targetFilter: SearchFilter) => {
     const activeTerm = loadedTermRef.current || term;
@@ -570,6 +536,81 @@ export const SearchPage: React.FC = () => {
     ready: isMobile && mobileMode !== 'idle',
     scrollToTopOnChange: false,
   });
+
+  // Alinha visualmente as abas vizinhas na sua própria posição de scroll (0 se nunca visitada)
+  // durante o arrasto/transição lateral quando a janela está rolada em outra posição
+  const syncInactivePanelsOffset = (activeTab: SearchFilter, activeY: number) => {
+    const track = mobileSwipe.trackRef.current;
+    if (!track) return;
+    const panels = track.querySelectorAll<HTMLElement>('.tab-panel');
+    panels.forEach((panel) => {
+      const tabId = panel.getAttribute('data-tab') as SearchFilter | null;
+      if (!tabId || tabId === activeTab) {
+        panel.style.transform = '';
+      } else {
+        const savedY = tabScrollRef.current[tabId] ?? 0;
+        const deltaY = activeY - savedY;
+        panel.style.transform = deltaY !== 0 ? `translateY(${deltaY}px)` : '';
+      }
+    });
+  };
+
+  const scrollSearchToTop = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    syncInactivePanelsOffset(prevFilterRef.current, 0);
+  };
+
+  // Salva continuamente onde o usuário parou na aba atual
+  useEffect(() => {
+    const onScroll = () => {
+      if (isRestoringScrollRef.current) return;
+      if (mobileMode === 'typing' || !isMobile) {
+        const y = window.scrollY;
+        tabScrollRef.current[prevFilterRef.current] = y;
+        syncInactivePanelsOffset(prevFilterRef.current, y);
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [isMobile, mobileMode]);
+
+  // Ao ir para uma aba do lado: começa sempre no topo (0) se ainda não foi rolada,
+  // e restaura a posição exata ao voltar para uma aba onde já havia parado
+  useLayoutEffect(() => {
+    const prevFilter = prevFilterRef.current;
+    if (prevFilter !== filter) {
+      prevFilterRef.current = filter;
+      isRestoringScrollRef.current = true;
+      const targetY = tabScrollRef.current[filter] ?? 0;
+      tabScrollRef.current[filter] = targetY;
+      window.scrollTo({ top: targetY, left: 0, behavior: 'auto' });
+      document.documentElement.scrollTop = targetY;
+      document.body.scrollTop = targetY;
+      syncInactivePanelsOffset(filter, targetY);
+      const raf = window.requestAnimationFrame(() => {
+        window.scrollTo({ top: targetY, left: 0, behavior: 'auto' });
+        syncInactivePanelsOffset(filter, targetY);
+        isRestoringScrollRef.current = false;
+      });
+      return () => {
+        window.cancelAnimationFrame(raf);
+        isRestoringScrollRef.current = false;
+      };
+    }
+  }, [filter]);
+
+  // Vai para o topo dos pôsteres APENAS quando uma nova busca terminar de carregar novos filmes/séries
+  useLayoutEffect(() => {
+    if (searchLoadSeq > 0) {
+      scrollSearchToTop();
+    }
+  }, [searchLoadSeq]);
+
+  useLayoutEffect(() => {
+    syncInactivePanelsOffset(prevFilterRef.current, window.scrollY);
+  }, [panelCache]);
 
   // Histórico de buscas recentes (mobile): salvo no localStorage, máx. 15 itens
   // Guarda termo + categoria usada (a badge da linha mostra a categoria)
