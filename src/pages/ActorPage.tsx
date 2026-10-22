@@ -476,8 +476,8 @@ export function ActorPage() {
   const photoLightbox = (
     <PosterLightbox
       open={showPhotoLightbox}
-      src={profileImgLarge || profileImg || ''}
-      srcSet={profileImgSrcSet}
+      src={profileImg || profileImgLarge || ''}
+      previewSrc={profileImg || undefined}
       alt={person.name}
       onClose={() => setShowPhotoLightbox(false)}
     />
@@ -1092,10 +1092,11 @@ export function ActorPage() {
               type="button"
               onClick={() => setShowPhotoLightbox(true)}
               aria-label={person.name}
-              className="w-[230px] h-[345px] rounded-[4px] border border-white/15 shadow-md overflow-hidden cursor-pointer group relative p-0 block bg-[#1c2228]"
+              className="w-[230px] h-[345px] rounded-[4px] border border-white/15 shadow-md overflow-hidden cursor-pointer group relative p-0 block bg-[#232a31]"
             >
               <img
-                loading="lazy"
+                loading="eager"
+                fetchPriority="high"
                 decoding="async"
                 src={profileImg}
                 alt={person.name}

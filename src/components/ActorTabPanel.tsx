@@ -157,12 +157,13 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
             type="button"
             onClick={onOpenPhoto}
             aria-label={personName}
-            className="w-[92px] h-[138px] shrink-0 rounded-md overflow-hidden border border-white/12 bg-[#1c2228] cursor-pointer active:scale-[0.97] transition-transform p-0 block"
+            className="w-[92px] h-[138px] shrink-0 rounded-md overflow-hidden border border-white/12 bg-[#232a31] cursor-pointer active:scale-[0.97] transition-transform p-0 block"
           >
             <img
               src={profileImg}
               alt={personName}
-              loading="lazy"
+              loading="eager"
+              fetchPriority="high"
               decoding="async"
               className="w-full h-full object-cover"
             />

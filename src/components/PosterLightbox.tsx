@@ -6,9 +6,47 @@ import { App as CapApp } from '@capacitor/app';
 interface PosterLightboxProps {
   open: boolean;
   src: string;
+  previewSrc?: string;
   srcSet?: string;
   alt: string;
   onClose: () => void;
+}
+
+const decodedImageCache = new Set<string>();
+
+function preloadAndDecodeImage(url: string): Promise<boolean> {
+  if (!url) return Promise.resolve(false);
+  if (decodedImageCache.has(url)) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = 'async';
+    const markReady = () => {
+      if (typeof img.decode === 'function') {
+        img
+          .decode()
+          .then(() => {
+            decodedImageCache.add(url);
+            resolve(true);
+          })
+          .catch(() => {
+            decodedImageCache.add(url);
+            resolve(true);
+          });
+      } else {
+        decodedImageCache.add(url);
+        resolve(true);
+      }
+    };
+
+    img.onload = markReady;
+    img.onerror = () => resolve(false);
+    img.src = url;
+
+    if (img.complete && img.naturalWidth > 0) {
+      markReady();
+    }
+  });
 }
 
 const clamp = (min: number, max: number, val: number) => Math.min(max, Math.max(min, val));
@@ -21,7 +59,7 @@ interface TouchSample {
 export const PosterLightbox: React.FC<PosterLightboxProps> = ({
   open,
   src,
-  srcSet,
+  previewSrc,
   alt,
   onClose,
 }) => {
@@ -30,6 +68,10 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
   const [dragY, setDragY] = useState<number>(0);
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
   const [closing, setClosing] = useState<boolean>(false);
+  const [srcReady, setSrcReady] = useState<boolean>(() => Boolean(src && decodedImageCache.has(src)));
+  const [previewReady, setPreviewReady] = useState<boolean>(() =>
+    Boolean(previewSrc && decodedImageCache.has(previewSrc)),
+  );
 
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const imgContainerRef = useRef<HTMLDivElement | null>(null);
@@ -103,8 +145,45 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
     onCloseRef.current();
   };
 
+  // Precarrega e decodifica a imagem em segundo plano assim que a página monta (mesmo antes do clique)
   useEffect(() => {
-    if (open && src) {
+    let cancelled = false;
+    if (previewSrc) {
+      if (decodedImageCache.has(previewSrc)) {
+        setPreviewReady(true);
+      } else {
+        setPreviewReady(false);
+        void preloadAndDecodeImage(previewSrc).then((ok) => {
+          if (!cancelled && ok) setPreviewReady(true);
+        });
+      }
+    } else {
+      setPreviewReady(false);
+    }
+
+    if (src) {
+      if (decodedImageCache.has(src)) {
+        setSrcReady(true);
+      } else {
+        setSrcReady(false);
+        void preloadAndDecodeImage(src).then((ok) => {
+          if (!cancelled && ok) setSrcReady(true);
+        });
+      }
+    } else {
+      setSrcReady(false);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [src, previewSrc]);
+
+  const readySrc = srcReady ? src : previewReady && previewSrc ? previewSrc : null;
+  const activeOpen = open && Boolean(readySrc);
+
+  useEffect(() => {
+    if (activeOpen && readySrc) {
       closedRef.current = false;
       setScale(1);
       setPan({ x: 0, y: 0 });
@@ -129,12 +208,12 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
         closeTimerRef.current = null;
       }
     };
-  }, [open, src]);
+  }, [activeOpen, Boolean(readySrc)]);
 
   // Integração com o botão Voltar do celular (barra de navegação Android / gesto voltar)
-  // e bloqueio de scroll da página enquanto o pôster ampliado está aberto.
+  // e bloqueio de scroll da página SOMENTE depois que o pôster está 100% pronto para exibir.
   useEffect(() => {
-    if (!open || !src) return;
+    if (!activeOpen) return;
 
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -201,12 +280,12 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
         void capListener.remove();
       }
     };
-  }, [open, Boolean(src)]);
+  }, [activeOpen]);
 
   // Listener nativo touchmove com { passive: false } para impedir que o navegador mobile
   // (Chrome Android / Safari iOS) intercepte o puxão vertical como pull-to-refresh ou scroll.
   useEffect(() => {
-    if (!open || !src) return;
+    if (!activeOpen) return;
     const el = overlayRef.current;
     if (!el) return;
 
@@ -220,9 +299,9 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
     return () => {
       el.removeEventListener('touchmove', preventNativeScroll);
     };
-  }, [open, Boolean(src)]);
+  }, [activeOpen]);
 
-  if (!open || !src) return null;
+  if (!activeOpen || !readySrc) return null;
 
   const getTouchDist = (t1: React.Touch, t2: React.Touch) => {
     const dx = t1.clientX - t2.clientX;
@@ -554,10 +633,9 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
         className="md:hidden relative z-10 w-full flex items-center justify-center overflow-visible touch-none select-none"
       >
         <img
-          src={src}
-          srcSet={srcSet}
-          sizes="100vw"
+          src={readySrc}
           alt={alt}
+          decoding="sync"
           draggable={false}
           onDragStart={(e) => e.preventDefault()}
           onContextMenu={(e) => e.preventDefault()}
@@ -580,10 +658,9 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <img
-          src={src}
-          srcSet={srcSet}
-          sizes="(min-width: 768px) 600px, 100vw"
+          src={readySrc}
           alt={alt}
+          decoding="sync"
           draggable={false}
           onDragStart={(e) => e.preventDefault()}
           className="max-h-[84vh] max-w-[88vw] aspect-[2/3] object-contain shadow-[0_25px_70px_rgba(0,0,0,0.85)]"

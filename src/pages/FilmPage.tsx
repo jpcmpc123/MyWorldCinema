@@ -1606,19 +1606,13 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       )}
 
       {/* Visualização ampliada do pôster (Mobile: largura total + zoom + swipe-down | PC: lightbox com X) */}
-      {showPosterLightbox && (
-        <PosterLightbox
-          open={showPosterLightbox}
-          src={posterPath ? tmdb.getImageUrl(posterPath, 'w780') : posterUrl}
-          srcSet={
-            posterPath
-              ? `${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w, ${tmdb.getImageUrl(posterPath, 'original')} 1280w`
-              : posterSrcSet
-          }
-          alt={movie.title}
-          onClose={() => setShowPosterLightbox(false)}
-        />
-      )}
+      <PosterLightbox
+        open={showPosterLightbox}
+        src={posterPath ? tmdb.getImageUrl(posterPath, 'w780') : posterUrl}
+        previewSrc={isMobile ? posterMobileUrl : posterUrl}
+        alt={movie.title}
+        onClose={() => setShowPosterLightbox(false)}
+      />
 
       {/* 3. Trailer Modal */}
       {showTrailerModal && trailerVideo && (
