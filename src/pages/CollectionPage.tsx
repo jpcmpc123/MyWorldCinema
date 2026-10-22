@@ -176,7 +176,7 @@ export const CollectionPage: React.FC = () => {
       : t('collection_films_count_many').replace('{count}', String(parts.length));
 
   return (
-    <div className="min-h-screen bg-[#14181c] select-none pb-24">
+    <div className="min-h-screen bg-[#14181c] md:bg-transparent select-none pb-24">
       {/* =====================================================================
           MOBILE HEADER (estilo app Android Letterboxd — igual à foto 1)
           ===================================================================== */}
@@ -439,6 +439,8 @@ export const CollectionPage: React.FC = () => {
                     size="fluid"
                     faded={faded}
                     showDetails={viewMode === 'cards'}
+                    priority={index < 9}
+                    eager={index < 18}
                   />
                 </div>
               );

@@ -271,6 +271,7 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
   useEffect(() => {
     if (prefetchedRef.current) return;
     prefetchedRef.current = true;
+    let mountTimer: number | undefined;
     const run = () => {
       PANELS.forEach((panel) => {
         if ('preload' in panel && typeof panel.preload === 'function') {
@@ -278,21 +279,29 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
         }
       });
       void tabDataCache.preloadAll();
-      window.setTimeout(() => {
+      // Aguarda os pôsteres da aba ativa carregarem antes de montar as abas ocultas
+      // em background (evita disputa de conexões HTTP por imagens no celular)
+      mountTimer = window.setTimeout(() => {
         setPager((prev) =>
           prev.mounted.every(Boolean)
             ? prev
             : { ...prev, mounted: PANELS.map(() => true) },
         );
-      }, 300);
+      }, 1800);
     };
     const idle = window.requestIdleCallback;
     if (typeof idle === 'function') {
-      const id = idle(run, { timeout: 800 });
-      return () => window.cancelIdleCallback?.(id);
+      const id = idle(run, { timeout: 1200 });
+      return () => {
+        window.cancelIdleCallback?.(id);
+        if (mountTimer) window.clearTimeout(mountTimer);
+      };
     }
-    const id = window.setTimeout(run, 800);
-    return () => window.clearTimeout(id);
+    const id = window.setTimeout(run, 1200);
+    return () => {
+      window.clearTimeout(id);
+      if (mountTimer) window.clearTimeout(mountTimer);
+    };
   }, []);
 
   const endSlide = () =>

@@ -121,6 +121,38 @@ body,
   background-color: var(--lb-bg-main) !important;
 }
 
+@media (min-width: 768px) {
+  /* No computador (desktop): barra superior nítida em #14181c (0–72px) e degradê do Letterboxd começando exatamente abaixo da barra */
+  html,
+  body,
+  #root {
+    background-color: #14181c !important;
+    background-image: linear-gradient(
+      180deg,
+      #14181c 0px,
+      #14181c 72px,
+      #202830 72px,
+      #1e252c 140px,
+      #1b2128 230px,
+      #181d23 340px,
+      #161a1f 450px,
+      #14181c 560px,
+      #14181c 100%
+    ) !important;
+    background-repeat: no-repeat !important;
+    background-attachment: scroll !important;
+  }
+
+  /* Em páginas com Backdrop (filme/série), o fundo ao redor dos 1200px do backdrop
+     deve ser #14181c sólido (igual ao Letterboxd), sem o degrau #202830 nas laterais */
+  html:has(.backdrop-container),
+  body:has(.backdrop-container),
+  #root:has(.backdrop-container) {
+    background-color: #14181c !important;
+    background-image: none !important;
+  }
+}
+
 /* Reserva o espaço da barra de rolagem mesmo em páginas curtas, para que
    Filmes/Séries (com scroll) e Críticas/Listas (sem scroll) tenham a mesma largura útil */
 html {
@@ -727,6 +759,7 @@ button, a, [role="button"] {
   overflow: hidden;
   pointer-events: none;
   user-select: none;
+  background-color: #14181c;
 }
 
 @media (max-width: 767px) {

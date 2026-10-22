@@ -74,11 +74,12 @@ const SkeletonRow: React.FC = () => (
 // interno + scroll-px-4 fazem o 1º pôster nascer alinhado com o título da
 // seção e, ao rolar, os pôsteres deslizam até a borda (edge-to-edge),
 // com respiro à direita no final — igual ao app Android do Letterboxd.
-const PosterRail: React.FC<{ movies: TMDBMovie[]; isSeries: boolean; children?: (m: TMDBMovie) => React.ReactNode }> = ({
-  movies,
-  isSeries,
-  children,
-}) => (
+const PosterRail: React.FC<{
+  movies: TMDBMovie[];
+  isSeries: boolean;
+  sectionIndex?: number;
+  children?: (m: TMDBMovie) => React.ReactNode;
+}> = ({ movies, isSeries, sectionIndex = 0, children }) => (
   <div
     data-h-scroll="true"
     className="flex gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory -mx-4 px-4 scroll-px-4"
@@ -92,7 +93,8 @@ const PosterRail: React.FC<{ movies: TMDBMovie[]; isSeries: boolean; children?: 
             showDetails={false}
             tv={isSeries}
             enableLongPressActions
-            priority={idx < 6}
+            priority={sectionIndex < 2 && idx < 4}
+            eager
           />
         </PosterShell>
         {children?.(m)}
@@ -136,7 +138,7 @@ export const MobileCatalogSections: React.FC<MobileCatalogSectionsProps> = ({
     <div className="md:hidden space-y-8">
       {/* 1. Popular this week — 4 pôsteres limpos (sem divisória: primeira seção) */}
       <SectionShell title={t('sec_popular_week')} to={routes.popular} state={{ initialItems: popular.slice(0, 18) }} divider={false}>
-        {loading ? <SkeletonRow /> : <PosterRail movies={popular} isSeries={isSeries} />}
+        {loading ? <SkeletonRow /> : <PosterRail movies={popular} isSeries={isSeries} sectionIndex={0} />}
       </SectionShell>
 
       {/* 2. Highest rated — pôsteres limpos */}
@@ -144,7 +146,7 @@ export const MobileCatalogSections: React.FC<MobileCatalogSectionsProps> = ({
         {loading ? (
           <SkeletonRow />
         ) : (
-          <PosterRail movies={topRated} isSeries={isSeries} />
+          <PosterRail movies={topRated} isSeries={isSeries} sectionIndex={1} />
         )}
       </SectionShell>
 
@@ -153,13 +155,13 @@ export const MobileCatalogSections: React.FC<MobileCatalogSectionsProps> = ({
         {loading ? (
           <SkeletonRow />
         ) : (
-          <PosterRail movies={mostWatched} isSeries={isSeries} />
+          <PosterRail movies={mostWatched} isSeries={isSeries} sectionIndex={2} />
         )}
       </SectionShell>
 
       {/* 4. Most anticipated (films) / Just reviewed (series) — pôsteres limpos */}
       <SectionShell title={isSeries ? t('sec_just_reviewed') : t('sec_most_anticipated')} to={routes.anticipated} state={{ initialItems: anticipated.slice(0, 18) }}>
-        {loading ? <SkeletonRow /> : <PosterRail movies={anticipated} isSeries={isSeries} />}
+        {loading ? <SkeletonRow /> : <PosterRail movies={anticipated} isSeries={isSeries} sectionIndex={3} />}
       </SectionShell>
     </div>
   );

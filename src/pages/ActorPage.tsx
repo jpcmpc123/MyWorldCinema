@@ -426,7 +426,7 @@ export function ActorPage() {
   // ---- Estados de carregamento / erro (com barra nativa no mobile) --------
   if (loading) {
     if (!isMobile) {
-      return <div className="min-h-screen bg-[#14181c]" />;
+      return <div className="min-h-screen bg-[#14181c] md:bg-transparent" />;
     }
     return (
       <div className="min-h-screen bg-[#14181c]">

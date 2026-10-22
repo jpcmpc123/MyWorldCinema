@@ -1,4 +1,5 @@
-import { tmdb, type TMDBMovie } from './tmdb';
+import { tmdb, getTmdbLanguage, type TMDBMovie } from './tmdb';
+import { markPosterUrlLoaded } from '../components/PosterCard';
 
 export interface HubSectionsData {
   popular: TMDBMovie[];
@@ -6,6 +7,7 @@ export interface HubSectionsData {
   mostWatched: TMDBMovie[];
   mostAnticipated: TMDBMovie[];
   timestamp: number;
+  lang?: string;
 }
 
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutos
@@ -33,13 +35,42 @@ if (typeof window !== 'undefined') {
   }
 }
 
+function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>, limitPerSection = 6): void {
+  if (typeof window === 'undefined' || typeof Image === 'undefined') return;
+  const isMobile = window.innerWidth < 640;
+  const size = isMobile ? 'w185' : 'w342';
+  const lists = [data.popular, data.highestRated, data.mostWatched, data.mostAnticipated];
+  const seen = new Set<string>();
+
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list.slice(0, limitPerSection)) {
+      if (!item?.poster_path) continue;
+      const url = tmdb.getImageUrl(item.poster_path, size);
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => markPosterUrlLoaded(url);
+      img.src = url;
+      if (img.complete && img.naturalWidth > 0) {
+        markPosterUrlLoaded(url);
+      }
+    }
+  }
+}
+
 function readStorage(key: string): HubSectionsData | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.sessionStorage.getItem(key) || window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as HubSectionsData;
-    if (Date.now() - parsed.timestamp > CACHE_TTL_MS) {
+    const currentLang = getTmdbLanguage();
+    if (
+      Date.now() - parsed.timestamp > CACHE_TTL_MS ||
+      (parsed.lang && parsed.lang !== currentLang)
+    ) {
       window.sessionStorage.removeItem(key);
       window.localStorage.removeItem(key);
       return null;
@@ -67,12 +98,18 @@ function writeStorage(key: string, data: HubSectionsData): void {
 
 export const tabDataCache = {
   getFilmsHub(): HubSectionsData | null {
-    if (memoryFilmsHub && Date.now() - memoryFilmsHub.timestamp < CACHE_TTL_MS) {
+    const currentLang = getTmdbLanguage();
+    if (
+      memoryFilmsHub &&
+      Date.now() - memoryFilmsHub.timestamp < CACHE_TTL_MS &&
+      (!memoryFilmsHub.lang || memoryFilmsHub.lang === currentLang)
+    ) {
       return memoryFilmsHub;
     }
     const fromStorage = readStorage(FILMS_KEY);
     if (fromStorage) {
       memoryFilmsHub = fromStorage;
+      prewarmHubPosters(fromStorage, 6);
       return fromStorage;
     }
     return null;
@@ -82,13 +119,20 @@ export const tabDataCache = {
     const entry: HubSectionsData = {
       ...data,
       timestamp: Date.now(),
+      lang: getTmdbLanguage(),
     };
     memoryFilmsHub = entry;
     writeStorage(FILMS_KEY, entry);
+    prewarmHubPosters(entry, 8);
   },
 
   getSeriesHub(): HubSectionsData | null {
-    if (memorySeriesHub && Date.now() - memorySeriesHub.timestamp < CACHE_TTL_MS) {
+    const currentLang = getTmdbLanguage();
+    if (
+      memorySeriesHub &&
+      Date.now() - memorySeriesHub.timestamp < CACHE_TTL_MS &&
+      (!memorySeriesHub.lang || memorySeriesHub.lang === currentLang)
+    ) {
       return memorySeriesHub;
     }
     const fromStorage = readStorage(SERIES_KEY);
@@ -103,9 +147,11 @@ export const tabDataCache = {
     const entry: HubSectionsData = {
       ...data,
       timestamp: Date.now(),
+      lang: getTmdbLanguage(),
     };
     memorySeriesHub = entry;
     writeStorage(SERIES_KEY, entry);
+    prewarmHubPosters(entry, 6);
   },
 
   /**

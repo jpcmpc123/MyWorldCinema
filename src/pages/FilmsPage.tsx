@@ -537,13 +537,15 @@ export const FilmsPage: React.FC = () => {
       ) : filteredMovies.length > 0 ? (
         viewMode === 'grid' ? (
           <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2">
-            {filteredMovies.slice(0, 72).map((movie) => (
+            {filteredMovies.slice(0, 72).map((movie, idx) => (
               <PosterCard
                 key={movie.id}
                 movie={movie}
                 size="fluid"
                 enableLongPressActions
                 faded={fadeWatched && watchedFilter === 'all' && isMovieWatched(movie.id)}
+                priority={idx < 12}
+                eager={idx < 24}
               />
             ))}
           </div>

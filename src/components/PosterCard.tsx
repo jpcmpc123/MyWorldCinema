@@ -1,10 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, Heart, MoreHorizontal, Star } from 'lucide-react';
 import { tmdb } from '../services/tmdb';
 import { useMovieState, useOpenActionSheet, useMovieActions } from '../context/AppContext';
 import { useLongPress } from '../hooks/useLongPress';
 import { useLanguage } from '../i18n/LanguageContext';
+
+// Cache em memória de URLs de pôsteres já carregados na sessão para renderização instantânea (0ms, sem flash)
+const loadedPosterUrls = new Set<string>();
+
+export function markPosterUrlLoaded(url: string | null | undefined): void {
+  if (url) loadedPosterUrls.add(url);
+}
+
+export function isPosterUrlLoaded(url: string | null | undefined): boolean {
+  return Boolean(url && loadedPosterUrls.has(url));
+}
 
 interface PosterCardProps {
   movie: {
@@ -27,6 +38,7 @@ interface PosterCardProps {
   faded?: boolean;
   linkState?: Record<string, unknown>;
   priority?: boolean;
+  eager?: boolean;
 }
 
 const PosterCardBase: React.FC<PosterCardProps> = ({
@@ -39,6 +51,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   faded = false,
   linkState,
   priority = false,
+  eager = false,
 }) => {
   const openActionSheet = useOpenActionSheet();
   const { watched, liked, inWatchlist, rating, overridePoster } = useMovieState(movie.id);
@@ -50,6 +63,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const [openLeft, setOpenLeft] = useState(false);
   const [hoverStar, setHoverStar] = useState<number | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   // Fecha a abinha (popover) ao clicar fora ou apertar Escape
   useEffect(() => {
@@ -73,6 +87,25 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   // Custom poster override (Set film poster) applies site-wide
   const displayPosterPath = overridePoster || movie.poster_path;
 
+  const isMobileViewport =
+    typeof window !== 'undefined' && window.innerWidth < 640;
+
+  // Em celulares (4 colunas ~85px CSS), w185 tem 185px reais (~15KB vs ~95KB do w342/w500),
+  // carregando até 6x mais rápido em redes móveis sem perda visual.
+  const urlW185 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w185') : '';
+  const urlW342 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w342') : '';
+  const urlW500 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w500') : '';
+
+  const primarySrc = !displayPosterPath
+    ? ''
+    : size === 'lg'
+      ? isMobileViewport
+        ? urlW342
+        : urlW500
+      : isMobileViewport
+        ? urlW185
+        : urlW342;
+
   const posterSizes = {
     fluid: 'w-full min-w-0',
     sm: 'w-24 min-w-24',
@@ -86,15 +119,55 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const year = rawDate ? rawDate.slice(0, 4) : '';
   const tooltipLabel = year ? `${displayTitle} (${year})` : displayTitle;
 
-  // Estado de carregamento do pôster: exibe o nome do filme/série centralizado
-  // (padrão Letterboxd mobile) enquanto a imagem carrega ou caso falhe/não exista
-  const [isLoaded, setIsLoaded] = useState(false);
+  // Estado de carregamento do pôster: se já estiver no cache em memória, nasce carregado (sem piscar)
+  const [isLoaded, setIsLoaded] = useState<boolean>(() =>
+    Boolean(
+      primarySrc &&
+        (loadedPosterUrls.has(primarySrc) ||
+          (urlW185 && loadedPosterUrls.has(urlW185)) ||
+          (urlW342 && loadedPosterUrls.has(urlW342))),
+    ),
+  );
+  const [retryCount, setRetryCount] = useState(0);
   const [hasError, setHasError] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!displayPosterPath) {
+      setIsLoaded(false);
+      setHasError(false);
+      setRetryCount(0);
+      return;
+    }
+    const alreadyCached =
+      loadedPosterUrls.has(primarySrc) ||
+      (urlW185 && loadedPosterUrls.has(urlW185)) ||
+      (urlW342 && loadedPosterUrls.has(urlW342));
+
+    if (alreadyCached) {
+      setIsLoaded(true);
+      setHasError(false);
+      return;
+    }
+
+    const el = imgRef.current;
+    if (el && el.complete && el.naturalWidth > 0) {
+      markPosterUrlLoaded(primarySrc);
+      setIsLoaded(true);
+      setHasError(false);
+      return;
+    }
+
     setIsLoaded(false);
     setHasError(false);
-  }, [displayPosterPath]);
+    setRetryCount(0);
+  }, [displayPosterPath, primarySrc, urlW185, urlW342]);
+
+  const activeSrc =
+    retryCount === 0
+      ? primarySrc
+      : retryCount === 1
+        ? urlW342 || primarySrc
+        : `${primarySrc}${primarySrc.includes('?') ? '&' : '?'}r=${retryCount}`;
 
   const longPressHandlers = useLongPress(
     () => {
@@ -200,26 +273,42 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
           {displayPosterPath && !hasError && (
             <img
               ref={(el) => {
+                imgRef.current = el;
                 if (el && el.complete && el.naturalWidth > 0 && !isLoaded) {
+                  markPosterUrlLoaded(primarySrc);
                   setIsLoaded(true);
                 }
               }}
-              src={tmdb.getImageUrl(displayPosterPath, size === 'lg' ? 'w500' : 'w342')}
-              srcSet={`${tmdb.getImageUrl(displayPosterPath, 'w185')} 185w, ${tmdb.getImageUrl(displayPosterPath, 'w342')} 342w, ${tmdb.getImageUrl(displayPosterPath, 'w500')} 500w`}
+              src={activeSrc}
+              srcSet={
+                retryCount === 0
+                  ? `${urlW185} 185w, ${urlW342} 342w, ${urlW500} 500w`
+                  : undefined
+              }
               sizes={
                 size === 'sm'
-                  ? '96px'
+                  ? '60px'
                   : size === 'lg'
-                    ? '(max-width: 640px) 192px, 280px'
-                    : '(max-width: 640px) 105px, (max-width: 1024px) 160px, 220px'
+                    ? '(max-width: 640px) 110px, 280px'
+                    : '(max-width: 640px) 60px, (max-width: 1024px) 150px, 200px'
               }
               alt={displayTitle}
-              onLoad={() => setIsLoaded(true)}
-              onError={() => setHasError(true)}
-              className={`relative z-10 w-full h-full object-cover transition-opacity duration-200 ${
+              onLoad={() => {
+                markPosterUrlLoaded(primarySrc);
+                if (urlW185) markPosterUrlLoaded(urlW185);
+                setIsLoaded(true);
+              }}
+              onError={() => {
+                if (retryCount < 2) {
+                  setRetryCount((prev) => prev + 1);
+                } else {
+                  setHasError(true);
+                }
+              }}
+              className={`relative z-10 w-full h-full object-cover transition-opacity duration-150 ${
                 isLoaded ? 'opacity-100' : 'opacity-0'
               }`}
-              loading={priority ? 'eager' : 'lazy'}
+              loading={priority || eager ? 'eager' : 'lazy'}
               fetchPriority={priority ? 'high' : 'auto'}
               decoding="async"
             />

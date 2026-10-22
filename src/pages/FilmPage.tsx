@@ -149,10 +149,16 @@ export function getRequiredFilmImageUrls(
       urls.add(tmdb.getProfileUrl(fromPersonProfilePath, 'w185'));
     }
     if (movie.credits?.cast?.length) {
-      const initialCast = movie.credits.cast.slice(0, 10);
+      const initialCast = movie.credits.cast.slice(0, 4);
       for (const actor of initialCast) {
         if (actor.profile_path) {
           urls.add(tmdb.getProfileUrl(actor.profile_path, 'w185'));
+        }
+      }
+      // Demais fotos do elenco precarregam em segundo plano sem travar a tela
+      for (const actor of movie.credits.cast.slice(4, 10)) {
+        if (actor.profile_path) {
+          void preloadSingleImage(tmdb.getProfileUrl(actor.profile_path, 'w185'));
         }
       }
     }
@@ -170,14 +176,20 @@ export function getRequiredFilmImageUrls(
     }
   }
 
-  // Pôsteres iniciais de Filmes Relacionados (coleção) e Semelhantes
-  const posterSize = isMobile ? 'w342' : 'w500';
+  // Pôsteres iniciais de Filmes Relacionados (coleção) e Semelhantes:
+  // No celular, usa w185 (~15KB) e faz o aquecimento em segundo plano para não bloquear o pôster principal
+  const posterSize = isMobile ? 'w185' : 'w342';
   const related = (movie.collection_parts || [])
     .filter((item) => item.poster_path && item.id !== movie.id)
     .slice(0, 6);
   for (const item of related) {
     if (item.poster_path) {
-      urls.add(tmdb.getImageUrl(item.poster_path, posterSize));
+      const u = tmdb.getImageUrl(item.poster_path, posterSize);
+      if (isMobile) {
+        void preloadSingleImage(u);
+      } else {
+        urls.add(u);
+      }
     }
   }
 
@@ -186,7 +198,12 @@ export function getRequiredFilmImageUrls(
     .slice(0, 6);
   for (const item of similar) {
     if (item.poster_path) {
-      urls.add(tmdb.getImageUrl(item.poster_path, posterSize));
+      const u = tmdb.getImageUrl(item.poster_path, posterSize);
+      if (isMobile) {
+        void preloadSingleImage(u);
+      } else {
+        urls.add(u);
+      }
     }
   }
 
@@ -443,7 +460,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
           await Promise.all([
             Promise.race([
               Promise.all(urls.map(preloadSingleImage)),
-              new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+              new Promise<void>((resolve) => setTimeout(resolve, isMobile ? 1200 : 3000)),
             ]),
             document.fonts?.ready ? document.fonts.ready.catch(() => {}) : Promise.resolve(),
             waitSlideIfMobile(),
@@ -473,7 +490,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             ? Promise.resolve()
             : Promise.race([
                 Promise.all(urls.map(preloadSingleImage)),
-                new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+                new Promise<void>((resolve) => setTimeout(resolve, isMobile ? 1200 : 3000)),
               ]),
           document.fonts?.ready ? document.fonts.ready.catch(() => {}) : Promise.resolve(),
           waitSlideIfMobile(),
@@ -704,7 +721,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   return (
     <div
       key={`film-ready-${movie.id}`}
-      className="relative min-h-screen bg-lb-bg text-lb-text"
+      className="relative min-h-screen bg-lb-bg md:bg-transparent text-lb-text"
     >
       {/* 1. Cinematic Hero Vignette Backdrop */}
       {backdropUrl && (
@@ -1455,7 +1472,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
                   </Link>
                   <div data-h-scroll="true" className="similar-carousel">
-                    {relatedFilms.map((item, idx) => (
+                    {relatedFilms.map((item) => (
                       <Link
                         key={item.id}
                         to={`/film/${item.id}`}
@@ -1464,9 +1481,9 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                         aria-label={item.title}
                       >
                         <img
-                          src={tmdb.getImageUrl(item.poster_path, 'w342')}
+                          src={tmdb.getImageUrl(item.poster_path, 'w185')}
                           alt={item.title}
-                          loading={idx < 6 ? 'eager' : 'lazy'}
+                          loading="eager"
                           decoding="async"
                         />
                       </Link>
@@ -1521,7 +1538,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
                   </Link>
                   <div data-h-scroll="true" className="similar-carousel">
-                    {displaySimilar.map((item, idx) => (
+                    {displaySimilar.map((item) => (
                       <Link
                         key={item.id}
                         to={`${isTv ? '/tv' : '/film'}/${item.id}`}
@@ -1530,9 +1547,9 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                         aria-label={item.title}
                       >
                         <img
-                          src={tmdb.getImageUrl(item.poster_path, 'w342')}
+                          src={tmdb.getImageUrl(item.poster_path, 'w185')}
                           alt={item.title}
-                          loading={idx < 6 ? 'eager' : 'lazy'}
+                          loading="eager"
                           decoding="async"
                         />
                       </Link>

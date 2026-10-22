@@ -109,7 +109,8 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
 
   // Card de pôster (grade de 4 colunas e lista compacta).
   // Série (media_type 'tv') abre /tv/{id}; filme abre /film/{id}.
-  const posterCard = (film: TMDBPersonMovieCredit, className = '') => (
+  const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 640;
+  const posterCard = (film: TMDBPersonMovieCredit, idx: number, className = '') => (
     <Link
       key={`${film.media_type ?? 'movie'}-${film.id}`}
       to={`${film.media_type === 'tv' ? '/tv' : '/film'}/${film.id}`}
@@ -121,9 +122,10 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
     >
       {film.poster_path ? (
         <img
-          src={tmdb.getImageUrl(film.poster_path, 'w342')}
+          src={tmdb.getImageUrl(film.poster_path, isMobileViewport ? 'w185' : 'w342')}
           alt={film.title}
-          loading="lazy"
+          loading={idx < 16 ? 'eager' : 'lazy'}
+          fetchPriority={idx < 8 ? 'high' : 'auto'}
           decoding="async"
         />
       ) : (
@@ -203,12 +205,12 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
       </div>
 
       {viewMode === 'grid' ? (
-        <div className="person-films-grid">{listed.map((f) => posterCard(f))}</div>
+        <div className="person-films-grid">{listed.map((f, idx) => posterCard(f, idx))}</div>
       ) : (
         <div className="person-films-list">
-          {listed.map((f) => (
+          {listed.map((f, idx) => (
             <div key={`${f.media_type ?? 'movie'}-${f.id}`} className="person-film-row">
-              {posterCard(f, 'w-16 flex-none')}
+              {posterCard(f, idx, 'w-16 flex-none')}
               <div className="min-w-0">
                 <Link
                   to={`${f.media_type === 'tv' ? '/tv' : '/film'}/${f.id}`}

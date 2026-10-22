@@ -309,7 +309,7 @@ function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-lb-bg text-lb-text flex flex-col selection:bg-lb-green selection:text-lb-bg">
+    <div className="min-h-screen bg-lb-bg md:bg-transparent text-lb-text flex flex-col selection:bg-lb-green selection:text-lb-bg">
       {/* Main Top Header */}
       <Header
         pathnameOverride={headerPathname}
@@ -381,7 +381,7 @@ function AppShell() {
                 panel.isOutgoing
                   ? 'fixed inset-0 z-20 overflow-hidden pointer-events-none bg-lb-bg mw-gpu-layer'
                   : isTransitioning
-                    ? 'relative z-30 bg-lb-bg mw-gpu-layer'
+                    ? 'relative z-30 bg-lb-bg md:bg-transparent mw-gpu-layer'
                     : isDetail
                       ? 'max-md:overflow-x-hidden'
                       : 'mw-page-in'

@@ -89,7 +89,7 @@ export const BrowseDrilldownPage: React.FC<{ kind: Kind }> = ({ kind }) => {
   rows = rows.map((row) => ({ ...row, to: withType(row.to) }));
 
   return (
-    <div className="min-h-screen bg-[#14181c]">
+    <div className="min-h-screen bg-[#14181c] md:bg-transparent">
       <div className="max-w-[950px] mx-auto">
         <div className="bg-black h-14 px-4 flex items-center gap-4 fixed md:sticky top-0 inset-x-0 z-40">
           <button onClick={() => navigate(-1)} aria-label={t('film_back')} className="text-white">

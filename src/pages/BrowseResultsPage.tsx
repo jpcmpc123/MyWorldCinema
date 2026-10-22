@@ -669,7 +669,7 @@ export const BrowseResultsPage: React.FC = () => {
   const selectedServiceObj = tmdb.streamingServices.find((s) => s.id === service);
 
   return (
-    <div className="min-h-screen bg-[#14181c]">
+    <div className="min-h-screen bg-[#14181c] md:bg-transparent">
       {/* =====================================================================
           DESKTOP SIMILAR FILMS / SERIES LAYOUT (md+, quando similarTo existe)
           Idêntico ao Letterboxd (Imagem de referência):
@@ -1243,6 +1243,8 @@ export const BrowseResultsPage: React.FC = () => {
                     tv={tv}
                     faded={faded}
                     showDetails={viewMode === 'cards'}
+                    priority={index < 12}
+                    eager={index < 24}
                   />
                 </div>
               );
