@@ -1190,7 +1190,7 @@ export const BrowseResultsPage: React.FC = () => {
           Mantém exatamente a barra superior preta e a grade de 4 colunas
           ===================================================================== */}
       <div className={`max-w-[950px] mx-auto ${isSimilarMode ? 'md:hidden' : ''}`}>
-        <header className="bg-black sticky top-0 z-30 h-14 px-4 flex items-center justify-between">
+        <header className="bg-black fixed md:sticky top-0 inset-x-0 z-40 h-14 px-4 flex items-center justify-between">
           <div className="flex items-center gap-4 min-w-0">
             <button
               onClick={() => navigate(-1)}
@@ -1222,6 +1222,7 @@ export const BrowseResultsPage: React.FC = () => {
             </button>
           </div>
         </header>
+        <div className="h-14 md:hidden shrink-0" aria-hidden="true" />
 
         {visible.length === 0 && !loading ? (
           <p className="text-center text-sm text-[#9ab] py-16">{t('common_no_results_filters')}</p>

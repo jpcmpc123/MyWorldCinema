@@ -91,12 +91,13 @@ export const BrowseDrilldownPage: React.FC<{ kind: Kind }> = ({ kind }) => {
   return (
     <div className="min-h-screen bg-[#14181c]">
       <div className="max-w-[950px] mx-auto">
-        <div className="bg-black h-14 px-4 flex items-center gap-4 sticky top-0 z-30">
+        <div className="bg-black h-14 px-4 flex items-center gap-4 fixed md:sticky top-0 inset-x-0 z-40">
           <button onClick={() => navigate(-1)} aria-label={t('film_back')} className="text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-lg font-bold text-white">{title}</h1>
         </div>
+        <div className="h-14 md:hidden shrink-0" aria-hidden="true" />
 
         <nav className="flex flex-col pb-24">
           {rows.map((row) => (

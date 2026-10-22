@@ -430,11 +430,12 @@ export function ActorPage() {
     }
     return (
       <div className="min-h-screen bg-[#14181c]">
-        <div className="md:hidden sticky top-0 z-40 h-14 px-4 bg-black flex items-center">
+        <div className="md:hidden fixed top-0 inset-x-0 z-40 h-14 px-4 bg-black flex items-center">
           <button onClick={() => navigate(-1)} aria-label={t('common_back')} className="text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
         </div>
+        <div className="md:hidden h-14 shrink-0" aria-hidden="true" />
         <div className="flex items-center justify-center py-40">
           <Loader2 className="w-8 h-8 animate-spin text-lb-green" />
         </div>
@@ -445,11 +446,12 @@ export function ActorPage() {
   if (error || !person) {
     return (
       <div className="min-h-screen bg-[#14181c]">
-        <div className="md:hidden sticky top-0 z-40 h-14 px-4 bg-black flex items-center">
+        <div className="md:hidden fixed top-0 inset-x-0 z-40 h-14 px-4 bg-black flex items-center">
           <button onClick={() => navigate(-1)} aria-label={t('common_back')} className="text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
         </div>
+        <div className="md:hidden h-14 shrink-0" aria-hidden="true" />
         <div className="max-w-[950px] mx-auto px-4 py-20 text-center space-y-2">
           <p className="text-white font-semibold">{error || t('person_not_found')}</p>
           <p className="text-xs text-lb-muted">{t('person_bio_empty')}</p>
@@ -499,7 +501,7 @@ export function ActorPage() {
   if (isMobile) {
     return (
       <div className="min-h-screen bg-[#14181c] text-lb-text flex flex-col">
-        <div className="sticky top-0 z-40 bg-black">
+        <div className="fixed top-0 inset-x-0 z-40 bg-black">
           {/* Top App Bar: 56px, preta, ← + nome + (visualização | filtro | share) */}
           <div className="h-14 px-4 flex items-center justify-between gap-3">
             <div className="flex items-center min-w-0">
@@ -580,6 +582,7 @@ export function ActorPage() {
             />
           )}
         </div>
+        <div className="h-[105px] shrink-0" aria-hidden="true" />
 
         {/* Conteúdo das abas: ESTEIRA HORIZONTAL (desliza lateralmente ao trocar
             de aba ou puxar com o dedo, igual à Home). */}

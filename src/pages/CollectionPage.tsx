@@ -180,7 +180,7 @@ export const CollectionPage: React.FC = () => {
       {/* =====================================================================
           MOBILE HEADER (estilo app Android Letterboxd — igual à foto 1)
           ===================================================================== */}
-      <header className="md:hidden bg-black sticky top-0 z-30 h-14 px-4 flex items-center justify-between">
+      <header className="md:hidden bg-black fixed top-0 inset-x-0 z-40 h-14 px-4 flex items-center justify-between">
         <div className="flex items-center gap-4 min-w-0">
           <button
             onClick={() => navigate(-1)}
@@ -199,6 +199,7 @@ export const CollectionPage: React.FC = () => {
           <SlidersHorizontal className="w-5 h-5" />
         </button>
       </header>
+      <div className="md:hidden h-14 shrink-0" aria-hidden="true" />
 
       {/* =====================================================================
           MAIN CONTAINER (Mobile & Desktop)

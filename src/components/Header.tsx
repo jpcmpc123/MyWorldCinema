@@ -527,31 +527,40 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  const showMobileHeader = !overBackdrop && (isMainPage || isProfileArea || isSettingsRoute);
+
   return (
-    <header
-      className={
-        overBackdrop
-          ? 'hidden md:block absolute inset-x-0 top-0 z-50 bg-transparent select-none'
-          : !(isMainPage || isProfileArea || isSettingsRoute)
-            ? 'hidden md:block sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none'
-            : `sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none ${
-                pushingOut
-                  ? 'max-md:fixed max-md:inset-x-0 max-md:top-0 pointer-events-none mw-gpu-layer'
-                  : ''
-              }`
-      }
-      style={
-        pushingOut
-          ? {
-              transform: pushPhase === 'run' ? 'translate3d(-100%, 0, 0)' : 'translate3d(0, 0, 0)',
-              transition:
-                pushPhase === 'run'
-                  ? 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)'
-                  : 'none',
-            }
-          : undefined
-      }
-    >
+    <>
+      {showMobileHeader && !pushingOut && (
+        <div
+          className={`md:hidden shrink-0 ${
+            isMainPage || isProfileArea ? 'h-[110px]' : 'h-[53px]'
+          }`}
+          aria-hidden="true"
+        />
+      )}
+      <header
+        className={
+          overBackdrop
+            ? 'hidden md:block absolute inset-x-0 top-0 z-50 bg-transparent select-none'
+            : !showMobileHeader
+              ? 'hidden md:block sticky top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none'
+              : `max-md:fixed max-md:inset-x-0 max-md:top-0 md:sticky md:top-0 z-50 bg-black md:bg-[#14181c] border-b border-lb-elevated md:border-b-0 select-none ${
+                  pushingOut ? 'pointer-events-none mw-gpu-layer' : ''
+                }`
+        }
+        style={
+          pushingOut
+            ? {
+                transform: pushPhase === 'run' ? 'translate3d(-100%, 0, 0)' : 'translate3d(0, 0, 0)',
+                transition:
+                  pushPhase === 'run'
+                    ? 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)'
+                    : 'none',
+              }
+            : undefined
+        }
+      >
       {/* Camada de contraste da navbar sobre o backdrop — MESMA receita do
           Letterboxd (.site-header .site-header-bg): 95px, gradiente de
           #14181c (sólido no topo) até transparente, opacidade 2/3 parada e
@@ -1100,6 +1109,7 @@ export const Header: React.FC<HeaderProps> = ({
           </nav>
         </div>
       )}
-    </header>
+      </header>
+    </>
   );
 };

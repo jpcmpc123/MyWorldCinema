@@ -318,7 +318,7 @@ function AppShell() {
       />
 
       {/* Main Content Viewport (pb: espaço para a BottomNav de 60px no mobile) */}
-      <main className="relative flex-1 flex flex-col max-md:overflow-x-hidden md:overflow-x-visible pb-[calc(60px+env(safe-area-inset-bottom,0px)+16px)] md:pb-0">
+      <main className="relative flex-1 flex flex-col max-md:overflow-x-clip md:overflow-x-visible pb-[calc(60px+env(safe-area-inset-bottom,0px)+16px)] md:pb-0">
         {/* No mobile, mantém o TabViewPager das abas principais vivo em segundo plano.
             Sem `display: contents` para nunca destruir/reconstruir a árvore de layout no início do slide. */}
         {isMobile && (

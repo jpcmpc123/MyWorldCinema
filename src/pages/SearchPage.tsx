@@ -126,8 +126,8 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
       onMouseEnter={handlePrefetch}
       className="flex gap-[18px] py-[18px] border-b border-[#2c3440] items-start group"
     >
-      {/* Pôster 70x105 (placeholder escuro quando não há arte) */}
-      <div className="w-[70px] h-[105px] shrink-0 rounded-[4px] overflow-hidden border border-white/12 bg-[#1c2228]">
+      {/* Pôster 76x114 (placeholder escuro quando não há arte) */}
+      <div className="w-[76px] h-[114px] shrink-0 rounded-[4px] overflow-hidden border border-white/15 bg-[#232a31]">
         {item.poster_path ? (
           <img
             src={tmdb.getImageUrl(item.poster_path, 'w185')}
@@ -137,7 +137,11 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
             decoding="async"
           />
         ) : (
-          <div className="w-full h-full border border-[#2c3440]" aria-hidden="true" />
+          <div className="w-full h-full flex items-center justify-center p-1.5 text-center">
+            <span className="text-[10px] font-medium text-[#9ab] leading-tight line-clamp-4 break-words">
+              {item.title}
+            </span>
+          </div>
         )}
       </div>
 
@@ -220,7 +224,7 @@ const PersonRow: React.FC<{ person: TMDBSearchPerson }> = ({ person }) => {
       to={openPersonProfile(person.id, personRoleFromDepartment(person.known_for_department))}
       className="flex gap-[18px] py-[18px] border-b border-[#2c3440] items-start group"
     >
-      <div className="w-[70px] h-[105px] shrink-0 rounded-[4px] overflow-hidden border border-white/12 bg-[#1c2228]">
+      <div className="w-[76px] h-[114px] shrink-0 rounded-[4px] overflow-hidden border border-white/15 bg-[#232a31]">
         {person.profile_path ? (
           <img
             src={tmdb.getImageUrl(person.profile_path, 'w185')}
@@ -258,24 +262,47 @@ const PersonRow: React.FC<{ person: TMDBSearchPerson }> = ({ person }) => {
 };
 
 /* ---------------------------------------------------------------------------
- * Linhas compactas do MOBILE (réplica do app Letterboxd): pôster 40x60,
- * título em negrito + ano + "dirigido por" em texto corrido, sem badges.
+ * Linhas do MOBILE (réplica do app Letterboxd): pôster maior 52x78 (2:3),
+ * título em negrito + ano + título original (se diferente) + "dirigido por"
+ * em texto corrido, sem badges.
  * ------------------------------------------------------------------------- */
-const MobilePoster: React.FC<{ path?: string | null; alt: string }> = ({ path, alt }) =>
-  path ? (
-    <img
-      src={tmdb.getImageUrl(path, 'w185')}
-      alt={alt}
-      className="w-10 h-[60px] object-cover rounded border border-white/10 flex-shrink-0"
-      loading="lazy"
-      decoding="async"
-    />
-  ) : (
-    <div
-      className="w-10 h-[60px] rounded border border-white/10 bg-[#1c2228] flex-shrink-0"
-      aria-hidden="true"
-    />
+const MobilePoster: React.FC<{ path?: string | null; alt: string }> = ({ path, alt }) => {
+  const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  useEffect(() => {
+    setLoaded(false);
+    setErrored(false);
+  }, [path]);
+
+  return (
+    <div className="relative w-[52px] h-[78px] rounded-[4px] overflow-hidden border border-white/15 bg-[#232a31] flex-shrink-0">
+      {(!path || !loaded || errored) && (
+        <div
+          className="absolute inset-0 flex items-center justify-center p-1 text-center select-none pointer-events-none"
+          aria-hidden={Boolean(path && !errored)}
+        >
+          <span className="text-[9px] font-medium text-[#9ab] leading-tight line-clamp-3 break-words">
+            {alt}
+          </span>
+        </div>
+      )}
+      {path && !errored && (
+        <img
+          src={tmdb.getImageUrl(path, 'w185')}
+          alt={alt}
+          onLoad={() => setLoaded(true)}
+          onError={() => setErrored(true)}
+          className={`relative z-[1] w-full h-full object-cover transition-opacity duration-150 ${
+            loaded ? 'opacity-100' : 'opacity-0'
+          }`}
+          loading="lazy"
+          decoding="async"
+        />
+      )}
+    </div>
   );
+};
 
 const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => string }> = ({
   item,
@@ -283,6 +310,9 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
 }) => {
   const releaseYear = item.release_date ? item.release_date.slice(0, 4) : '';
   const director = (item.directors ?? []).join(', ');
+  const hasDistinctOriginalTitle =
+    Boolean(item.original_title) &&
+    item.original_title!.trim().toLowerCase() !== item.title.trim().toLowerCase();
   const href = item.media_type === 'tv' ? `/tv/${item.id}` : `/film/${item.id}`;
   const handlePrefetch = () => {
     if (item.media_type === 'tv') {
@@ -297,17 +327,18 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
       onPointerDown={handlePrefetch}
       onTouchStart={handlePrefetch}
       onMouseEnter={handlePrefetch}
-      className="flex items-center gap-3.5 px-4 py-2.5 border-b border-white/10 active:bg-white/5"
+      className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5"
     >
       <MobilePoster path={item.poster_path} alt={item.title} />
       <div className="flex flex-col justify-center min-w-0">
-        <p className="text-sm text-[#9ab] leading-snug">
-          <span className="font-bold text-white text-[15px]">{item.title}</span>{' '}
-          {releaseYear && <span>{releaseYear}</span>}
+        <p className="text-[14px] text-[#9ab] leading-[1.35]">
+          <span className="font-bold text-white text-[16px]">{item.title}</span>
+          {releaseYear && <span> {releaseYear}</span>}
+          {hasDistinctOriginalTitle && <span>, {item.original_title}</span>}
           {director && (
             <span>
               , {t('search_directed_by').toLowerCase()}{' '}
-              <strong className="font-semibold text-[#cde]">{director}</strong>
+              <strong className="font-semibold text-[#9ab]">{director}</strong>
             </span>
           )}
         </p>
@@ -319,12 +350,12 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
 const MobilePersonRow: React.FC<{ person: TMDBSearchPerson }> = ({ person }) => (
   <Link
     to={openPersonProfile(person.id, personRoleFromDepartment(person.known_for_department))}
-    className="flex items-center gap-3.5 px-4 py-2.5 border-b border-white/10 active:bg-white/5"
+    className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5"
   >
     <MobilePoster path={person.profile_path} alt={person.name} />
     <div className="flex flex-col justify-center min-w-0">
-      <p className="text-sm text-[#9ab] leading-snug">
-        <span className="font-bold text-white text-[15px]">{person.name}</span>
+      <p className="text-[14px] text-[#9ab] leading-[1.35]">
+        <span className="font-bold text-white text-[16px]">{person.name}</span>
         {person.known_for_department && <span>, {person.known_for_department}</span>}
       </p>
     </div>
@@ -338,11 +369,11 @@ const MobileLocalRow: React.FC<{
   subtitle?: string | null;
   poster?: string | null;
 }> = ({ to, title, year, subtitle, poster }) => (
-  <Link to={to} className="flex items-center gap-3.5 px-4 py-2.5 border-b border-white/10 active:bg-white/5">
+  <Link to={to} className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5">
     <MobilePoster path={poster} alt={title} />
     <div className="flex flex-col justify-center min-w-0">
-      <p className="text-sm text-[#9ab] leading-snug">
-        <span className="font-bold text-white text-[15px]">{title}</span>
+      <p className="text-[14px] text-[#9ab] leading-[1.35]">
+        <span className="font-bold text-white text-[16px]">{title}</span>
         {year ? <span> {year}</span> : null}
         {subtitle ? <span>, {subtitle}</span> : null}
       </p>
@@ -470,7 +501,19 @@ export const SearchPage: React.FC = () => {
     labelsKey: mobileLabelsKey,
     centerActiveInBar: true,
     ready: isMobile && mobileMode !== 'idle',
+    scrollToTopOnChange: true,
   });
+
+  // Sempre retorna ao topo dos pôsteres quando a palavra buscada ou a aba muda
+  const scrollSearchToTop = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  };
+
+  useLayoutEffect(() => {
+    scrollSearchToTop();
+  }, [query, term, filter]);
 
   // Histórico de buscas recentes (mobile): salvo no localStorage, máx. 15 itens
   // Guarda termo + categoria usada (a badge da linha mostra a categoria)
@@ -610,8 +653,14 @@ export const SearchPage: React.FC = () => {
             }));
             return next;
           });
-          if (reset) setPeople([]);
+          if (reset) {
+            setPeople([]);
+            scrollSearchToTop();
+          }
           setHasMore(res.length > 0 && page < 20);
+        }
+        if (reset && filter === 'cast') {
+          scrollSearchToTop();
         }
         setSearched(true);
       } catch {
@@ -851,7 +900,7 @@ export const SearchPage: React.FC = () => {
 
     return (
       <div className="bg-[#14181c] flex-1 flex flex-col min-h-[calc(100dvh-60px)] overflow-x-clip">
-        <header className={`sticky top-0 z-40 bg-black select-none${mode === 'idle' ? ' pt-3 pb-3' : ''}`}>
+        <header className={`fixed top-0 inset-x-0 z-40 bg-black select-none${mode === 'idle' ? ' pt-3 pb-3' : ''}`}>
           <div
             onClick={mode === 'idle' ? () => inputRef.current?.focus() : undefined}
             className={
@@ -925,6 +974,10 @@ export const SearchPage: React.FC = () => {
             </nav>
           )}
         </header>
+        <div
+          className={mode === 'idle' ? 'h-[68px] shrink-0' : 'h-[119px] shrink-0'}
+          aria-hidden="true"
+        />
 
         {mode === 'idle' ? (
           <FadeIn key="idle">{renderMobileIdleBody()}</FadeIn>
