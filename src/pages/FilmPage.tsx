@@ -256,10 +256,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     }
   }
   const [activeTab, setActiveTab] = useState<TabKey>('cast');
-  const [outgoingTab, setOutgoingTab] = useState<TabKey | null>(null);
-  const [tabSlidePhase, setTabSlidePhase] = useState<'idle' | 'prepare' | 'run'>('idle');
-  const [tabSlideDirection, setTabSlideDirection] = useState<'forward' | 'backward'>('forward');
-  const tabSlideTimerRef = useRef<number | null>(null);
+  const [hasChangedTab, setHasChangedTab] = useState<boolean>(false);
 
   // Elastic green indicator refs for mobile tabs
   const filmTabsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -272,8 +269,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   // Reset tab when film changes
   useEffect(() => {
     setActiveTab('cast');
-    setOutgoingTab(null);
-    setTabSlidePhase('idle');
+    setHasChangedTab(false);
     filmPrevPosRef.current = { left: 0, width: 0 };
     filmTabMountedRef.current = false;
     prevActiveTabRef.current = 'cast';
@@ -281,20 +277,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
   const handleSelectTab = (nextTab: TabKey) => {
     if (nextTab === activeTab) return;
-    if (tabSlideTimerRef.current) {
-      window.clearTimeout(tabSlideTimerRef.current);
-      tabSlideTimerRef.current = null;
-    }
-
-    const tabOrder: TabKey[] = ['cast', 'crew', 'details', 'genres', 'releases'];
-    const prevIdx = tabOrder.indexOf(activeTab);
-    const nextIdx = tabOrder.indexOf(nextTab);
-    const direction = nextIdx >= prevIdx ? 'forward' : 'backward';
-
-    setOutgoingTab(activeTab);
+    setHasChangedTab(true);
     setActiveTab(nextTab);
-    setTabSlideDirection(direction);
-    setTabSlidePhase('prepare');
 
     const targetBtn = filmTabButtonsRef.current.get(nextTab);
     if (filmTabsContainerRef.current && targetBtn) {
@@ -304,38 +288,10 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     }
   };
 
-  useEffect(() => {
-    if (tabSlidePhase !== 'prepare') return;
-    let raf2 = 0;
-    const raf1 = window.requestAnimationFrame(() => {
-      raf2 = window.requestAnimationFrame(() => {
-        setTabSlidePhase('run');
-      });
-    });
-    return () => {
-      window.cancelAnimationFrame(raf1);
-      if (raf2) window.cancelAnimationFrame(raf2);
-    };
-  }, [tabSlidePhase]);
-
-  useEffect(() => {
-    if (tabSlidePhase !== 'run') return;
-    tabSlideTimerRef.current = window.setTimeout(() => {
-      setOutgoingTab(null);
-      setTabSlidePhase('idle');
-      tabSlideTimerRef.current = null;
-    }, 340);
-    return () => {
-      if (tabSlideTimerRef.current) {
-        window.clearTimeout(tabSlideTimerRef.current);
-        tabSlideTimerRef.current = null;
-      }
-    };
-  }, [tabSlidePhase]);
-
   // Posiciona a barra verde com animação elástica contínua na GPU ao trocar de aba,
   // ou com posicionamento imediato no carregamento inicial (sem animação e sem atraso).
   useLayoutEffect(() => {
+    if (!movie || loading || !assetsReady) return;
     const indicator = filmIndicatorRef.current;
     const targetBtn = filmTabButtonsRef.current.get(activeTab);
     if (!indicator || !targetBtn) return;
@@ -357,6 +313,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
         ind.style.opacity = '1';
       } else {
         animateElasticIndicator(btn, ind, filmPrevPosRef.current, false);
+        ind.style.opacity = '1';
       }
     };
 
@@ -375,23 +332,32 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       });
       return () => window.cancelAnimationFrame(rafId);
     }
-  }, [activeTab, movie?.id]);
+  }, [activeTab, movie?.id, loading, assetsReady, isMobile, t]);
 
   // Auto-correção não-intrusiva (fontes / resize / rotação): nunca interrompe animação em curso
   useEffect(() => {
+    if (!movie || loading || !assetsReady) return;
     const handleSync = () => {
       const indicator = filmIndicatorRef.current;
       const targetBtn = filmTabButtonsRef.current.get(activeTab);
-      if (indicator && targetBtn) {
+      if (indicator && targetBtn && targetBtn.offsetWidth > 0) {
         syncTabIndicatorToButton(targetBtn, indicator, filmPrevPosRef.current);
         indicator.style.opacity = '1';
+        filmTabMountedRef.current = true;
       }
     };
 
+    handleSync();
     window.addEventListener('resize', handleSync);
     window.addEventListener('orientationchange', handleSync);
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(handleSync).catch(() => {});
+    }
+
+    let ro: ResizeObserver | null = null;
+    if (filmTabsContainerRef.current && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(handleSync);
+      ro.observe(filmTabsContainerRef.current);
     }
 
     const timer = window.setTimeout(handleSync, 120);
@@ -399,9 +365,10 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     return () => {
       window.removeEventListener('resize', handleSync);
       window.removeEventListener('orientationchange', handleSync);
+      ro?.disconnect();
       window.clearTimeout(timer);
     };
-  }, [movie?.id]);
+  }, [movie?.id, activeTab, loading, assetsReady, isMobile, t]);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showTrailerModal, setShowTrailerModal] = useState(false);
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
@@ -1115,7 +1082,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
               <div className="-mx-4 bg-[#14181c]">
                 <div
                   ref={filmTabsContainerRef}
-                  className="relative flex items-center justify-start gap-3 sm:gap-4 pl-0 pr-4 border-t border-b border-[#232a32] overflow-x-auto overflow-y-hidden no-scrollbar overscroll-none select-none py-0"
+                  className="relative flex items-center justify-start gap-0 pl-0 pr-0 border-t border-b border-[#232a32] overflow-x-auto overflow-y-hidden no-scrollbar overscroll-none select-none py-0"
                   style={{ touchAction: 'pan-x pan-y' }}
                 >
                   {FILM_MOBILE_TABS.map(({ key, labelKey }) => {
@@ -1137,7 +1104,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                         }}
                         type="button"
                         onClick={() => handleSelectTab(key)}
-                        className={`relative pt-[19px] pb-2.5 px-2 transition-colors cursor-pointer whitespace-nowrap text-[14.5px] sm:text-[15px] leading-tight tracking-normal outline-none focus:outline-none flex items-center justify-center text-center ${
+                        className={`relative pt-[19px] pb-2.5 px-[15px] sm:px-4 transition-colors cursor-pointer whitespace-nowrap text-[14.5px] sm:text-[15px] leading-tight tracking-normal outline-none focus:outline-none flex items-center justify-center text-center ${
                           isActive
                             ? 'text-white font-bold'
                             : 'text-[#738290] hover:text-white font-medium'
@@ -1147,65 +1114,30 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                       </button>
                     );
                   })}
-                  {/* Barrinha verde elástica deslizante: perfeitamente centralizada e um pouco maior que a palavra */}
+                  {/* Barrinha verde elástica deslizante: perfeitamente centralizada sob os nomes e encostada na borda esquerda em Elenco */}
                   <span
-                    ref={filmIndicatorRef}
-                    className="tab-indicator !h-[2.5px] !rounded-full opacity-0"
+                    ref={(el) => {
+                      filmIndicatorRef.current = el;
+                      if (el) {
+                        const activeBtn = filmTabButtonsRef.current.get(activeTab);
+                        if (activeBtn && activeBtn.offsetWidth > 0 && !filmTabMountedRef.current) {
+                          placeTabIndicator(el, activeBtn.offsetLeft, activeBtn.offsetWidth, filmPrevPosRef.current);
+                          el.style.opacity = '1';
+                          filmTabMountedRef.current = true;
+                        }
+                      }
+                    }}
+                    className="tab-indicator !h-[3.5px] !rounded-t-[2px]"
                     aria-hidden="true"
                   />
                 </div>
               </div>
 
-              {/* Conteúdo com a transição de slide suave de 340ms (mesmo efeito de transição entre páginas).
-                  Sem listeners de toque/arrasto: zero swipe com o dedo, apenas clique nas abas. */}
-              <div className="relative overflow-hidden py-3 min-h-[160px]">
-                {/* Painel sainte durante a transição */}
-                {outgoingTab && tabSlidePhase !== 'idle' && (
-                  <div
-                    key={`outgoing-${outgoingTab}`}
-                    className="absolute inset-x-0 top-0 w-full pointer-events-none z-10"
-                    style={{
-                      transform:
-                        tabSlidePhase === 'run'
-                          ? tabSlideDirection === 'forward'
-                            ? 'translate3d(-100%, 0, 0)'
-                            : 'translate3d(100%, 0, 0)'
-                          : 'translate3d(0, 0, 0)',
-                      transition:
-                        tabSlidePhase === 'run'
-                          ? 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)'
-                          : 'none',
-                      willChange: 'transform',
-                    }}
-                    aria-hidden="true"
-                  >
-                    <FilmTabContent
-                      activeTab={outgoingTab}
-                      movie={movie}
-                      isTv={isTv}
-                      numberOfSeasons={numberOfSeasons}
-                      mobile
-                    />
-                  </div>
-                )}
-
-                {/* Painel ativo / entrante */}
+              {/* Conteúdo com transição suave em fade-in ao trocar de aba */}
+              <div className="relative py-3 min-h-[160px]">
                 <div
-                  key={`incoming-${activeTab}`}
-                  className="w-full relative z-20"
-                  style={{
-                    transform:
-                      outgoingTab && tabSlidePhase === 'prepare'
-                        ? tabSlideDirection === 'forward'
-                          ? 'translate3d(100%, 0, 0)'
-                          : 'translate3d(-100%, 0, 0)'
-                        : 'translate3d(0, 0, 0)',
-                    transition:
-                      outgoingTab && tabSlidePhase === 'run'
-                        ? 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)'
-                        : 'none',
-                    willChange: outgoingTab ? 'transform' : undefined,
-                  }}
+                  key={`tab-fade-${activeTab}`}
+                  className={hasChangedTab ? 'mw-fade' : undefined}
                 >
                   <FilmTabContent
                     activeTab={activeTab}
