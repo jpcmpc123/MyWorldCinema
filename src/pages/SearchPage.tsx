@@ -411,7 +411,16 @@ export const SearchPage: React.FC = () => {
   const filter: SearchFilter =
     rawFilter && validFilterIds.includes(rawFilter) ? rawFilter : isMobile ? 'films' : 'all';
 
+  // Memória de scroll por aba para o termo atualmente carregado
+  const tabScrollRef = useRef<Partial<Record<SearchFilter, number>>>({});
+  const loadedTermRef = useRef<string>('');
+  const activeFilterRef = useRef<SearchFilter>(filter);
+  activeFilterRef.current = filter;
+
   const setFilter = (next: SearchFilter) => {
+    if (next !== filter) {
+      tabScrollRef.current[filter] = window.scrollY;
+    }
     const params: Record<string, string> = {};
     if (query.trim()) params.q = query;
     if (next !== 'all') params.f = next;
@@ -425,13 +434,6 @@ export const SearchPage: React.FC = () => {
       ? 'focused'
       : 'idle';
 
-  const [items, setItems] = useState<TMDBSearchResult[]>([]);
-  const [people, setPeople] = useState<TMDBSearchPerson[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-
   // Debounce do termo (a busca do header atualiza o ?q= a cada tecla)
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   useEffect(() => {
@@ -441,41 +443,106 @@ export const SearchPage: React.FC = () => {
 
   const term = debouncedQuery.trim();
 
-  // Cache por aba para manter os painéis vizinhos preenchidos durante o deslize no mobile
-  const [panelCache, setPanelCache] = useState<
-    Record<
-      string,
-      {
-        term: string;
-        items: TMDBSearchResult[];
-        people: TMDBSearchPerson[];
-        searched: boolean;
+  type PanelCacheEntry = {
+    term: string;
+    items: TMDBSearchResult[];
+    people: TMDBSearchPerson[];
+    searched: boolean;
+    page: number;
+    hasMore: boolean;
+  };
+
+  // Cache por aba: preserva os filmes/séries carregados ao alternar entre abas
+  // e mantém a lista anterior visível até que uma nova palavra buscada termine de carregar
+  const [panelCache, setPanelCache] = useState<Record<string, PanelCacheEntry>>({});
+  const panelCacheRef = useRef<Record<string, PanelCacheEntry>>({});
+  panelCacheRef.current = panelCache;
+
+  const [loadingFilter, setLoadingFilter] = useState<SearchFilter | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchLoadSeq, setSearchLoadSeq] = useState(0);
+
+  const scrollSearchToTop = () => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  };
+
+  // Salva continuamente onde o usuário parou na aba atual
+  useEffect(() => {
+    const onScroll = () => {
+      if (mobileMode === 'typing' || !isMobile) {
+        tabScrollRef.current[activeFilterRef.current] = window.scrollY;
       }
-    >
-  >({});
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [isMobile, mobileMode]);
+
+  // Ao alternar de aba (ex.: Filmes -> Séries -> Filmes), mantém/restaura onde estava parado sem ir para o topo
+  useLayoutEffect(() => {
+    const savedY = tabScrollRef.current[filter];
+    if (savedY !== undefined) {
+      window.scrollTo({ top: savedY, left: 0, behavior: 'auto' });
+      document.documentElement.scrollTop = savedY;
+      document.body.scrollTop = savedY;
+    }
+  }, [filter]);
+
+  // Vai para o topo dos pôsteres APENAS quando uma nova busca terminar de carregar novos filmes/séries
+  useLayoutEffect(() => {
+    if (searchLoadSeq > 0) {
+      scrollSearchToTop();
+    }
+  }, [searchLoadSeq]);
 
   const prefetchFilter = (targetFilter: SearchFilter) => {
-    if (!term) return;
+    const activeTerm = loadedTermRef.current || term;
+    if (!activeTerm) return;
     if (targetFilter === 'reviews' || targetFilter === 'lists' || targetFilter === 'members') return;
-    if (panelCache[targetFilter]?.term === term) return;
+    if (panelCacheRef.current[targetFilter]?.term === activeTerm) return;
     void (async () => {
       try {
         if (targetFilter === 'cast') {
-          const res = await tmdb.searchPeople(term, 1);
+          const res = await tmdb.searchPeople(activeTerm, 1);
           setPanelCache((c) =>
-            c[targetFilter]?.term === term
+            c[targetFilter]?.term === activeTerm
               ? c
-              : { ...c, [targetFilter]: { term, items: [], people: res.results, searched: true } },
+              : {
+                  ...c,
+                  [targetFilter]: {
+                    term: activeTerm,
+                    items: [],
+                    people: res.results,
+                    searched: true,
+                    page: 1,
+                    hasMore: 1 < Math.min(res.total_pages || 1, 20),
+                  },
+                },
           );
         } else {
           const res =
             targetFilter === 'films' || targetFilter === 'series'
-              ? await tmdb.searchEnriched(term, targetFilter === 'films' ? 'movie' : 'tv', 1)
-              : await tmdb.searchMultiEnriched(term, 1);
+              ? await tmdb.searchEnriched(
+                  activeTerm,
+                  targetFilter === 'films' ? 'movie' : 'tv',
+                  1,
+                )
+              : await tmdb.searchMultiEnriched(activeTerm, 1);
           setPanelCache((c) =>
-            c[targetFilter]?.term === term
+            c[targetFilter]?.term === activeTerm
               ? c
-              : { ...c, [targetFilter]: { term, items: res, people: [], searched: true } },
+              : {
+                  ...c,
+                  [targetFilter]: {
+                    term: activeTerm,
+                    items: res,
+                    people: [],
+                    searched: true,
+                    page: 1,
+                    hasMore: res.length > 0,
+                  },
+                },
           );
         }
       } catch {
@@ -501,19 +568,8 @@ export const SearchPage: React.FC = () => {
     labelsKey: mobileLabelsKey,
     centerActiveInBar: true,
     ready: isMobile && mobileMode !== 'idle',
-    scrollToTopOnChange: true,
+    scrollToTopOnChange: false,
   });
-
-  // Sempre retorna ao topo dos pôsteres quando a palavra buscada ou a aba muda
-  const scrollSearchToTop = () => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
-  };
-
-  useLayoutEffect(() => {
-    scrollSearchToTop();
-  }, [query, term, filter]);
 
   // Histórico de buscas recentes (mobile): salvo no localStorage, máx. 15 itens
   // Guarda termo + categoria usada (a badge da linha mostra a categoria)
@@ -563,7 +619,7 @@ export const SearchPage: React.FC = () => {
   const isLocalFilter = filter === 'reviews' || filter === 'lists' || filter === 'members';
 
   const getLocalResultsFor = (targetFilter: SearchFilter) => {
-    const q = term.toLowerCase();
+    const q = (loadedTermRef.current || term).toLowerCase();
     if (!q) return [];
     if (targetFilter === 'reviews') {
       return reviews
@@ -596,90 +652,159 @@ export const SearchPage: React.FC = () => {
   };
 
   // Resultados locais (críticas e listas do próprio usuário)
-  const localResults = useMemo(() => getLocalResultsFor(filter), [filter, term, reviews, lists]);
-
-  const requestKey = `${term}|${filter}`;
-  const keyRef = useRef('');
+  const localResults = useMemo(() => getLocalResultsFor(filter), [filter, term, reviews, lists, searchLoadSeq]);
 
   useEffect(() => {
-    const isNewKey = keyRef.current !== requestKey;
-    keyRef.current = requestKey;
-
-    // Termo/filtro mudou com página > 1: volta para a 1 e deixa o próximo
-    // ciclo buscar (evita anexar resultados da página antiga a uma nova busca)
-    if (isNewKey && page !== 1) {
-      setPage(1);
+    if (!term) {
+      setPanelCache({});
+      setLoadingFilter(null);
+      setLoadingMore(false);
+      tabScrollRef.current = {};
+      loadedTermRef.current = '';
       return;
     }
-    if (!term || isLocalFilter) {
-      setItems([]);
-      setPeople([]);
-      setHasMore(false);
-      setSearched(Boolean(term));
-      setLoading(false);
+
+    if (isLocalFilter) {
+      if (loadedTermRef.current !== term) {
+        loadedTermRef.current = term;
+        tabScrollRef.current = { [filter]: 0 };
+        setSearchLoadSeq((s) => s + 1);
+      }
+      setLoadingFilter(null);
+      return;
+    }
+
+    // Se a aba atual já foi carregada para este mesmo `term`, mantém os resultados e a posição de scroll
+    const existing = panelCacheRef.current[filter];
+    if (existing && existing.term === term && existing.searched) {
+      setLoadingFilter(null);
       return;
     }
 
     let cancelled = false;
-    const reset = isNewKey || page === 1;
-    setLoading(true);
+    const isNewTerm = loadedTermRef.current !== term;
+    setLoadingFilter(filter);
 
     (async () => {
       try {
         if (filter === 'cast') {
-          const res = await tmdb.searchPeople(term, page);
+          const res = await tmdb.searchPeople(term, 1);
           if (cancelled) return;
-          setPeople((prev) => {
-            const next = reset ? res.results : [...prev, ...res.results];
-            setPanelCache((c) => ({
-              ...c,
-              [filter]: { term, items: [], people: next, searched: true },
-            }));
-            return next;
-          });
-          if (reset) setItems([]);
-          setHasMore(page < Math.min(res.total_pages || 1, 20));
+          const entry: PanelCacheEntry = {
+            term,
+            items: [],
+            people: res.results,
+            searched: true,
+            page: 1,
+            hasMore: 1 < Math.min(res.total_pages || 1, 20),
+          };
+          setPanelCache((prev) => (isNewTerm ? { [filter]: entry } : { ...prev, [filter]: entry }));
         } else {
           const res =
             filter === 'films' || filter === 'series'
-              ? await tmdb.searchEnriched(term, filter === 'films' ? 'movie' : 'tv', page)
-              : await tmdb.searchMultiEnriched(term, page);
+              ? await tmdb.searchEnriched(term, filter === 'films' ? 'movie' : 'tv', 1)
+              : await tmdb.searchMultiEnriched(term, 1);
           if (cancelled) return;
-          setItems((prev) => {
-            const next = reset ? res : [...prev, ...res];
-            setPanelCache((c) => ({
-              ...c,
-              [filter]: { term, items: next, people: [], searched: true },
-            }));
-            return next;
-          });
-          if (reset) {
-            setPeople([]);
-            scrollSearchToTop();
-          }
-          setHasMore(res.length > 0 && page < 20);
+          const entry: PanelCacheEntry = {
+            term,
+            items: res,
+            people: [],
+            searched: true,
+            page: 1,
+            hasMore: res.length > 0,
+          };
+          setPanelCache((prev) => (isNewTerm ? { [filter]: entry } : { ...prev, [filter]: entry }));
         }
-        if (reset && filter === 'cast') {
-          scrollSearchToTop();
+
+        if (isNewTerm) {
+          loadedTermRef.current = term;
+          tabScrollRef.current = { [filter]: 0 };
+          setSearchLoadSeq((s) => s + 1);
         }
-        setSearched(true);
       } catch {
         if (cancelled) return;
-        if (reset) {
-          setItems([]);
-          setPeople([]);
+        const emptyEntry: PanelCacheEntry = {
+          term,
+          items: [],
+          people: [],
+          searched: true,
+          page: 1,
+          hasMore: false,
+        };
+        setPanelCache((prev) =>
+          isNewTerm ? { [filter]: emptyEntry } : { ...prev, [filter]: emptyEntry }
+        );
+        if (isNewTerm) {
+          loadedTermRef.current = term;
+          tabScrollRef.current = { [filter]: 0 };
+          setSearchLoadSeq((s) => s + 1);
         }
-        setHasMore(false);
-        setSearched(true);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoadingFilter((curr) => (curr === filter ? null : curr));
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [requestKey, page, term, filter, isLocalFilter]);
+  }, [term, filter, isLocalFilter]);
+
+  const handleLoadMore = async () => {
+    const current = panelCacheRef.current[filter];
+    if (!current || !term || loadingMore || loadingFilter === filter || !current.hasMore) return;
+    const nextPage = current.page + 1;
+    const requestTerm = current.term;
+    const requestFilter = filter;
+    setLoadingMore(true);
+    try {
+      if (requestFilter === 'cast') {
+        const res = await tmdb.searchPeople(requestTerm, nextPage);
+        if (loadedTermRef.current !== requestTerm) return;
+        setPanelCache((prev) => {
+          const existing = prev[requestFilter];
+          if (!existing || existing.term !== requestTerm) return prev;
+          return {
+            ...prev,
+            [requestFilter]: {
+              ...existing,
+              people: [...existing.people, ...res.results],
+              page: nextPage,
+              hasMore: nextPage < Math.min(res.total_pages || 1, 20),
+            },
+          };
+        });
+      } else {
+        const res =
+          requestFilter === 'films' || requestFilter === 'series'
+            ? await tmdb.searchEnriched(
+                requestTerm,
+                requestFilter === 'films' ? 'movie' : 'tv',
+                nextPage,
+              )
+            : await tmdb.searchMultiEnriched(requestTerm, nextPage);
+        if (loadedTermRef.current !== requestTerm) return;
+        setPanelCache((prev) => {
+          const existing = prev[requestFilter];
+          if (!existing || existing.term !== requestTerm) return prev;
+          return {
+            ...prev,
+            [requestFilter]: {
+              ...existing,
+              items: [...existing.items, ...res],
+              page: nextPage,
+              hasMore: res.length > 0 && nextPage < 20,
+            },
+          };
+        });
+      }
+    } catch {
+      /* ignore load more error */
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // Tipo escolhido nos botões Filmes/Séries (?t=movie|tv); vazio = todos
   const browseType = searchParams.get('t') === 'movie' || searchParams.get('t') === 'tv' ? searchParams.get('t')! : '';
@@ -706,6 +831,12 @@ export const SearchPage: React.FC = () => {
     { label: t('search_featured_lists'), to: '/lists' },
   ];
 
+  const activePanel = panelCache[filter];
+  const items = activePanel?.items ?? [];
+  const people = activePanel?.people ?? [];
+  const searched = Boolean(activePanel?.searched || (isLocalFilter && Boolean(term)));
+  const hasMore = Boolean(activePanel?.hasMore);
+  const loading = loadingFilter === filter || loadingMore;
   const totalShown = filter === 'cast' ? people.length : isLocalFilter ? localResults.length : items.length;
   const emptyState = searched && !loading && totalShown === 0;
 
@@ -835,12 +966,12 @@ export const SearchPage: React.FC = () => {
       const panelIsLocal =
         panelFilter === 'reviews' || panelFilter === 'lists' || panelFilter === 'members';
       const panelLocalRows = panelIsLocal ? getLocalResultsFor(panelFilter) : [];
-      const cached =
-        panelCache[panelFilter]?.term === term ? panelCache[panelFilter] : undefined;
-      const panelItems = isActivePanel ? items : (cached?.items ?? []);
-      const panelPeople = isActivePanel ? people : (cached?.people ?? []);
-      const panelSearched = isActivePanel ? searched : Boolean(cached?.searched || panelIsLocal);
-      const panelLoading = isActivePanel ? loading : (!panelIsLocal && !cached && Boolean(term));
+      const cached = panelCache[panelFilter];
+      const panelItems = cached?.items ?? [];
+      const panelPeople = cached?.people ?? [];
+      const panelSearched = Boolean(cached?.searched || (panelIsLocal && Boolean(term)));
+      const panelLoading = !panelIsLocal && !cached && Boolean(term);
+      const panelHasMore = Boolean(cached?.hasMore);
       const panelTotal =
         panelFilter === 'cast'
           ? panelPeople.length
@@ -857,7 +988,7 @@ export const SearchPage: React.FC = () => {
       if (panelEmpty) {
         return (
           <p className="text-sm text-[#789] px-4 py-8">
-            {t('search_no_results')} “{term}”.
+            {t('search_no_results')} “{loadedTermRef.current || term}”.
           </p>
         );
       }
@@ -882,15 +1013,15 @@ export const SearchPage: React.FC = () => {
             panelItems.map((item) => (
               <MobileMovieRow key={`${item.media_type}-${item.id}`} item={item} t={t} />
             ))}
-          {isActivePanel && hasMore && (
+          {isActivePanel && panelHasMore && (
             <div className="flex justify-center py-6">
               <button
                 type="button"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={loading}
+                onClick={handleLoadMore}
+                disabled={loadingMore}
                 className="px-5 py-2 rounded-full bg-[#2c3440] hover:bg-[#3a4550] text-white text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer"
               >
-                {loading ? t('search_searching') : t('search_load_more')}
+                {loadingMore ? t('search_searching') : t('search_load_more')}
               </button>
             </div>
           )}
@@ -1200,11 +1331,11 @@ export const SearchPage: React.FC = () => {
               <div className="flex justify-center py-6">
                 <button
                   type="button"
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={loading}
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
                   className="px-5 py-2 rounded-full bg-[#2c3440] hover:bg-[#3a4550] text-white text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer"
                 >
-                  {loading ? t('search_searching') : t('search_load_more')}
+                  {loadingMore ? t('search_searching') : t('search_load_more')}
                 </button>
               </div>
             )}
