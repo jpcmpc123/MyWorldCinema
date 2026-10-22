@@ -1,9 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, LayoutGrid, List, Loader2, Share2, SlidersHorizontal } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Eye,
+  LayoutGrid,
+  List,
+  Loader2,
+  Share2,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { tmdb, type TMDBPersonDetails, type TMDBPersonMovieCredit } from '../services/tmdb';
 import { PosterCard } from '../components/PosterCard';
 import { PosterLightbox } from '../components/PosterLightbox';
+import { useApp } from '../context/AppContext';
 import { useLanguage, type TranslationKey } from '../i18n/LanguageContext';
 import {
   PERSON_ROLE_ORDER,
@@ -13,10 +24,6 @@ import {
   personRoleFromJob,
   type PersonRole,
 } from '../utils/personNav';
-import {
-  animateElasticIndicator,
-  type IndicatorPos,
-} from '../utils/tabIndicator';
 import { ActorTabPanel, INITIAL_VISIBLE } from '../components/ActorTabPanel';
 import { FiltersModal, type FiltersDraft } from '../components/mobile/FiltersModal';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -69,39 +76,13 @@ const ROLE_CRUMB_KEY: Record<PersonRole, TranslationKey> = {
   Editor: 'person_films_edited',
 };
 
-/** Filmes renderizados antes do botão "ver mais" — a constante vive no painel
- *  (ActorTabPanel) e é importada aqui para o botão do layout desktop. */
-
-const selectCls =
-  'bg-[#202830] border border-lb-elevated text-white text-[11px] uppercase font-bold tracking-wider px-3 py-1.5 rounded cursor-pointer focus:outline-none focus:border-lb-green';
-
-/**
- * Centraliza a aba ativa dentro do container de abas horizontais, deixando
- * visíveis as opções vizinhas à esquerda E à direita (como no app Letterboxd).
- * O requestAnimationFrame garante que o DOM já calculou a largura dos botões.
- */
-function centerActiveTab(tabButton: HTMLElement | null, tabsContainer: HTMLElement | null) {
-  if (!tabButton || !tabsContainer) return;
-
-  requestAnimationFrame(() => {
-    const targetScrollLeft =
-      tabButton.offsetLeft -
-      tabsContainer.clientWidth / 2 +
-      tabButton.clientWidth / 2;
-
-    tabsContainer.scrollTo({
-      left: Math.max(0, targetScrollLeft),
-      behavior: 'smooth',
-    });
-  });
-}
-
 export function ActorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { isMovieWatched } = useApp();
   const isMobile = useIsMobile();
 
   const [person, setPerson] = useState<TMDBPersonDetails | null>(null);
@@ -112,22 +93,41 @@ export function ActorPage() {
   const [sortBy, setSortBy] = useState<SortKey>('popularity');
   const [genreFilter, setGenreFilter] = useState<number | null>(null);
   const [decadeFilter, setDecadeFilter] = useState<string | null>(null);
+  const [serviceFilter, setServiceFilter] = useState<number | null>(null);
+  const [serviceMatchedKeys, setServiceMatchedKeys] = useState<Set<string> | null>(null);
+  const [watchedMode, setWatchedMode] = useState<'all' | 'watched' | 'unwatched'>('all');
+  const [fadeWatched, setFadeWatched] = useState<boolean>(true);
+  const [openDropdown, setOpenDropdown] = useState<
+    'role' | 'decade' | 'genre' | 'service' | 'sort' | 'watched' | null
+  >(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showAllFilms, setShowAllFilms] = useState(false);
   const [showPhotoLightbox, setShowPhotoLightbox] = useState(false);
 
-  // Barra de abas: container com scroll horizontal + botão de cada aba
-  const tabsContainerRef = useRef<HTMLDivElement | null>(null);
-  const tabButtonsRef = useRef(new Map<TabKey, HTMLButtonElement>());
-  // Elemento da barra verde elástica (o mesmo serve mobile e desktop,
-  // já que apenas uma das duas barras é montada por vez) + posição anterior,
-  // usada para saber a direção do estiramento.
-  const indicatorRef = useRef<HTMLSpanElement | null>(null);
-  const prevIndicatorPosRef = useRef<IndicatorPos>({ left: 0, width: 0 });
+  const filterBarRef = useRef<HTMLDivElement | null>(null);
 
   // Controla quando a aba inicial do cargo já foi decidida para liberar a animação
   const [roleReady, setRoleReady] = useState(false);
+
+  // Fecha menus suspensos do desktop ao clicar fora ou apertar Escape
+  useEffect(() => {
+    if (!openDropdown) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (filterBarRef.current && !filterBarRef.current.contains(e.target as Node)) {
+        setOpenDropdown(null);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenDropdown(null);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openDropdown]);
 
   // ---- Cargo pedido por quem clicou (router state → ?role= → departamento) --
   const requestedRole = useMemo<PersonRole | null>(() => {
@@ -151,6 +151,10 @@ export function ActorPage() {
     setShowPhotoLightbox(false);
     setDecadeFilter(null);
     setGenreFilter(null);
+    setServiceFilter(null);
+    setServiceMatchedKeys(null);
+    setWatchedMode('all');
+    setOpenDropdown(null);
     // Nova pessoa = aguarda a definição da aba inicial antes de animar
     setRoleReady(false);
     initedForRef.current = null;
@@ -259,18 +263,54 @@ export function ActorPage() {
     setRoleReady(true);
   }, [person, tabs, requestedRole]);
 
-  const activeTabDef = tabs.find((tab) => tab.key === activeTab) ?? tabs[0];
-  const tabItems = activeTabDef?.items ?? [];
+  const roleTabs = useMemo(() => tabs.filter((tab) => tab.key !== 'Bio'), [tabs]);
 
-  // ---- Décadas disponíveis na aba atual -----------------------------------
-  const decades = useMemo(() => {
-    const set = new Set<string>();
-    tabItems.forEach((f) => {
-      const y = f.release_date?.slice(0, 4);
-      if (y) set.add(`${y.slice(0, 3)}0s`);
+  const activeTabDef = tabs.find((tab) => tab.key === activeTab) ?? tabs[0];
+  const desktopActiveTabDef =
+    (activeTab !== 'Bio' ? tabs.find((tab) => tab.key === activeTab) : null) ??
+    roleTabs[0] ??
+    tabs[0];
+  const tabItems = isMobile ? (activeTabDef?.items ?? []) : (desktopActiveTabDef?.items ?? []);
+
+  // ---- Filtro por Serviço de Streaming (desktop) ---------------------------
+  useEffect(() => {
+    if (isMobile || !person || !serviceFilter) {
+      setServiceMatchedKeys(null);
+      return;
+    }
+    let cancelled = false;
+    tmdb.getPersonProviderMediaKeys(person.id, serviceFilter, tabItems).then((keys) => {
+      if (!cancelled) setServiceMatchedKeys(keys);
     });
-    return Array.from(set).sort().reverse();
-  }, [tabItems]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isMobile, person, serviceFilter, tabItems]);
+
+  // ---- Lista completa de décadas do menu DECADE (2020s até 1850s) ----------
+  const DECADE_MENU_LIST = useMemo(
+    () => [
+      '2020s',
+      '2010s',
+      '2000s',
+      '1990s',
+      '1980s',
+      '1970s',
+      '1960s',
+      '1950s',
+      '1940s',
+      '1930s',
+      '1920s',
+      '1910s',
+      '1900s',
+      '1890s',
+      '1880s',
+      '1870s',
+      '1860s',
+      '1850s',
+    ],
+    [],
+  );
 
   // ---- Filtros (modal de filtros, igual às abas de pesquisa) ----------------
   const applyFilters = (draft: FiltersDraft) => {
@@ -304,7 +344,20 @@ export function ActorPage() {
   const visibleFilms = useMemo(() => {
     let list = tabItems;
     if (genreFilter) list = list.filter((f) => matchesPersonGenreFilter(f.genre_ids, genreFilter));
-    if (decadeFilter) list = list.filter((f) => f.release_date?.startsWith(decadeFilter.slice(0, 3)));
+    if (decadeFilter === 'upcoming') {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      list = list.filter((f) => !f.release_date || f.release_date > todayIso);
+    } else if (decadeFilter) {
+      list = list.filter((f) => f.release_date?.startsWith(decadeFilter.slice(0, 3)));
+    }
+    if (!isMobile && serviceFilter && serviceMatchedKeys) {
+      list = list.filter((f) => serviceMatchedKeys.has(`${f.media_type ?? 'movie'}:${f.id}`));
+    }
+    if (!isMobile && watchedMode === 'watched') {
+      list = list.filter((f) => isMovieWatched(f.id));
+    } else if (!isMobile && watchedMode === 'unwatched') {
+      list = list.filter((f) => !isMovieWatched(f.id));
+    }
     const sorted = [...list];
     sorted.sort((a, b) => {
       if (sortBy === 'rating') return b.vote_average - a.vote_average;
@@ -313,7 +366,17 @@ export function ActorPage() {
       return b.popularity - a.popularity;
     });
     return sorted;
-  }, [tabItems, genreFilter, decadeFilter, sortBy]);
+  }, [
+    tabItems,
+    genreFilter,
+    decadeFilter,
+    isMobile,
+    serviceFilter,
+    serviceMatchedKeys,
+    watchedMode,
+    isMovieWatched,
+    sortBy,
+  ]);
 
   const listed = showAllFilms ? visibleFilms : visibleFilms.slice(0, INITIAL_VISIBLE);
 
@@ -323,6 +386,8 @@ export function ActorPage() {
     setFiltersOpen(false);
     setDecadeFilter(null);
     setGenreFilter(null);
+    setServiceFilter(null);
+    setOpenDropdown(null);
     if (isMobile) window.scrollTo({ top: 0 });
   };
 
@@ -341,68 +406,6 @@ export function ActorPage() {
     scrollToTopOnChange: true,
   });
 
-  // ---- Centraliza a aba ativa na barra horizontal (desktop) ----------------
-  useEffect(() => {
-    if (isMobile || !roleReady) return;
-    centerActiveTab(tabButtonsRef.current.get(activeTab) ?? null, tabsContainerRef.current);
-  }, [activeTab, person, isMobile, roleReady, tabs.length]);
-
-  // ---- Barra verde ELÁSTICA unificada embaixo da aba ativa (desktop) -------
-  const desktopPrevMetaRef = useRef<{
-    personId: number | null;
-    labelsKey: string;
-    wasReady: boolean;
-    activeTab: TabKey;
-  }>({
-    personId: null,
-    labelsKey: tabLabelsKey,
-    wasReady: false,
-    activeTab,
-  });
-
-  useLayoutEffect(() => {
-    if (isMobile || !roleReady) {
-      desktopPrevMetaRef.current.wasReady = false;
-      return;
-    }
-    const activeBtn = tabsContainerRef.current?.querySelector<HTMLElement>('.person-tab.active');
-    const indicator = indicatorRef.current;
-    if (!activeBtn || !indicator) return;
-
-    const prev = desktopPrevMetaRef.current;
-    const currentPersonId = person?.id ?? null;
-    const isInitialOrMetaChange =
-      !prev.wasReady ||
-      prev.personId !== currentPersonId ||
-      prev.labelsKey !== tabLabelsKey ||
-      prevIndicatorPosRef.current.width <= 0;
-
-    const immediate = isInitialOrMetaChange || prev.activeTab === activeTab;
-    prev.wasReady = true;
-    prev.personId = currentPersonId;
-    prev.labelsKey = tabLabelsKey;
-    prev.activeTab = activeTab;
-
-    animateElasticIndicator(activeBtn, indicator, prevIndicatorPosRef.current, immediate);
-  }, [activeTab, isMobile, roleReady, tabLabelsKey, person?.id]);
-
-  // Recalcula a barra ao girar a tela / redimensionar (desktop)
-  useEffect(() => {
-    if (isMobile) return;
-    const sync = () => {
-      const activeBtn = tabsContainerRef.current?.querySelector<HTMLElement>('.person-tab.active');
-      const indicator = indicatorRef.current;
-      if (activeBtn && indicator)
-        animateElasticIndicator(activeBtn, indicator, prevIndicatorPosRef.current, true);
-    };
-    window.addEventListener('resize', sync);
-    window.addEventListener('orientationchange', sync);
-    return () => {
-      window.removeEventListener('resize', sync);
-      window.removeEventListener('orientationchange', sync);
-    };
-  }, [isMobile]);
-
   const handleShare = async () => {
     const url = window.location.href;
     try {
@@ -420,14 +423,11 @@ export function ActorPage() {
     }
   };
 
-  const clearFilters = () => {
-    setDecadeFilter(null);
-    setGenreFilter(null);
-  };
-  const hasFilters = Boolean(decadeFilter || genreFilter);
-
   // ---- Estados de carregamento / erro (com barra nativa no mobile) --------
   if (loading) {
+    if (!isMobile) {
+      return <div className="min-h-screen bg-[#14181c]" />;
+    }
     return (
       <div className="min-h-screen bg-[#14181c]">
         <div className="md:hidden sticky top-0 z-40 h-14 px-4 bg-black flex items-center">
@@ -458,7 +458,9 @@ export function ActorPage() {
     );
   }
 
-  const crumb = activeTabDef?.crumb ? t(activeTabDef.crumb) : t('person_films_starring');
+  const desktopCrumb = desktopActiveTabDef?.crumb
+    ? t(desktopActiveTabDef.crumb)
+    : t('person_films_starring');
   const profileImg = person.profile_path
     ? tmdb.getProfileUrl(person.profile_path, 'h632')
     : null;
@@ -479,70 +481,12 @@ export function ActorPage() {
     />
   );
 
-  // Filtros (selects) — usados na barra do desktop e no painel recolhível do mobile
-  const decadeGenreSelects = (
-    <>
-      <select
-        value={decadeFilter ?? ''}
-        onChange={(e) => setDecadeFilter(e.target.value || null)}
-        className={selectCls}
-        aria-label={t('person_all_decades')}
-      >
-        <option value="">{t('person_all_decades')}</option>
-        {decades.map((d) => (
-          <option key={d} value={d}>
-            {d}
-          </option>
-        ))}
-      </select>
-      <select
-        value={genreFilter ?? ''}
-        onChange={(e) => setGenreFilter(e.target.value ? Number(e.target.value) : null)}
-        className={selectCls}
-        aria-label={t('person_all_genres')}
-      >
-        <option value="">{t('person_all_genres')}</option>
-        {tmdb.genres.map((g) => (
-          <option key={g.id} value={g.id}>
-            {g.name}
-          </option>
-        ))}
-      </select>
-      {hasFilters && (
-        <button
-          onClick={clearFilters}
-          className="text-lb-muted hover:text-white text-[11px] uppercase font-bold tracking-wider px-2 transition-colors cursor-pointer"
-        >
-          ✕ {t('person_clear')}
-        </button>
-      )}
-    </>
-  );
-
-  const sortSelect = (
-    <span className="flex items-center gap-2 text-[11px] uppercase font-bold tracking-wider">
-      <span className="text-lb-muted">{t('person_sort_by')}</span>
-      <select
-        value={sortBy}
-        onChange={(e) => setSortBy(e.target.value as SortKey)}
-        className={selectCls}
-        aria-label={t('person_sort_by')}
-      >
-        {SORT_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>
-            {t(o.label)}
-          </option>
-        ))}
-      </select>
-    </span>
-  );
-
   const showMoreButton =
     visibleFilms.length > INITIAL_VISIBLE && !showAllFilms ? (
-      <div className="px-3 pb-8 -mt-1">
+      <div className="pt-5 pb-8">
         <button
           onClick={() => setShowAllFilms(true)}
-          className="w-full py-2.5 rounded border border-white/10 bg-[#1c2228] text-[11px] font-bold uppercase tracking-wider text-[#9ab] active:scale-[0.98] transition-transform cursor-pointer"
+          className="w-full py-2.5 rounded border border-white/10 bg-[#1c2228] hover:bg-[#242c34] text-[11px] font-bold uppercase tracking-wider text-[#9ab] hover:text-white transition-colors cursor-pointer"
         >
           {t('show_more')} ({visibleFilms.length})
         </button>
@@ -696,170 +640,518 @@ export function ActorPage() {
   }
 
   // =========================================================================
-  // DESKTOP (>= 768px) — layout MyWorld original + barra de abas por função
+  // DESKTOP (>= 768px) — Layout fiel ao Letterboxd Desktop (Imagens 2 e 3)
   // =========================================================================
+  const selectedGenreName = genreFilter
+    ? tmdb.genres.find((g) => g.id === genreFilter)?.name ?? null
+    : null;
+  const selectedServiceName = serviceFilter
+    ? tmdb.streamingServices.find((s) => s.id === serviceFilter)?.name ?? null
+    : null;
+  const currentSortLabelKey =
+    SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? 'person_sort_popularity';
+
+  const rawBio = (person.biography || '').trim();
+  const BIO_CHAR_LIMIT = 235;
+  const isBioLong = rawBio.length > BIO_CHAR_LIMIT;
+  const collapsedBioText = (() => {
+    if (!isBioLong) return rawBio;
+    const sliced = rawBio.slice(0, BIO_CHAR_LIMIT);
+    const lastSpace = sliced.lastIndexOf(' ');
+    return `${(lastSpace > 160 ? sliced.slice(0, lastSpace) : sliced).replace(/[.,;:\s]+$/, '')}…`;
+  })();
+
+  const wikipediaHref =
+    person.wikipedia_url ||
+    `https://${language === 'pt-BR' ? 'pt' : 'en'}.wikipedia.org/wiki/${encodeURIComponent(
+      person.name.trim().replace(/\s+/g, '_'),
+    )}`;
+  const tmdbPersonHref = `https://www.themoviedb.org/person/${person.id}`;
+
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="mb-4">
-        <div className="text-[11px] font-bold uppercase tracking-widest text-lb-muted mb-1">
-          {crumb}
+    <div className="max-w-[950px] mx-auto px-4 md:px-0 py-8 text-[#99aabb]">
+      {/* Cabeçalho superior: Kicker ("FILMS STARRING") + Nome da Pessoa */}
+      <div className="mb-6">
+        <div className="text-[11px] uppercase tracking-[0.12em] text-[#899aa9] font-normal mb-0.5">
+          {desktopCrumb}
         </div>
-        <h1 className="text-3xl md:text-4xl font-bold text-white">{person.name}</h1>
+        <h1 className="text-[26px] md:text-[28px] font-bold text-white leading-tight tracking-[-0.01em]">
+          {person.name}
+        </h1>
       </div>
 
-      {/* Abas por função (mesma lógica e mesmo indicador deslizante do mobile) */}
-      <div ref={tabsContainerRef} className="person-tabs-container tabs-plain">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            ref={(el) => {
-              if (el) tabButtonsRef.current.set(tab.key, el);
-              else tabButtonsRef.current.delete(tab.key);
-            }}
-            onClick={() => selectTab(tab.key)}
-            className={`person-tab${activeTab === tab.key ? ' active' : ''}`}
-          >
-            {tab.label}
-          </button>
-        ))}
-        <span ref={indicatorRef} className="tab-indicator" aria-hidden="true" />
+      {/* Barra de filtros com linha divisória de ponta a ponta (950px) e controles alinhados à grade de 670px */}
+      <div ref={filterBarRef} className="border-b border-[#2c3440] mb-4 select-none">
+        <div className="w-full md:w-[670px] flex flex-wrap items-center justify-between gap-2 pb-2">
+          {/* Esquerda: Seletor de Cargo (ex.: ACTOR ⌄ -> Actor 70, Executive Producer) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setOpenDropdown((d) => (d === 'role' ? null : 'role'))}
+              className="flex items-center gap-1 text-[11px] uppercase tracking-[0.075em] text-[#899aa9] hover:text-white transition-colors cursor-pointer"
+            >
+              <span>{desktopActiveTabDef?.label ?? t('person_tab_actor')}</span>
+              <ChevronDown className="w-3 h-3 stroke-[2.2]" />
+            </button>
+
+            {openDropdown === 'role' && (
+              <div className="absolute -left-3 -top-1.5 min-w-[148px] bg-[#899aa9] text-[#1f272e] rounded-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.6)] py-1.5 z-40 text-[12px]">
+                <button
+                  type="button"
+                  onClick={() => setOpenDropdown(null)}
+                  className="w-full text-left px-3 py-1 flex items-center gap-1 text-[11px] uppercase tracking-[0.075em] font-semibold text-white border-b border-white/15 mb-1 cursor-pointer"
+                >
+                  <span>{desktopActiveTabDef?.label ?? t('person_tab_actor')}</span>
+                  <ChevronDown className="w-3 h-3 stroke-[2.2]" />
+                </button>
+                {(roleTabs.length > 0 ? roleTabs : [desktopActiveTabDef]).map((rTab) => {
+                  if (!rTab) return null;
+                  const isSelected = rTab.key === desktopActiveTabDef?.key;
+                  return (
+                    <button
+                      key={rTab.key}
+                      type="button"
+                      onClick={() => selectTab(rTab.key)}
+                      className={`w-full text-left px-3 py-1 flex items-center justify-between gap-3 transition-colors cursor-pointer whitespace-nowrap ${
+                        isSelected
+                          ? 'text-white font-semibold'
+                          : 'text-[#1f272e] hover:bg-[#677786] hover:text-white'
+                      }`}
+                    >
+                      <span>
+                        {rTab.label}
+                        {isSelected && (
+                          <span className="ml-1.5 text-[11px] font-normal text-white/75 tabular-nums">
+                            {rTab.items.length}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Direita: DECADE ⌄ | GENRE ⌄ | SERVICE ⌄ | Sort by POPULARITY ⌄ | 👁 ⌄ */}
+          <div className="flex flex-wrap items-center gap-4">
+            {/* DECADE */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOpenDropdown((d) => (d === 'decade' ? null : 'decade'))}
+                className={`flex items-center gap-1 text-[11px] uppercase tracking-[0.075em] transition-colors cursor-pointer ${
+                  decadeFilter ? 'text-white font-semibold' : 'text-[#778899] hover:text-white'
+                }`}
+              >
+                <span>
+                  {decadeFilter === 'upcoming'
+                    ? language === 'pt-BR'
+                      ? 'EM BREVE'
+                      : 'UPCOMING'
+                    : (decadeFilter ?? t('cat_decade_upper'))}
+                </span>
+                <ChevronDown className="w-3 h-3 stroke-[2.2]" />
+              </button>
+
+              {openDropdown === 'decade' && (
+                <div className="absolute -left-3 -top-1.5 min-w-[114px] bg-[#899aa9] text-[#2c3440] rounded-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.6)] overflow-hidden z-40 text-[12.5px]">
+                  {/* Cabeçalho interno DECADE ⌄ */}
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown(null)}
+                    className="w-full text-left px-3 py-1.5 flex items-center gap-1 text-[11px] uppercase tracking-[0.075em] font-semibold text-white bg-[#788896] border-b border-[#657585] cursor-pointer"
+                  >
+                    <span>{t('cat_decade_upper')}</span>
+                    <ChevronDown className="w-3 h-3 stroke-[2.2]" />
+                  </button>
+
+                  {/* Any decade */}
+                  <div className="border-b border-[#6c7d8c]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDecadeFilter(null);
+                        setShowAllFilms(false);
+                        setOpenDropdown(null);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                        !decadeFilter
+                          ? 'text-white'
+                          : 'text-[#2c3440] hover:bg-[#677786] hover:text-white'
+                      }`}
+                    >
+                      {language === 'pt-BR' ? 'Qualquer década' : 'Any decade'}
+                    </button>
+                  </div>
+
+                  {/* Upcoming + 2020s até 1850s */}
+                  <div className="py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDecadeFilter('upcoming');
+                        setShowAllFilms(false);
+                        setOpenDropdown(null);
+                      }}
+                      className={`w-full text-left px-3 py-[3px] leading-snug transition-colors cursor-pointer whitespace-nowrap ${
+                        decadeFilter === 'upcoming'
+                          ? 'text-white font-medium'
+                          : 'text-[#2c3440] hover:bg-[#677786] hover:text-white'
+                      }`}
+                    >
+                      {language === 'pt-BR' ? 'Em breve' : 'Upcoming'}
+                    </button>
+                    {DECADE_MENU_LIST.map((dec) => {
+                      const isSelected = decadeFilter === dec;
+                      return (
+                        <button
+                          key={dec}
+                          type="button"
+                          onClick={() => {
+                            setDecadeFilter(dec);
+                            setShowAllFilms(false);
+                            setOpenDropdown(null);
+                          }}
+                          className={`w-full text-left px-3 py-[3px] leading-snug transition-colors cursor-pointer tabular-nums ${
+                            isSelected
+                              ? 'text-white font-medium'
+                              : 'text-[#2c3440] hover:bg-[#677786] hover:text-white'
+                          }`}
+                        >
+                          {dec}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* GENRE */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOpenDropdown((d) => (d === 'genre' ? null : 'genre'))}
+                className={`flex items-center gap-1 text-[11px] uppercase tracking-[0.075em] transition-colors cursor-pointer ${
+                  genreFilter ? 'text-white font-semibold' : 'text-[#778899] hover:text-white'
+                }`}
+              >
+                <span>{selectedGenreName ?? t('cat_genre_upper')}</span>
+                <ChevronDown className="w-3 h-3 stroke-[2.2]" />
+              </button>
+
+              {openDropdown === 'genre' && (
+                <div className="absolute right-0 top-full mt-2 w-44 max-h-72 overflow-y-auto bg-[#899aa9] text-[#1f272e] rounded-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)] py-1.5 z-40 text-[12px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGenreFilter(null);
+                      setShowAllFilms(false);
+                      setOpenDropdown(null);
+                    }}
+                    className={`w-full text-left px-3.5 py-1 flex items-center justify-between hover:bg-[#677786] hover:text-white transition-colors cursor-pointer ${
+                      !genreFilter ? 'font-bold text-white bg-[#677786]/70' : ''
+                    }`}
+                  >
+                    <span>{t('person_all_genres')}</span>
+                    {!genreFilter && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                  <div className="border-t border-[#738494] my-1" />
+                  {tmdb.genres.map((g) => {
+                    const isSelected = genreFilter === g.id;
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => {
+                          setGenreFilter(g.id);
+                          setShowAllFilms(false);
+                          setOpenDropdown(null);
+                        }}
+                        className={`w-full text-left px-3.5 py-1 flex items-center justify-between hover:bg-[#677786] hover:text-white transition-colors cursor-pointer ${
+                          isSelected ? 'font-bold text-white bg-[#677786]/70' : ''
+                        }`}
+                      >
+                        <span>{g.name}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* SERVICE */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOpenDropdown((d) => (d === 'service' ? null : 'service'))}
+                className={`flex items-center gap-1 text-[11px] uppercase tracking-[0.075em] transition-colors cursor-pointer ${
+                  serviceFilter ? 'text-white font-semibold' : 'text-[#778899] hover:text-white'
+                }`}
+              >
+                <span>{selectedServiceName ?? t('cat_service_upper')}</span>
+                <ChevronDown className="w-3 h-3 stroke-[2.2]" />
+              </button>
+
+              {openDropdown === 'service' && (
+                <div className="absolute right-0 top-full mt-2 w-48 bg-[#899aa9] text-[#1f272e] rounded-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)] py-1.5 z-40 text-[12px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setServiceFilter(null);
+                      setShowAllFilms(false);
+                      setOpenDropdown(null);
+                    }}
+                    className={`w-full text-left px-3.5 py-1 flex items-center justify-between hover:bg-[#677786] hover:text-white transition-colors cursor-pointer ${
+                      !serviceFilter ? 'font-bold text-white bg-[#677786]/70' : ''
+                    }`}
+                  >
+                    <span>{t('sim_any_service')}</span>
+                    {!serviceFilter && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                  <div className="border-t border-[#738494] my-1" />
+                  {tmdb.streamingServices.map((srv) => {
+                    const isSelected = serviceFilter === srv.id;
+                    return (
+                      <button
+                        key={srv.id}
+                        type="button"
+                        onClick={() => {
+                          setServiceFilter(srv.id);
+                          setShowAllFilms(false);
+                          setOpenDropdown(null);
+                        }}
+                        className={`w-full text-left px-3.5 py-1 flex items-center justify-between hover:bg-[#677786] hover:text-white transition-colors cursor-pointer ${
+                          isSelected ? 'font-bold text-white bg-[#677786]/70' : ''
+                        }`}
+                      >
+                        <span>{srv.name}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Sort by POPULARITY */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOpenDropdown((d) => (d === 'sort' ? null : 'sort'))}
+                className="flex items-center gap-1 text-[11px] tracking-[0.06em] text-[#778899] hover:text-white transition-colors cursor-pointer"
+              >
+                <span className="normal-case">{t('person_sort_by')}</span>
+                <span className="uppercase text-[#899aa9]">{t(currentSortLabelKey)}</span>
+                <ChevronDown className="w-3 h-3 stroke-[2.2]" />
+              </button>
+
+              {openDropdown === 'sort' && (
+                <div className="absolute right-0 top-full mt-2 w-44 bg-[#899aa9] text-[#1f272e] rounded-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)] py-1.5 z-40 text-[12px]">
+                  {SORT_OPTIONS.map((o) => {
+                    const isSelected = sortBy === o.value;
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => {
+                          setSortBy(o.value);
+                          setOpenDropdown(null);
+                        }}
+                        className={`w-full text-left px-3.5 py-1 flex items-center justify-between hover:bg-[#677786] hover:text-white transition-colors cursor-pointer ${
+                          isSelected ? 'font-bold text-white bg-[#677786]/70' : ''
+                        }`}
+                      >
+                        <span>{t(o.label)}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 👁 (Watched / Fade Watched) */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOpenDropdown((d) => (d === 'watched' ? null : 'watched'))}
+                aria-label={t('flt_watched')}
+                className={`flex items-center gap-0.5 text-[11px] transition-colors cursor-pointer ${
+                  watchedMode !== 'all' ? 'text-[#00e054]' : 'text-[#778899] hover:text-white'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <ChevronDown className="w-3 h-3 stroke-[2.2]" />
+              </button>
+
+              {openDropdown === 'watched' && (
+                <div className="absolute right-0 top-full mt-2 w-44 bg-[#899aa9] text-[#1f272e] rounded-[3px] shadow-[0_8px_24px_rgba(0,0,0,0.55)] py-1.5 z-40 text-[12px]">
+                  {(
+                    [
+                      { value: 'all', label: t('sim_show_all') },
+                      { value: 'watched', label: t('sim_show_watched') },
+                      { value: 'unwatched', label: t('sim_hide_watched') },
+                    ] as const
+                  ).map((opt) => {
+                    const isSelected = watchedMode === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setWatchedMode(opt.value);
+                          setShowAllFilms(false);
+                          setOpenDropdown(null);
+                        }}
+                        className={`w-full text-left px-3.5 py-1 flex items-center justify-between hover:bg-[#677786] hover:text-white transition-colors cursor-pointer ${
+                          isSelected ? 'font-bold text-white bg-[#677786]/70' : ''
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                      </button>
+                    );
+                  })}
+                  <div className="border-t border-[#738494] my-1" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFadeWatched((v) => !v);
+                      setOpenDropdown(null);
+                    }}
+                    className={`w-full text-left px-3.5 py-1 flex items-center justify-between hover:bg-[#677786] hover:text-white transition-colors cursor-pointer ${
+                      fadeWatched ? 'font-bold text-white bg-[#677786]/70' : ''
+                    }`}
+                  >
+                    <span>{t('sim_fade_watched')}</span>
+                    {fadeWatched && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {activeTab === 'Bio' ? (
-        <div key={activeTab} className="mw-fade flex flex-col lg:flex-row gap-8 py-6">
+      {/* Área principal em 2 colunas: Esquerda (670px - 5 pôsteres) + Direita (230px - Foto + Bio + Links) */}
+      <div className="flex flex-col md:flex-row gap-x-[50px] gap-y-8 items-start">
+        {/* Coluna Esquerda: Grade de 5 colunas */}
+        <div className="w-full md:w-[670px] flex-shrink-0 min-w-0">
+          {visibleFilms.length > 0 ? (
+            <>
+              <div className="grid grid-cols-5 gap-[10px]">
+                {listed.map((film) => {
+                  const isFaded = fadeWatched && isMovieWatched(film.id);
+                  return (
+                    <PosterCard
+                      key={`${film.media_type ?? 'movie'}-${film.id}`}
+                      movie={{
+                        id: film.id,
+                        title: film.title,
+                        poster_path: film.poster_path,
+                        release_date: film.release_date,
+                        vote_average: film.vote_average,
+                      }}
+                      tv={film.media_type === 'tv'}
+                      size="fluid"
+                      faded={isFaded}
+                      linkState={{
+                        fromPerson: {
+                          id: person.id,
+                          name: person.name,
+                          profile_path: person.profile_path,
+                          character: film.character,
+                          job: film.job,
+                          role: desktopActiveTabDef?.key ?? 'Actor',
+                        },
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              {showMoreButton}
+            </>
+          ) : (
+            <div className="py-20 text-center space-y-2 border border-dashed border-[#2c3440] rounded">
+              <p className="text-sm text-white font-semibold">{t('person_nothing')}</p>
+              <p className="text-xs text-[#778899]">{t('person_no_films')}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Coluna Direita: Retrato 230x345 + Biografia sempre visível + Links TMDB / Wikipedia */}
+        <aside className="w-full md:w-[230px] flex-shrink-0 flex flex-col">
           {profileImg && (
             <button
               type="button"
               onClick={() => setShowPhotoLightbox(true)}
               aria-label={person.name}
-              className="w-[180px] h-[270px] rounded border border-lb-elevated shadow-md shrink-0 overflow-hidden cursor-pointer group relative p-0"
+              className="w-[230px] h-[345px] rounded-[4px] border border-white/15 shadow-md overflow-hidden cursor-pointer group relative p-0 block bg-[#1c2228]"
             >
               <img
-                src={profileImg}
-                alt={person.name}
                 loading="lazy"
                 decoding="async"
+                src={profileImg}
+                alt={person.name}
                 className="w-full h-full object-cover"
               />
-              <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded transition-all pointer-events-none" />
+              <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded-[4px] transition-all pointer-events-none" />
             </button>
           )}
-          <div className="min-w-0">
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-lb-muted mb-3">
-              {t('person_tab_bio')}
-            </h3>
-            <p className="text-[13px] text-lb-text leading-relaxed whitespace-pre-line">
-              {person.biography || t('person_bio_empty')}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Filter Bar (funcional) */}
-          <div className="flex flex-wrap items-center justify-between gap-2 py-3 mb-6 border-t border-b border-lb-elevated">
-            <div className="flex flex-wrap items-center gap-2">{decadeGenreSelects}</div>
-            {sortSelect}
-          </div>
 
-          <div key={activeTab} className="mw-fade flex flex-col lg:flex-row gap-8">
-            {/* Left: Poster Grid */}
-            <div className="flex-1 min-w-0">
-              {visibleFilms.length > 0 ? (
-                <>
-                  <div className="grid grid-cols-4 lg:grid-cols-5 gap-3">
-                    {listed.map((film) => (
-                      <PosterCard
-                        key={`${film.media_type ?? 'movie'}-${film.id}`}
-                        movie={{
-                          id: film.id,
-                          title: film.title,
-                          poster_path: film.poster_path,
-                          release_date: film.release_date,
-                          vote_average: film.vote_average,
-                        }}
-                        tv={film.media_type === 'tv'}
-                        size="fluid"
-                        linkState={{
-                          fromPerson: {
-                            id: person.id,
-                            name: person.name,
-                            profile_path: person.profile_path,
-                            character: film.character,
-                            job: film.job,
-                            role: activeTab,
-                          },
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {showMoreButton}
-                </>
-              ) : (
-                <div className="py-20 text-center space-y-2 border border-dashed border-lb-elevated rounded">
-                  <p className="text-sm text-white font-semibold">{t('person_nothing')}</p>
-                  <p className="text-xs text-lb-muted">{t('person_no_films')}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Right: Sidebar (foto + biografia resumida, como antes) */}
-            <aside className="w-full lg:w-56 xl:w-64 flex-shrink-0 flex flex-col gap-4">
-              {profileImg && (
-                <button
-                  type="button"
-                  onClick={() => setShowPhotoLightbox(true)}
-                  aria-label={person.name}
-                  className="w-full max-w-64 lg:max-w-none mx-auto rounded border border-lb-elevated shadow-md overflow-hidden cursor-pointer group relative p-0 block"
-                >
-                  <img
-                    loading="lazy"
-                    decoding="async"
-                    src={profileImg}
-                    alt={person.name}
-                    className="w-full h-full object-cover"
-                  />
-                  <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded transition-all pointer-events-none" />
-                </button>
-              )}
-
-              {person.biography && (
-                <div className="border-t border-b border-lb-elevated py-4">
-                  <h3 className="text-[11px] font-bold uppercase tracking-widest text-lb-muted mb-3">
-                    {t('person_tab_bio')}
-                  </h3>
-                  <p
-                    className={`text-[13px] text-lb-text leading-relaxed whitespace-pre-line ${
-                      bioExpanded ? '' : 'line-clamp-6'
-                    }`}
-                  >
-                    {person.biography}
-                  </p>
+          {/* Biografia logo abaixo da foto */}
+          <div className="mt-3.5 text-[12.5px] leading-[1.6] text-[#778899]">
+            {rawBio ? (
+              <>
+                <p className="whitespace-pre-line">
+                  {bioExpanded || !isBioLong ? rawBio : collapsedBioText}
+                </p>
+                {isBioLong && (
                   <button
+                    type="button"
                     onClick={() => setBioExpanded((v) => !v)}
-                    className="mt-2 text-xs font-semibold text-lb-muted hover:text-white uppercase tracking-wider transition-colors cursor-pointer"
+                    className="mt-0.5 block text-white hover:text-[#40bcf4] font-semibold transition-colors cursor-pointer"
                   >
-                    {bioExpanded ? '−' : t('show_more')}
+                    {bioExpanded
+                      ? language === 'pt-BR'
+                        ? 'menos'
+                        : 'less'
+                      : language === 'pt-BR'
+                        ? 'mais'
+                        : 'more'}
                   </button>
-                </div>
-              )}
-
-              {person.birthday && (
-                <div className="text-[11px] uppercase tracking-wider">
-                  <span className="text-lb-muted font-bold">{t('common_born')} </span>
-                  <span className="text-lb-text">
-                    {new Date(person.birthday).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </span>
-                </div>
-              )}
-            </aside>
+                )}
+              </>
+            ) : (
+              <p>{t('person_bio_empty')}</p>
+            )}
           </div>
-        </>
-      )}
+
+          {/* Rodapé de links externos: More details at [TMDB] [Wikipedia] */}
+          <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11.5px] text-[#778899]">
+            <span>{language === 'pt-BR' ? 'Mais detalhes em' : 'More details at'}</span>
+            <a
+              href={tmdbPersonHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="border border-[#303844] bg-[#1a2026] hover:border-[#667788] text-[#778899] hover:text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-[2px] transition-colors"
+            >
+              TMDB
+            </a>
+            <a
+              href={wikipediaHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="border border-[#303844] bg-[#1a2026] hover:border-[#667788] text-[#778899] hover:text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-[2px] transition-colors"
+            >
+              Wikipedia
+            </a>
+          </div>
+        </aside>
+      </div>
 
       {photoLightbox}
     </div>

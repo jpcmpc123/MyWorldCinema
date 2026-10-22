@@ -1179,19 +1179,6 @@ export const BrowseResultsPage: React.FC = () => {
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-[#667788] group-hover:text-white transition-colors shrink-0" />
                 </button>
-
-                {/* Crédito POWERED BY Nanocrowd */}
-                <div className="mt-4 select-none">
-                  <p className="text-[9px] uppercase tracking-[0.1em] text-[#667788] mb-1">
-                    {t('sim_powered_by')}
-                  </p>
-                  <div className="inline-flex items-center gap-1.5 text-[12px] text-[#899aa9]">
-                    <span className="w-4 h-4 rounded-[3px] bg-[#3a4552] text-[#cdd5de] inline-flex items-center justify-center text-[10px] font-bold leading-none">
-                      n̄
-                    </span>
-                    <span>Nanocrowd</span>
-                  </div>
-                </div>
               </aside>
             </div>
           </div>

@@ -212,6 +212,11 @@ export interface TMDBPersonDetails extends TMDBPerson {
   movie_credits?: TMDBPersonMovieCredits;
   /** Créditos em SÉRIES — trazem os criadores (job 'Creator') e o elenco de TV */
   tv_credits?: TMDBPersonMovieCredits;
+  external_ids?: {
+    imdb_id?: string | null;
+    wikidata_id?: string | null;
+  };
+  wikipedia_url?: string;
 }
 
 export interface TMDBResponse<T> {
@@ -1201,19 +1206,52 @@ export const tmdb = {
    */
   async getPersonDetails(id: number): Promise<TMDBPersonDetails> {
     const person = await fetchFromTMDB<TMDBPersonDetails>(`/person/${id}`, {
-      append_to_response: 'movie_credits,tv_credits',
+      append_to_response: 'movie_credits,tv_credits,external_ids',
     });
-    if (tmdbLanguage !== 'en-US' && !person.biography) {
+    if (tmdbLanguage !== 'en-US' && !person.biography?.trim()) {
       try {
         const en = await fetchFromTMDB<TMDBPersonDetails>(`/person/${id}`, {
           language: 'en-US',
-          append_to_response: 'movie_credits,tv_credits',
+          append_to_response: 'movie_credits,tv_credits,external_ids',
         });
-        if (!person.biography) person.biography = en.biography;
+        if (!person.biography?.trim() && en.biography?.trim()) person.biography = en.biography;
         if (!person.movie_credits && en.movie_credits) person.movie_credits = en.movie_credits;
         if (!person.tv_credits && en.tv_credits) person.tv_credits = en.tv_credits;
+        if (!person.external_ids && en.external_ids) person.external_ids = en.external_ids;
       } catch {
-        /* mantém vazio — a Bio mostra aviso de indisponível */
+        /* fallback para Wikipedia logo abaixo */
+      }
+    }
+
+    const defaultWikiLang = tmdbLanguage === 'pt-BR' ? 'pt' : 'en';
+    person.wikipedia_url = `https://${defaultWikiLang}.wikipedia.org/wiki/${encodeURIComponent(
+      (person.name || '').trim().replace(/\s+/g, '_'),
+    )}`;
+
+    // Se mesmo após o fallback em inglês no TMDB a biografia continuar vazia
+    // (ex.: atores sem texto cadastrado no TMDB), busca o resumo oficial na Wikipedia (PT -> EN).
+    if (!person.biography?.trim() && person.name) {
+      const wikiLangs = tmdbLanguage === 'pt-BR' ? ['pt', 'en'] : ['en', 'pt'];
+      const slug = encodeURIComponent(person.name.trim().replace(/\s+/g, '_'));
+      for (const wLang of wikiLangs) {
+        try {
+          const res = await fetch(`https://${wLang}.wikipedia.org/api/rest_v1/page/summary/${slug}`);
+          if (!res.ok) continue;
+          const data = (await res.json()) as {
+            type?: string;
+            extract?: string;
+            content_urls?: { desktop?: { page?: string } };
+          };
+          if (data && data.type !== 'disambiguation' && data.extract?.trim()) {
+            person.biography = data.extract.trim();
+            if (data.content_urls?.desktop?.page) {
+              person.wikipedia_url = data.content_urls.desktop.page;
+            }
+            break;
+          }
+        } catch {
+          /* tenta próximo idioma */
+        }
       }
     }
 
@@ -1263,6 +1301,74 @@ export const tmdb = {
       person.tv_credits.crew = normalizeTv(person.tv_credits.crew, false);
     }
     return person;
+  },
+
+  /**
+   * Retorna o conjunto de chaves (`movie:${id}` / `tv:${id}`) da filmografia
+   * de uma pessoa que estão disponíveis no serviço de streaming `providerId`.
+   */
+  async getPersonProviderMediaKeys(
+    personId: number,
+    providerId: number,
+    credits: TMDBPersonMovieCredit[],
+  ): Promise<Set<string>> {
+    const matched = new Set<string>();
+    try {
+      const [usMovies, brMovies] = await Promise.allSettled([
+        fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+          with_people: personId,
+          with_watch_providers: providerId,
+          watch_region: 'US',
+          page: 1,
+        }),
+        fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+          with_people: personId,
+          with_watch_providers: providerId,
+          watch_region: 'BR',
+          page: 1,
+        }),
+      ]);
+      if (usMovies.status === 'fulfilled') {
+        usMovies.value.results?.forEach((m) => matched.add(`movie:${m.id}`));
+      }
+      if (brMovies.status === 'fulfilled') {
+        brMovies.value.results?.forEach((m) => matched.add(`movie:${m.id}`));
+      }
+
+      // Verifica também os principais créditos (incluindo séries de TV) via watch/providers
+      const topToVerify = credits
+        .filter((c) => !matched.has(`${c.media_type ?? 'movie'}:${c.id}`))
+        .slice(0, 24);
+
+      await Promise.allSettled(
+        topToVerify.map(async (item) => {
+          const mediaType = item.media_type === 'tv' ? 'tv' : 'movie';
+          const wp = await fetchFromTMDB<{
+            results?: Record<
+              string,
+              {
+                flatrate?: { provider_id: number }[];
+                rent?: { provider_id: number }[];
+                buy?: { provider_id: number }[];
+              }
+            >;
+          }>(`/${mediaType}/${item.id}/watch/providers`);
+          const regions = wp?.results ?? {};
+          for (const reg of ['BR', 'US', 'GB']) {
+            const r = regions[reg];
+            if (!r) continue;
+            const all = [...(r.flatrate ?? []), ...(r.rent ?? []), ...(r.buy ?? [])];
+            if (all.some((p) => p.provider_id === providerId)) {
+              matched.add(`${mediaType}:${item.id}`);
+              break;
+            }
+          }
+        }),
+      );
+    } catch {
+      /* mantém o que já coletou */
+    }
+    return matched;
   },
 
   streamingServices: [

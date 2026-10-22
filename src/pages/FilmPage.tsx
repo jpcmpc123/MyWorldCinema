@@ -176,6 +176,55 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   const { t } = useLanguage();
   const navigate = useNavigate();
 
+  const locationState = location.state as {
+    initialMovie?: {
+      id: number;
+      title?: string;
+      name?: string;
+      original_title?: string;
+      original_name?: string;
+      poster_path?: string | null;
+      backdrop_path?: string | null;
+      release_date?: string;
+      first_air_date?: string;
+      vote_average?: number;
+      vote_count?: number;
+      overview?: string;
+    };
+    fromPoster?: boolean;
+  } | null;
+
+  const previewMovie = useMemo<TMDBMovieDetails | null>(() => {
+    const init = locationState?.initialMovie;
+    if (!init || Number(init.id) !== movieId) return null;
+    const title = init.title || init.name || init.original_title || init.original_name || '';
+    const date = init.release_date || init.first_air_date || '';
+    return {
+      id: movieId,
+      title,
+      original_title: init.original_title || init.original_name || title,
+      poster_path: init.poster_path ?? null,
+      backdrop_path: init.backdrop_path ?? null,
+      overview: init.overview || '',
+      release_date: date,
+      vote_average: init.vote_average ?? 0,
+      vote_count: init.vote_count ?? 0,
+      popularity: 0,
+      tagline: '',
+      runtime: 0,
+      status: '',
+      budget: 0,
+      revenue: 0,
+      genres: [],
+      production_companies: [],
+      production_countries: [],
+      spoken_languages: [],
+      credits: { cast: [], crew: [] },
+      similar: { results: [] },
+      recommendations: { results: [] },
+    };
+  }, [locationState?.initialMovie, movieId]);
+
   const cachedDetails = useMemo<TMDBMovieDetails | null>(() => {
     if (!movieId) return null;
     const cached = tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie');
@@ -185,20 +234,26 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     return null;
   }, [movieId, isTv]);
 
-  const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => cachedDetails);
-  const [loading, setLoading] = useState<boolean>(() => !cachedDetails);
+  const initialData = cachedDetails || previewMovie;
+  const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => initialData);
+  const [loading, setLoading] = useState<boolean>(() => !initialData);
   const [assetsReady, setAssetsReady] = useState<boolean>(() => {
-    if (!cachedDetails) return false;
-    const urls = getRequiredFilmImageUrls(cachedDetails, isMobile, movieOverrides[movieId]);
+    if (!isMobile) return true;
+    if (!initialData) return false;
+    const urls = getRequiredFilmImageUrls(initialData, isMobile, movieOverrides[movieId]);
     return areAllUrlsLoaded(urls);
   });
 
   if (cachedDetails && movie?.id !== movieId) {
     setMovie(cachedDetails);
     if (loading) setLoading(false);
-    const urls = getRequiredFilmImageUrls(cachedDetails, isMobile, movieOverrides[movieId]);
-    const alreadyReady = areAllUrlsLoaded(urls);
-    if (assetsReady !== alreadyReady) setAssetsReady(alreadyReady);
+    if (!isMobile) {
+      if (!assetsReady) setAssetsReady(true);
+    } else {
+      const urls = getRequiredFilmImageUrls(cachedDetails, isMobile, movieOverrides[movieId]);
+      const alreadyReady = areAllUrlsLoaded(urls);
+      if (assetsReady !== alreadyReady) setAssetsReady(alreadyReady);
+    }
   }
   const [activeTab, setActiveTab] = useState<TabKey>('cast');
   const [outgoingTab, setOutgoingTab] = useState<TabKey | null>(null);
@@ -390,16 +445,18 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
         window.scrollTo(0, 0);
         const cached = tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie');
         if (cached && (cached.credits?.cast?.length || cached.credits?.crew?.length || cached.runtime)) {
-          const urls = getRequiredFilmImageUrls(cached, isMobile, movieOverrides[movieId]);
-          if (areAllUrlsLoaded(urls)) {
-            setMovie(cached);
+          setMovie(cached);
+          setLoading(false);
+          if (!isMobile) {
             setAssetsReady(true);
-            setLoading(false);
             return;
           }
-          setMovie(cached);
+          const urls = getRequiredFilmImageUrls(cached, isMobile, movieOverrides[movieId]);
+          if (areAllUrlsLoaded(urls)) {
+            setAssetsReady(true);
+            return;
+          }
           setAssetsReady(false);
-          setLoading(false);
           await Promise.all([
             Promise.race([
               Promise.all(urls.map(preloadSingleImage)),
@@ -412,14 +469,26 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
           }
           return;
         }
-        setMovie(null);
-        setLoading(true);
-        setAssetsReady(false);
+        if (!previewMovie) {
+          setMovie(null);
+          setLoading(true);
+          setAssetsReady(!isMobile);
+        } else {
+          setMovie(previewMovie);
+          setLoading(false);
+          setAssetsReady(true);
+        }
       }
 
       try {
         const details = isTv ? await tmdb.getTVDetails(movieId) : await tmdb.getMovieDetails(movieId);
         if (cancelled) return;
+        setMovie(details);
+        setLoading(false);
+        if (!isMobile) {
+          setAssetsReady(true);
+          return;
+        }
         const urls = getRequiredFilmImageUrls(details, isMobile, movieOverrides[movieId]);
         await Promise.all([
           areAllUrlsLoaded(urls)
@@ -431,7 +500,6 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
           waitSlideIfMobile(),
         ]);
         if (cancelled) return;
-        setMovie(details);
         setAssetsReady(true);
         setLoading(false);
       } catch (err) {
@@ -485,6 +553,10 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
   if (!movie || loading || !assetsReady) {
     if (loading || (movie && !assetsReady)) {
+      if (!isMobile) {
+        // No PC: zero spinner/loop de carregamento
+        return null;
+      }
       return (
         <div
           key="film-loading"
@@ -655,9 +727,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   return (
     <div
       key={`film-ready-${movie.id}`}
-      className={`relative min-h-screen bg-lb-bg text-lb-text ${
-        disableSlideAnimation ? '' : 'md:mw-slide-in-left'
-      }`}
+      className="relative min-h-screen bg-lb-bg text-lb-text"
     >
       {/* 1. Cinematic Hero Vignette Backdrop */}
       {backdropUrl && (

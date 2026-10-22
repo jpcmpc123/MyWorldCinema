@@ -167,7 +167,7 @@ export const SeriesDetailPage: React.FC = () => {
     : undefined;
 
   return (
-    <div className="relative mw-slide-in-left">
+    <div className="relative max-md:mw-slide-in-left">
       {/* Backdrop hero */}
       {backdropUrl && (
         <div className="max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:h-[calc(56.25vw+26px)] max-md:overflow-hidden max-md:z-0 max-md:[&_.backdrop-container]:!h-full max-md:[&_.backdrop-container]:!pt-0 max-md:[&_.backdropimage]:!bg-[length:110%_auto] max-md:[&_.backdropimage]:!bg-[position:-5vw_0]">

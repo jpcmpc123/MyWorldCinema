@@ -305,9 +305,6 @@ button, a, [role="button"] {
     animation: mwSlideFromRightDesktop 340ms cubic-bezier(0.22, 1, 0.36, 1);
     will-change: transform, opacity;
   }
-  .md\:mw-slide-in-left {
-    animation: mwSlideFromRightDesktop 340ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
 }
 
 

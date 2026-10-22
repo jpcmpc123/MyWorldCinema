@@ -383,7 +383,7 @@ function AppShell() {
                   : isTransitioning
                     ? 'relative z-30 bg-lb-bg mw-gpu-layer'
                     : isDetail
-                      ? 'max-md:overflow-x-hidden md:mw-page-in'
+                      ? 'max-md:overflow-x-hidden'
                       : 'mw-page-in'
               }
               style={panel.isOutgoing ? outgoingTransformStyle : incomingTransformStyle}
