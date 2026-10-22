@@ -180,6 +180,11 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
               {/* Skeleton shimmer escuro atrás do pôster enquanto carrega */}
               {!isLoaded && <div className="absolute inset-0 mw-shimmer" aria-hidden="true" />}
               <img
+                ref={(el) => {
+                  if (el && el.complete && el.naturalWidth > 0 && !isLoaded) {
+                    setIsLoaded(true);
+                  }
+                }}
                 src={tmdb.getImageUrl(displayPosterPath, 'w500')}
                 srcSet={`${tmdb.getImageUrl(displayPosterPath, 'w185')} 185w, ${tmdb.getImageUrl(displayPosterPath, 'w342')} 342w, ${tmdb.getImageUrl(displayPosterPath, 'w500')} 500w, ${tmdb.getImageUrl(displayPosterPath, 'w780')} 780w`}
                 sizes={

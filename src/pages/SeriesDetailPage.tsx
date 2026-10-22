@@ -65,8 +65,17 @@ export const SeriesDetailPage: React.FC = () => {
     };
   }, [locationState?.initialMovie, tvId]);
 
-  const [show, setShow] = useState<TMDBMovieDetails | null>(() => previewShow);
-  const [loading, setLoading] = useState<boolean>(() => !previewShow);
+  const cachedShow = useMemo<TMDBMovieDetails | null>(() => {
+    if (!tvId) return null;
+    const cached = tmdb.getCachedDetails(tvId, 'tv');
+    if (cached && Array.isArray(cached.credits?.cast)) {
+      return cached;
+    }
+    return null;
+  }, [tvId]);
+
+  const [show, setShow] = useState<TMDBMovieDetails | null>(() => cachedShow);
+  const [loading, setLoading] = useState<boolean>(() => !cachedShow);
   const [showTrailerModal, setShowTrailerModal] = useState(false);
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
 
@@ -85,31 +94,37 @@ export const SeriesDetailPage: React.FC = () => {
   }, [showTrailerModal]);
 
   useEffect(() => {
+    let cancelled = false;
     async function loadShow() {
       if (!tvId) return;
       window.scrollTo(0, 0);
 
-      if (previewShow && previewShow.id === tvId) {
-        setShow((prev) => (prev?.id === tvId ? prev : previewShow));
+      const cached = tmdb.getCachedDetails(tvId, 'tv');
+      if (cached && Array.isArray(cached.credits?.cast)) {
+        setShow(cached);
         setLoading(false);
-      } else {
-        setShow((prev) => (prev?.id === tvId ? prev : null));
-        setLoading(true);
+        return;
       }
+
+      setShow(null);
+      setLoading(true);
 
       try {
         const details = await tmdb.getTVDetails(tvId);
-        setShow(details);
+        if (!cancelled) setShow(details);
       } catch (err) {
         console.error('Failed to load series details:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     loadShow();
-  }, [tvId, previewShow]);
+    return () => {
+      cancelled = true;
+    };
+  }, [tvId]);
 
-  if (!show) {
+  if (!show || show.id !== tvId || loading) {
     if (loading) {
       return (
         <div className="relative min-h-screen text-lb-text mw-slide-in-left max-w-[950px] mx-auto px-4 md:px-0 pt-16 md:pt-20">

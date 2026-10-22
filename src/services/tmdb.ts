@@ -759,7 +759,7 @@ async function curateSimilarForDetails(
 
       collectionParts = await Promise.race([
         colPromise,
-        new Promise<TMDBMovie[]>((resolve) => setTimeout(() => resolve([]), 320)),
+        new Promise<TMDBMovie[]>((resolve) => setTimeout(() => resolve([]), 4000)),
       ]);
     }
 
@@ -773,7 +773,7 @@ async function curateSimilarForDetails(
             'vote_count.gte': type === 'tv' ? 40 : 120,
             page: 1,
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 350)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
         ]);
         if (disc?.results) fallbackDiscoverItems = disc.results;
       } catch {
