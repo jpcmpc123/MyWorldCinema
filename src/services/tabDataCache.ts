@@ -14,8 +14,8 @@ const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutos
 let memoryFilmsHub: HubSectionsData | null = null;
 let memorySeriesHub: HubSectionsData | null = null;
 
-const FILMS_KEY = 'mw_cache_films_hub_v1';
-const SERIES_KEY = 'mw_cache_series_hub_v1';
+const FILMS_KEY = 'mw_cache_films_hub_v2';
+const SERIES_KEY = 'mw_cache_series_hub_v2';
 
 function readSession(key: string): HubSectionsData | null {
   if (typeof window === 'undefined') return null;

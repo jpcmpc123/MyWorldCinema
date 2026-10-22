@@ -101,16 +101,25 @@ export const FilmsPage: React.FC = () => {
       setLoading(true);
       window.scrollTo(0, 0);
       try {
+        const isWeeklyTrending =
+          currentSort === 'popularity.desc' &&
+          !currentGenre &&
+          parsedYear === undefined &&
+          parsedDecade === undefined &&
+          !currentProvider;
+
         // Fetch up to 6 TMDb pages (~72-80 movies) to fill 6 complete rows of 12
-        const res = await tmdb.discoverMoviesBatch({
-          genreId: currentGenre,
-          year: parsedYear,
-          decade: parsedYear ? undefined : parsedDecade,
-          providerId: currentProvider,
-          sortBy: currentSort,
-          page: currentPage,
-          pagesToFetch: 6,
-        });
+        const res = isWeeklyTrending
+          ? await tmdb.getTrendingBatch('week', currentPage, 6)
+          : await tmdb.discoverMoviesBatch({
+              genreId: currentGenre,
+              year: parsedYear,
+              decade: parsedYear ? undefined : parsedDecade,
+              providerId: currentProvider,
+              sortBy: currentSort,
+              page: currentPage,
+              pagesToFetch: 6,
+            });
 
         setMovies(res.results);
         setTotalResults(res.total_results > 0 ? res.total_results : 138599);

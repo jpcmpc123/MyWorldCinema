@@ -922,8 +922,40 @@ export const tmdb = {
     return fetchFromTMDB<TMDBResponse<TMDBMovie>>('/movie/now_playing', { page });
   },
 
-  async getTrending(timeWindow: 'day' | 'week' = 'week'): Promise<TMDBResponse<TMDBMovie>> {
-    return fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/trending/movie/${timeWindow}`);
+  async getTrending(timeWindow: 'day' | 'week' = 'week', page = 1): Promise<TMDBResponse<TMDBMovie>> {
+    return fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/trending/movie/${timeWindow}`, { page });
+  },
+
+  async getTrendingBatch(
+    timeWindow: 'day' | 'week' = 'week',
+    page = 1,
+    pagesToFetch = 3,
+  ): Promise<{ results: TMDBMovie[]; total_results: number; total_pages: number }> {
+    const startPage = (page - 1) * pagesToFetch + 1;
+    const pageNumbers = Array.from({ length: pagesToFetch }, (_, i) => startPage + i);
+    const responses = await Promise.all(
+      pageNumbers.map((p) =>
+        this.getTrending(timeWindow, p).catch(() => ({
+          results: [],
+          total_results: 0,
+          total_pages: 0,
+          page: p,
+        })),
+      ),
+    );
+    const allResults = responses.flatMap((r) => r.results);
+    const seen = new Set<number>();
+    const unique = allResults.filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+    const firstRes = responses[0] || { total_results: 0, total_pages: 1 };
+    return {
+      results: unique,
+      total_results: firstRes.total_results,
+      total_pages: Math.max(1, Math.ceil((firstRes.total_pages || 1) / pagesToFetch)),
+    };
   },
 
   async getMovieDetails(id: number): Promise<TMDBMovieDetails> {
@@ -1520,8 +1552,8 @@ export const tmdb = {
     return fetchFromTMDB<TMDBResponse<TMDBMovie>>('/tv/top_rated', { page });
   },
 
-  async getTrendingTV(timeWindow: 'day' | 'week' = 'week'): Promise<TMDBResponse<TMDBMovie>> {
-    return fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/trending/tv/${timeWindow}`);
+  async getTrendingTV(timeWindow: 'day' | 'week' = 'week', page = 1): Promise<TMDBResponse<TMDBMovie>> {
+    return fetchFromTMDB<TMDBResponse<TMDBMovie>>(`/trending/tv/${timeWindow}`, { page });
   },
 
   async discoverTV(params: {
@@ -1646,33 +1678,34 @@ export const tmdb = {
       language?: string;
     } = {},
   ): Promise<{ results: TMDBMovie[]; total_pages: number; total_results: number }> {
-    // "Popular this week" = trending semanal oficial do TMDB (popularidade da semana)
+    // "Popular this week" = endpoint oficial /trending/{movie|tv}/week do TMDB
     if (preset === 'popular_week') {
-      const trending = type === 'tv'
-        ? await this.getTrendingTV('week')
-        : await this.getTrending('week');
-      // Sem piso de votos: a ordem do trending (popularidade da semana) é mantida.
-      // Só removemos títulos com estreia futura.
-      const ordered = trending.results.filter((m) => {
-        const d = itemDate(m);
-        return !d || d <= TMDB_TODAY;
-      });
+      const hasExtraFilters = Boolean(
+        extraFilters.genreId ||
+          extraFilters.year ||
+          extraFilters.decade ||
+          extraFilters.providerId ||
+          extraFilters.country ||
+          extraFilters.language,
+      );
 
-      // Filmes: os que estão em cartaz nos cinemas vêm primeiro (mantendo a ordem
-      // do trending). Séries não têm lista "em cartaz" no TMDB, seguem o trending.
-      if (type !== 'tv') {
-        const nowPlaying = await this.getNowPlaying(1);
-        const inTheaters = new Set(nowPlaying.results.map((m) => m.id));
-        // Critério 1: em cartaz primeiro. Critério 2: maior popularidade.
-        ordered.sort(
-          (a, b) =>
-            Number(inTheaters.has(b.id)) - Number(inTheaters.has(a.id)) ||
-            (b.popularity ?? 0) - (a.popularity ?? 0),
-        );
+      if (!hasExtraFilters) {
+        const trending =
+          type === 'tv'
+            ? await this.getTrendingTV('week', page)
+            : await this.getTrending('week', page);
+        const results =
+          type === 'tv'
+            ? trending.results.filter(
+                (m) => !m.genre_ids?.some((g) => TV_EXCLUDED_GENRE_IDS.has(g)),
+              )
+            : trending.results;
+        return {
+          results,
+          total_pages: trending.total_pages,
+          total_results: trending.total_results || results.length,
+        };
       }
-
-      const results = ordered;
-      return { results, total_pages: trending.total_pages, total_results: results.length };
     }
 
     const discover = type === 'tv' ? this.discoverTVBatch : this.discoverMoviesBatch;
