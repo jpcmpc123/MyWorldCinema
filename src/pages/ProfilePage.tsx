@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link, useParams, Navigate, useLocation } from 'react-router-dom';
-import { MoreHorizontal, Search, Heart, ChevronRight } from 'lucide-react';
+import { MoreHorizontal, Search, Heart, ChevronRight, User } from 'lucide-react';
 import { RatingHistogram } from '../components/RatingHistogram';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -621,11 +621,17 @@ export const ProfilePage: React.FC = () => {
       <div className="max-md:hidden flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 pt-2 pb-4">
         {/* Avatar & User Details */}
         <div className="flex items-center gap-5">
-          <img loading="lazy" decoding="async"
-            src={viewAvatar}
-            alt={viewUsername}
-            className="w-24 h-24 rounded-full object-cover border border-lb-border-light shadow-xl"
-          />
+          {viewAvatar ? (
+            <img loading="lazy" decoding="async"
+              src={viewAvatar}
+              alt={viewUsername}
+              className="w-24 h-24 rounded-full object-cover border border-lb-border-light shadow-xl"
+            />
+          ) : (
+            <div className="w-24 h-24 rounded-full bg-lb-surface border border-lb-border-light shadow-xl flex items-center justify-center text-lb-muted">
+              <User className="w-12 h-12" />
+            </div>
+          )}
 
           <div className="space-y-2.5">
             <h1 className="text-2xl font-bold text-white tracking-tight">
@@ -725,11 +731,17 @@ export const ProfilePage: React.FC = () => {
           <div className="pt-0">
             {/* Big centered avatar */}
             <div className="flex flex-col items-center gap-2 pt-0 pb-5 border-b border-white/10 -mx-4 px-4 -mt-4">
-              <img loading="lazy" decoding="async"
-                src={viewAvatar}
-                alt={viewUsername}
-                className="w-16 h-16 rounded-full object-cover border border-lb-border-light shadow-xl"
-              />
+              {viewAvatar ? (
+                <img loading="lazy" decoding="async"
+                  src={viewAvatar}
+                  alt={viewUsername}
+                  className="w-16 h-16 rounded-full object-cover border border-lb-border-light shadow-xl"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-lb-surface border border-lb-border-light shadow-xl flex items-center justify-center text-lb-muted">
+                  <User className="w-8 h-8" />
+                </div>
+              )}
               {user.displayName && remote.isRemote === false && (
                 <span className="text-xs text-lb-muted">{user.displayName}</span>
               )}

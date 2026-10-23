@@ -36,12 +36,14 @@ export interface MovieList {
   description: string;
   isRanked: boolean;
   isPrivate: boolean;
+  tags?: string[];
   movies: {
     id: number;
     title: string;
     poster_path: string | null;
     release_date: string;
     notes?: string;
+    director?: string;
   }[];
   author: {
     username: string;

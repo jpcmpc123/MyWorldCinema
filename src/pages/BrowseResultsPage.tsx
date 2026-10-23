@@ -656,7 +656,7 @@ export const BrowseResultsPage: React.FC = () => {
   const sourceOverride = similarTo ? movieOverrides[similarTo] : undefined;
   const sourcePosterUrl =
     sourceOverride?.poster ||
-    (sourceDetails?.poster_path ? tmdb.getImageUrl(sourceDetails.poster_path, 'w780') : '');
+    (sourceDetails?.poster_path ? tmdb.getImageUrl(sourceDetails.poster_path, 'w780') : null);
   const sourceBackdropUrl =
     sourceOverride?.backdrop ||
     (sourceDetails?.backdrop_path ? tmdb.getBackdropUrl(sourceDetails.backdrop_path, 'original') : null);

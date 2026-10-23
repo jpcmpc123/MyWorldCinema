@@ -479,15 +479,15 @@ export function ActorPage() {
     ? `${tmdb.getProfileUrl(person.profile_path, 'w185')} 185w, ${tmdb.getProfileUrl(person.profile_path, 'h632')} 632w, ${tmdb.getProfileUrl(person.profile_path, 'original')} 1280w`
     : undefined;
 
-  const photoLightbox = (
+  const photoLightbox = profileImg ? (
     <PosterLightbox
       open={showPhotoLightbox}
-      src={profileImg || profileImgLarge || ''}
+      src={profileImgLarge || profileImg}
       previewSrc={profileImg || undefined}
       alt={person.name}
       onClose={() => setShowPhotoLightbox(false)}
     />
-  );
+  ) : null;
 
   const showMoreButton =
     visibleFilms.length > INITIAL_VISIBLE && !showAllFilms ? (

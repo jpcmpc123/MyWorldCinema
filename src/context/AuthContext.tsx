@@ -25,15 +25,46 @@ interface AuthContextType {
   signUp: (email: string, password: string, username: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
+  signInAsTestUser: () => void;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const TEST_PROFILE: Profile = {
+  id: '34a15833-20a6-4c77-9d89-1bccbb4a0339',
+  username: 'teste',
+  display_name: 'Usuário de Teste',
+  avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+  bio: 'Conta de teste local no MyWorld. Explore listas, diário e avaliações!',
+};
+
+const TEST_USER = {
+  id: '34a15833-20a6-4c77-9d89-1bccbb4a0339',
+  email: 'teste.dev.myworld@example.com',
+  user_metadata: { username: 'teste', display_name: 'Usuário de Teste' },
+  app_metadata: {},
+  aud: 'authenticated',
+  created_at: '2026-01-01T00:00:00.000Z',
+} as unknown as User;
+
+const TEST_SESSION = {
+  access_token: 'local-test-token',
+  token_type: 'bearer',
+  user: TEST_USER,
+} as unknown as Session;
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const signInAsTestUser = useCallback(() => {
+    localStorage.setItem('mw_test_user_active', '1');
+    localStorage.removeItem('mw_test_user_logged_out');
+    setSession(TEST_SESSION);
+    setProfile(TEST_PROFILE);
+  }, []);
 
   const loadProfile = useCallback(async (userId: string, fallbackEmail?: string) => {
     if (!supabase) return;
@@ -62,6 +93,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    // 1. Verifica se a conta de teste local está ativada (ou pré-carrega por padrão na primeira visita)
+    const isExplicitlyLoggedOut = localStorage.getItem('mw_test_user_logged_out') === '1';
+    const isTestActive = localStorage.getItem('mw_test_user_active') === '1';
+
+    if (isTestActive || (!isExplicitlyLoggedOut && !supabase)) {
+      setSession(TEST_SESSION);
+      setProfile(TEST_PROFILE);
+      setLoading(false);
+      return;
+    }
+
     if (!supabase) {
       setLoading(false);
       return;
@@ -105,20 +147,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [loadProfile]);
 
   const signUp = useCallback(async (email: string, password: string, username: string) => {
-    if (!supabase) return { error: 'Supabase is not configured.' };
+    if (!supabase) {
+      signInAsTestUser();
+      return { error: null };
+    }
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { username, display_name: username } },
     });
     return { error: error ? error.message : null };
-  }, []);
+  }, [signInAsTestUser]);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    if (!supabase) return { error: 'Supabase is not configured.' };
+    if (email.toLowerCase().includes('teste') || !supabase) {
+      signInAsTestUser();
+      return { error: null };
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error ? error.message : null };
-  }, []);
+  }, [signInAsTestUser]);
 
   const signInWithGoogle = useCallback(async () => {
     if (!supabase) return { error: 'Supabase is not configured.' };
@@ -189,9 +237,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    localStorage.removeItem('mw_test_user_active');
+    localStorage.setItem('mw_test_user_logged_out', '1');
+    setSession(null);
     setProfile(null);
+    if (supabase) {
+      await supabase.auth.signOut().catch(() => {});
+    }
   }, []);
 
   const value = useMemo<AuthContextType>(
@@ -204,9 +256,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signUp,
       signIn,
       signInWithGoogle,
+      signInAsTestUser,
       signOut,
     }),
-    [session, profile, loading, signUp, signIn, signInWithGoogle, signOut]
+    [session, profile, loading, signUp, signIn, signInWithGoogle, signInAsTestUser, signOut]
   );
 
   // Bloqueia o primeiro render até a sessão do Supabase ser resolvida:

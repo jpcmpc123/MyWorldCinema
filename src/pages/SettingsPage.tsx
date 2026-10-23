@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams, useNavigate } from 'react-router-dom';
-import { CheckCircle2, AlertTriangle, Film, Upload, Download, ImageIcon, X, Check, XCircle, Globe } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Film, Upload, Download, ImageIcon, X, Check, XCircle, Globe, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -706,11 +706,17 @@ const AvatarTab: React.FC = () => {
     <div className="flex flex-col md:flex-row gap-10 items-start">
       {/* Pré-visualização do avatar atual */}
       <div className="flex flex-col items-center gap-3">
-        <img loading="lazy" decoding="async"
-          src={avatarSrc}
-          alt={t('cfg_current_avatar')}
-          className="w-40 h-40 rounded-full object-cover border-2 border-lb-elevated bg-lb-bg shadow-xl"
-        />
+        {avatarSrc ? (
+          <img loading="lazy" decoding="async"
+            src={avatarSrc}
+            alt={t('cfg_current_avatar')}
+            className="w-40 h-40 rounded-full object-cover border-2 border-lb-elevated bg-lb-bg shadow-xl"
+          />
+        ) : (
+          <div className="w-40 h-40 rounded-full border-2 border-lb-elevated bg-lb-surface flex items-center justify-center text-lb-muted shadow-xl">
+            <User className="w-16 h-16" />
+          </div>
+        )}
         <span className="text-[10px] uppercase font-bold tracking-widest text-lb-muted">{t('cfg_current_avatar')}</span>
       </div>
 

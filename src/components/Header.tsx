@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { Search, Plus, X, ChevronDown, Zap, Settings, Globe, Check } from 'lucide-react';
+import { Search, Plus, X, ChevronDown, Zap, Settings, Globe, Check, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -682,11 +682,17 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => setIsUserMenuOpen((v) => !v)}
                 className="flex items-center gap-1.5 text-[#99aabb] hover:text-white transition-colors cursor-pointer"
               >
-                <img
-                  src={displayAvatar}
-                  alt={displayDisplayName}
-                  className="w-6 h-6 rounded-full object-cover border border-white/20 shrink-0"
-                />
+                {displayAvatar ? (
+                  <img
+                    src={displayAvatar}
+                    alt={displayDisplayName}
+                    className="w-6 h-6 rounded-full object-cover border border-white/20 shrink-0"
+                  />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-[#202830] border border-white/20 flex items-center justify-center text-[#99aabb] shrink-0">
+                    <User className="w-3.5 h-3.5" />
+                  </div>
+                )}
                 <span className="text-[12px] font-bold tracking-[0.06em] uppercase whitespace-nowrap">
                   {displayUsername}
                 </span>
@@ -701,11 +707,17 @@ export const Header: React.FC<HeaderProps> = ({
                     onClick={() => setIsUserMenuOpen(false)}
                     className="w-full flex items-center gap-1.5 px-[9px] py-[6px] border-b border-[#73808c] text-white cursor-pointer"
                   >
-                    <img
-                      src={displayAvatar}
-                      alt={displayDisplayName}
-                      className="w-6 h-6 rounded-full object-cover border border-white/25 shrink-0"
-                    />
+                    {displayAvatar ? (
+                      <img
+                        src={displayAvatar}
+                        alt={displayDisplayName}
+                        className="w-6 h-6 rounded-full object-cover border border-white/25 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-[#202830] border border-white/25 flex items-center justify-center text-[#99aabb] shrink-0">
+                        <User className="w-3.5 h-3.5" />
+                      </div>
+                    )}
                     <span className="text-[12px] font-bold tracking-[0.06em] uppercase whitespace-nowrap text-white">
                       {displayUsername}
                     </span>

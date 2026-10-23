@@ -17,6 +17,7 @@ import {
   Flag,
   Loader2,
   Globe,
+  User,
 } from 'lucide-react';
 import { tmdb, type TMDBMovieDetails } from '../services/tmdb';
 import { useApp } from '../context/AppContext';
@@ -694,10 +695,10 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   const posterPath = override?.poster || movie.poster_path;
   const posterUrl =
     override?.poster ||
-    (movie.poster_path ? tmdb.getImageUrl(movie.poster_path, 'w500') : '');
+    tmdb.getImageUrl(movie.poster_path, 'w500');
   const posterMobileUrl =
     override?.poster ||
-    (movie.poster_path ? tmdb.getImageUrl(movie.poster_path, 'w342') : '');
+    tmdb.getImageUrl(movie.poster_path, 'w342');
   const posterSrcSet = posterPath
     ? `${tmdb.getImageUrl(posterPath, 'w342')} 342w, ${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w`
     : undefined;
@@ -1207,11 +1208,17 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <img loading="lazy" decoding="async"
-                            src={rev.author.avatarUrl}
-                            alt=""
-                            className="w-6 h-6 rounded-full object-cover border border-lb-elevated"
-                          />
+                          {rev.author.avatarUrl ? (
+                            <img loading="lazy" decoding="async"
+                              src={rev.author.avatarUrl}
+                              alt=""
+                              className="w-6 h-6 rounded-full object-cover border border-lb-elevated"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-lb-elevated flex items-center justify-center text-lb-muted">
+                              <User className="w-3.5 h-3.5" />
+                            </div>
+                          )}
                           <span className="font-bold text-white">{rev.author.displayName}</span>
                           <span className="text-lb-green">★ {rev.rating}</span>
                         </div>

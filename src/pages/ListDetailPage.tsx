@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Heart, Trash2, ArrowLeft } from 'lucide-react';
+import { Heart, Trash2, ArrowLeft, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { tmdb } from '../services/tmdb';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -60,11 +60,17 @@ export const ListDetailPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 text-xs text-lb-muted">
-              <img loading="lazy" decoding="async"
-                src={list.author.avatarUrl}
-                alt={list.author.displayName}
-                className="w-5 h-5 rounded-full object-cover"
-              />
+              {list.author.avatarUrl ? (
+                <img loading="lazy" decoding="async"
+                  src={list.author.avatarUrl}
+                  alt={list.author.displayName}
+                  className="w-5 h-5 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-lb-elevated flex items-center justify-center text-lb-muted shrink-0">
+                  <User className="w-3 h-3" />
+                </div>
+              )}
               <span className="text-white font-semibold">{list.author.displayName}</span>
               <span>• {list.movies.length} {t('home_films_word')}</span>
             </div>

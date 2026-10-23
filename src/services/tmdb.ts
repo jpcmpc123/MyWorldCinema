@@ -262,7 +262,7 @@ interface TMDBEnrichmentPayload {
 }
 
 /** Quantos itens da 1ª página recebem diretores/títulos alternativos (evita congestionar a rede ao digitar). */
-const SEARCH_ENRICH_LIMIT = 6;
+const SEARCH_ENRICH_LIMIT = 8;
 
 /**
  * Diretores + títulos alternativos de UM título.
