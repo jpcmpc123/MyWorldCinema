@@ -1,5 +1,102 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useIsMobile } from '../hooks/useIsMobile';
+
+const loadedImageUrls = new Set<string>();
+const inFlightImagePromises = new Map<string, Promise<void>>();
+const pinnedDecodedImages: HTMLImageElement[] = [];
+const MAX_PINNED_DECODED_IMAGES = 16;
+const MAX_LOADED_IMAGE_URLS = 350;
+
+export function isImageUrlPreloaded(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return loadedImageUrls.has(url);
+}
+
+export function preloadSingleImage(url: string): Promise<void> {
+  if (!url || typeof Image === 'undefined') return Promise.resolve();
+  if (loadedImageUrls.has(url)) return Promise.resolve();
+  const existing = inFlightImagePromises.get(url);
+  if (existing) return existing;
+
+  const promise = new Promise<void>((resolve) => {
+    const img = new Image();
+    img.decoding = 'async';
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      inFlightImagePromises.delete(url);
+      if (loadedImageUrls.size >= MAX_LOADED_IMAGE_URLS) {
+        const oldest = loadedImageUrls.values().next().value;
+        if (oldest) loadedImageUrls.delete(oldest);
+      }
+      loadedImageUrls.add(url);
+      pinnedDecodedImages.push(img);
+      if (pinnedDecodedImages.length > MAX_PINNED_DECODED_IMAGES) {
+        pinnedDecodedImages.shift();
+      }
+      resolve();
+    };
+
+    img.onload = () => {
+      if (typeof img.decode === 'function') {
+        img.decode().then(finish).catch(finish);
+      } else {
+        finish();
+      }
+    };
+    img.onerror = finish;
+    img.src = url;
+
+    if (img.complete && img.naturalWidth > 0) {
+      if (typeof img.decode === 'function') {
+        img.decode().then(finish).catch(finish);
+      } else {
+        finish();
+      }
+    }
+  });
+
+  inFlightImagePromises.set(url, promise);
+  return promise;
+}
+
+/**
+ * URL HD rápida (w1280 = 1280x720 HD, ~110KB) para abertura instantânea
+ * no mobile e desktop sem bloquear a transição de página.
+ */
+export function getFastBackdropUrl(src: string | null | undefined): string {
+  if (!src) return '';
+  if (src.includes('image.tmdb.org/t/p/')) {
+    return src.replace(/\/t\/p\/(original|w1280|w780|w500|w342)\//, '/t/p/w1280/');
+  }
+  return src;
+}
+
+/**
+ * URL Ultra-HD (original = 1080p Full HD / 4K sem compressão agressiva)
+ * decodificada em segundo plano na GPU para nitidez máxima sem perda de performance.
+ */
+export function getHdBackdropUrl(src: string | null | undefined): string {
+  if (!src) return '';
+  if (src.includes('image.tmdb.org/t/p/')) {
+    return src.replace(/\/t\/p\/(original|w1280|w780|w500|w342)\//, '/t/p/original/');
+  }
+  return src;
+}
+
+function shouldUpgradeToUltraHd(): boolean {
+  if (typeof navigator === 'undefined') return true;
+  const conn = (
+    navigator as Navigator & {
+      connection?: { saveData?: boolean; effectiveType?: string };
+    }
+  ).connection;
+  if (conn?.saveData) return false;
+  if (conn?.effectiveType === 'slow-2g' || conn?.effectiveType === '2g') return false;
+  return true;
+}
 
 interface BackdropProps {
   /** URL da imagem de destaque (TMDB ou override do usuário) */
@@ -10,42 +107,84 @@ interface BackdropProps {
 
 export const Backdrop: React.FC<BackdropProps> = ({ src, alt = '' }) => {
   const isMobile = useIsMobile();
+
+  const fastSrc = getFastBackdropUrl(src);
+  const hdSrc = getHdBackdropUrl(src);
+  const hasDistinctHd = Boolean(hdSrc && fastSrc && hdSrc !== fastSrc);
+
+  // Se a versão Ultra-HD (original) já estiver decodificada no cache em memória,
+  // renderiza direto em Ultra-HD desde o primeiro frame (0ms).
+  const [hdDecoded, setHdDecoded] = useState<boolean>(() =>
+    Boolean(hdSrc && isImageUrlPreloaded(hdSrc)),
+  );
+  const [hdPainted, setHdPainted] = useState<boolean>(() =>
+    Boolean(hdSrc && isImageUrlPreloaded(hdSrc)),
+  );
+
+  useEffect(() => {
+    if (!src) return;
+    if (isImageUrlPreloaded(hdSrc)) {
+      setHdDecoded(true);
+      setHdPainted(true);
+      return;
+    }
+
+    setHdDecoded(false);
+    setHdPainted(false);
+
+    if (!hasDistinctHd || !shouldUpgradeToUltraHd()) return;
+
+    let cancelled = false;
+    // Aguarda a animação de entrada da página terminar no mobile (360ms) ou o 1º paint no desktop (60ms)
+    // para fazer o download + img.decode() da imagem original 1080p/4K sem competir com a transição a 60fps.
+    const delayMs = isMobile ? 360 : 60;
+    const timer = window.setTimeout(() => {
+      preloadSingleImage(hdSrc).then(() => {
+        if (!cancelled) {
+          setHdDecoded(true);
+        }
+      });
+    }, delayMs);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [src, hdSrc, hasDistinctHd, isMobile]);
+
   if (!src) return null;
 
-  // Para URLs do TMDB, usa w780 (~45KB) na camada de background mobile e w1280 (~130KB) no desktop,
-  // evitando baixar imagens 'original' (4K, 5–10MB) que deixavam o topo vazio em conexões 4G.
-  const mobileSrc = src.includes('image.tmdb.org/t/p/')
-    ? src.replace(/\/t\/p\/(original|w1280)\//, '/t/p/w780/')
-    : src;
-  const desktopSrc = src.includes('image.tmdb.org/t/p/')
-    ? src.replace(/\/t\/p\/original\//, '/t/p/w1280/')
-    : src;
+  const showBaseLayer = !hdPainted || !hasDistinctHd;
+  const showHdLayer = hasDistinctHd && hdDecoded;
 
   return (
     <div className="backdrop-container" aria-hidden="true" role="presentation">
       <div
         id="backdrop"
         className="backdrop-wrapper backdrop-fade-in -loaded"
-        data-backdrop={desktopSrc}
+        data-backdrop={hdSrc || fastSrc}
       >
         <div
-          className="backdropimage js-backdrop-image md:!bg-none"
-          style={
-            isMobile
-              ? {
-                  backgroundImage: `url("${mobileSrc}")`,
-                }
-              : undefined
-          }
+          className="backdropimage js-backdrop-image !bg-none overflow-hidden"
           title={alt}
         >
-          {!isMobile && (
+          {showBaseLayer && (
             <img
-              src={desktopSrc}
+              src={hasDistinctHd ? fastSrc : hdSrc}
               alt={alt}
               fetchPriority="high"
               decoding="async"
-              className="hidden md:block w-full h-full object-cover object-top select-none pointer-events-none"
+              className="w-full h-full object-cover object-top select-none pointer-events-none block"
+            />
+          )}
+          {showHdLayer && (
+            <img
+              src={hdSrc}
+              alt={alt}
+              fetchPriority="low"
+              decoding="async"
+              onLoad={() => setHdPainted(true)}
+              className="absolute inset-0 w-full h-full object-cover object-top select-none pointer-events-none block"
             />
           )}
         </div>
@@ -54,4 +193,3 @@ export const Backdrop: React.FC<BackdropProps> = ({ src, alt = '' }) => {
     </div>
   );
 };
-

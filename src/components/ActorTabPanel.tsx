@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye } from 'lucide-react';
 import { tmdb, type TMDBPersonMovieCredit } from '../services/tmdb';
+import { preloadSingleImage } from './Backdrop';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { matchesPersonGenreFilter, type PersonRole } from '../utils/personNav';
@@ -100,11 +101,21 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
   });
 
   const handlePrefetch = (film: TMDBPersonMovieCredit) => {
-    if (film.media_type === 'tv') {
-      tmdb.getTVDetails(film.id).catch(() => {});
-    } else {
-      tmdb.getMovieDetails(film.id).catch(() => {});
+    if (film.backdrop_path) {
+      void preloadSingleImage(tmdb.getBackdropUrl(film.backdrop_path, 'w1280'));
     }
+    const req =
+      film.media_type === 'tv'
+        ? tmdb.getTVDetails(film.id)
+        : tmdb.getMovieDetails(film.id);
+    req
+      .then((details) => {
+        const bp = details.backdrop_path || details.poster_path;
+        if (bp) {
+          void preloadSingleImage(tmdb.getBackdropUrl(bp, 'w1280'));
+        }
+      })
+      .catch(() => {});
   };
 
   // Card de pôster (grade de 4 colunas e lista compacta).

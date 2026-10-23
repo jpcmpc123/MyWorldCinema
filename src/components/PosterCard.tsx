@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, Heart, MoreHorizontal, Star } from 'lucide-react';
 import { tmdb } from '../services/tmdb';
+import { preloadSingleImage } from './Backdrop';
 import { useMovieState, useOpenActionSheet, useMovieActions } from '../context/AppContext';
 import { useLongPress } from '../hooks/useLongPress';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -31,6 +32,7 @@ interface PosterCardProps {
     original_title?: string;
     original_name?: string;
     poster_path: string | null;
+    backdrop_path?: string | null;
     release_date?: string;
     first_air_date?: string;
     vote_average?: number;
@@ -197,11 +199,18 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const currentStars = hoverStar !== null ? hoverStar : (rating ?? 0);
 
   const handlePrefetch = () => {
-    if (tv) {
-      tmdb.getTVDetails(movie.id).catch(() => {});
-    } else {
-      tmdb.getMovieDetails(movie.id).catch(() => {});
+    if (movie.backdrop_path) {
+      void preloadSingleImage(tmdb.getBackdropUrl(movie.backdrop_path, 'w1280'));
     }
+    const req = tv ? tmdb.getTVDetails(movie.id) : tmdb.getMovieDetails(movie.id);
+    req
+      .then((details) => {
+        const bp = details.backdrop_path || details.poster_path;
+        if (bp) {
+          void preloadSingleImage(tmdb.getBackdropUrl(bp, 'w1280'));
+        }
+      })
+      .catch(() => {});
   };
 
   return (

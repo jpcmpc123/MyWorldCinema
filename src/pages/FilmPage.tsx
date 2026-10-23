@@ -27,7 +27,13 @@ import { StarRating } from '../components/StarRating';
 import { RatingHistogram } from '../components/RatingHistogram';
 import { WhereToWatch } from '../components/WhereToWatch';
 import { PosterCard } from '../components/PosterCard';
-import { Backdrop } from '../components/Backdrop';
+import {
+  Backdrop,
+  preloadSingleImage,
+  isImageUrlPreloaded,
+  getFastBackdropUrl,
+  getHdBackdropUrl,
+} from '../components/Backdrop';
 import { openPersonProfile, personRoleFromJob, type PersonRole } from '../utils/personNav';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
@@ -40,6 +46,8 @@ import {
 import { ImagePickerModal } from '../components/ImagePickerModal';
 import { ActionBottomSheet } from '../components/ActionBottomSheet';
 import { PosterLightbox } from '../components/PosterLightbox';
+
+export { preloadSingleImage, isImageUrlPreloaded };
 
 export type TabKey = 'cast' | 'crew' | 'details' | 'genres' | 'releases';
 
@@ -61,67 +69,6 @@ function formatNumber(num: number): string {
   return num.toString();
 }
 
-const loadedImageUrls = new Set<string>();
-const inFlightImagePromises = new Map<string, Promise<void>>();
-const pinnedDecodedImages: HTMLImageElement[] = [];
-const MAX_PINNED_DECODED_IMAGES = 12;
-const MAX_LOADED_IMAGE_URLS = 300;
-
-export function isImageUrlPreloaded(url: string | null | undefined): boolean {
-  if (!url) return false;
-  return loadedImageUrls.has(url);
-}
-
-export function preloadSingleImage(url: string): Promise<void> {
-  if (!url || typeof Image === 'undefined') return Promise.resolve();
-  if (loadedImageUrls.has(url)) return Promise.resolve();
-  const existing = inFlightImagePromises.get(url);
-  if (existing) return existing;
-
-  const promise = new Promise<void>((resolve) => {
-    const img = new Image();
-    img.decoding = 'async';
-
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      inFlightImagePromises.delete(url);
-      if (loadedImageUrls.size >= MAX_LOADED_IMAGE_URLS) {
-        const oldest = loadedImageUrls.values().next().value;
-        if (oldest) loadedImageUrls.delete(oldest);
-      }
-      loadedImageUrls.add(url);
-      pinnedDecodedImages.push(img);
-      if (pinnedDecodedImages.length > MAX_PINNED_DECODED_IMAGES) {
-        pinnedDecodedImages.shift();
-      }
-      resolve();
-    };
-
-    img.onload = () => {
-      if (typeof img.decode === 'function') {
-        img.decode().then(finish).catch(finish);
-      } else {
-        finish();
-      }
-    };
-    img.onerror = finish;
-    img.src = url;
-
-    if (img.complete && img.naturalWidth > 0) {
-      if (typeof img.decode === 'function') {
-        img.decode().then(finish).catch(finish);
-      } else {
-        finish();
-      }
-    }
-  });
-
-  inFlightImagePromises.set(url, promise);
-  return promise;
-}
-
 export function getRequiredFilmImageUrls(
   movie: TMDBMovieDetails | null,
   isMobile: boolean,
@@ -134,16 +81,15 @@ export function getRequiredFilmImageUrls(
   const effectiveBackdropPath = movie.backdrop_path || movie.poster_path;
   const rawBackdrop =
     override?.backdrop ||
-    (effectiveBackdropPath ? tmdb.getBackdropUrl(effectiveBackdropPath, 'w1280') : null);
+    (effectiveBackdropPath ? tmdb.getBackdropUrl(effectiveBackdropPath, 'original') : null);
 
   if (rawBackdrop) {
-    const activeBackdrop = isMobile
-      ? rawBackdrop.includes('image.tmdb.org/t/p/')
-        ? rawBackdrop.replace(/\/t\/p\/(original|w1280)\//, '/t/p/w780/')
-        : rawBackdrop
-      : rawBackdrop.includes('image.tmdb.org/t/p/')
-        ? rawBackdrop.replace(/\/t\/p\/original\//, '/t/p/w1280/')
-        : rawBackdrop;
+    const hdBackdrop = getHdBackdropUrl(rawBackdrop);
+    const fastBackdrop = getFastBackdropUrl(rawBackdrop);
+    // Se a versão Ultra-HD (original) já estiver no cache, usa ela direto;
+    // caso contrário, exige a versão HD w1280 (1280x720, ~110KB) para abertura instantânea
+    // enquanto o Backdrop decodifica a versão original 1080p/4K em segundo plano.
+    const activeBackdrop = isImageUrlPreloaded(hdBackdrop) ? hdBackdrop : fastBackdrop;
     if (activeBackdrop) urls.add(activeBackdrop);
   }
 
@@ -219,7 +165,7 @@ export function getRequiredFilmImageUrls(
 }
 
 function areAllUrlsLoaded(urls: string[]): boolean {
-  return urls.every((u) => loadedImageUrls.has(u));
+  return urls.every((u) => isImageUrlPreloaded(u));
 }
 
 export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: boolean }> = ({
@@ -697,7 +643,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   const effectiveBackdropPath = movie.backdrop_path || movie.poster_path;
   const backdropUrl =
     override?.backdrop ||
-    (effectiveBackdropPath ? tmdb.getBackdropUrl(effectiveBackdropPath, 'w1280') : null);
+    (effectiveBackdropPath ? tmdb.getBackdropUrl(effectiveBackdropPath, 'original') : null);
 
   const posterPath = override?.poster || movie.poster_path;
   const posterUrl =
@@ -733,7 +679,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     >
       {/* 1. Cinematic Hero Vignette Backdrop */}
       {backdropUrl && (
-        <div className="max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:h-[calc(56.25vw+26px)] max-md:overflow-hidden max-md:z-0 max-md:[&_.backdrop-container]:!h-full max-md:[&_.backdrop-container]:!pt-0 max-md:[&_.backdropimage]:!bg-[length:110%_auto] max-md:[&_.backdropimage]:!bg-[position:-5vw_0]">
+        <div className="max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:h-[calc(56.25vw+26px)] max-md:overflow-hidden max-md:z-0 max-md:[&_.backdrop-container]:!h-full max-md:[&_.backdrop-container]:!pt-0">
           <Backdrop src={backdropUrl} alt={movie.title} />
         </div>
       )}

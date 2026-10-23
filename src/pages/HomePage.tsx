@@ -74,6 +74,12 @@ export const HomePage: React.FC = () => {
           {featuredFilm && (
             <img
               src={tmdb.getBackdropUrl(featuredFilm.backdrop_path, 'w1280')}
+              srcSet={
+                featuredFilm.backdrop_path
+                  ? `${tmdb.getBackdropUrl(featuredFilm.backdrop_path, 'w1280')} 1280w, ${tmdb.getBackdropUrl(featuredFilm.backdrop_path, 'original')} 1920w`
+                  : undefined
+              }
+              sizes="100vw"
               alt={featuredFilm.title}
               className="absolute inset-0 w-full h-full object-cover object-top opacity-35 filter brightness-75 backdrop-mask"
               fetchPriority="high"
