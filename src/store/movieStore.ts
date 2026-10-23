@@ -55,15 +55,18 @@ function sameSnapshot(a: MovieSnapshot, b: MovieSnapshot): boolean {
 
 export function createMovieStore(): MovieStore {
   let state: MovieState | null = null;
+  let watchedSet = new Set<number>();
+  let likedSet = new Set<number>();
+  let watchlistSet = new Set<number>();
   const listeners = new Map<number, Set<() => void>>();
   const snapshots = new Map<number, MovieSnapshot>();
 
   const compute = (id: number): MovieSnapshot => {
     if (!state) return EMPTY_SNAPSHOT;
     return {
-      watched: state.watchedIds.includes(id),
-      liked: state.likedIds.includes(id),
-      inWatchlist: state.watchlistIds.includes(id),
+      watched: watchedSet.has(id),
+      liked: likedSet.has(id),
+      inWatchlist: watchlistSet.has(id),
       rating: state.ratings[id],
       overridePoster: state.overrides[id]?.poster || null,
     };
@@ -71,10 +74,28 @@ export function createMovieStore(): MovieStore {
 
   return {
     setState(next) {
+      if (!state || state.watchedIds !== next.watchedIds) {
+        watchedSet = new Set(next.watchedIds);
+      }
+      if (!state || state.likedIds !== next.likedIds) {
+        likedSet = new Set(next.likedIds);
+      }
+      if (!state || state.watchlistIds !== next.watchlistIds) {
+        watchlistSet = new Set(next.watchlistIds);
+      }
       state = next;
     },
 
     flush() {
+      // Limpa snapshots órfãos (sem inscritos) se o cache passar de 600 filmes
+      if (snapshots.size > 600) {
+        for (const id of snapshots.keys()) {
+          if (!listeners.has(id)) {
+            snapshots.delete(id);
+            if (snapshots.size <= 400) break;
+          }
+        }
+      }
       // Atualiza TODO snapshot em cache, não só os assinados: um cartão que monta
       // depois lê o cache e não pode receber um valor antigo.
       const ids = new Set<number>([...snapshots.keys(), ...listeners.keys()]);

@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de implementacao para o fluxo mobile de criacao de listas (New List, gerenciamento de Filmes com reordenacao e busca com buscas recentes) e exibicao da aba Lists no perfil do usuario conforme o app do Letterboxd.",
-  "updatedAt":  "2026-10-23T01:11:31.040998415Z",
+  "summary":  "Plano de otimização de performance, memória, bundle JS e cache da API TMDB sem alterar o visual ou funcionalidades do aplicativo nem remover arquivos de backup/screenshots.",
+  "updatedAt":  "2026-10-23T13:51:46.534676615Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -334,6 +334,14 @@ const tmdbCache = new Map<string, { data: unknown; expires: number }>();
 const tmdbInflight = new Map<string, Promise<unknown>>();
 const mediaDetailsCache = new Map<string, { data: TMDBMovieDetails; expires: number }>();
 
+function setBoundedMap<K, V>(map: Map<K, V>, key: K, value: V, maxEntries: number): void {
+  if (map.size >= maxEntries && !map.has(key)) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey !== undefined) map.delete(oldestKey);
+  }
+  map.set(key, value);
+}
+
 async function fetchWithRetry(
   urlString: string,
   headers: Record<string, string>,
@@ -733,7 +741,7 @@ async function buildCuratedPopularMoviesPool(batchIndex = 0): Promise<TMDBMovie[
 
     scored.sort((a, b) => b.score - a.score || (b.movie.popularity || 0) - (a.movie.popularity || 0));
     const items = scored.map((s) => s.movie);
-    popularWeekPoolCache.set(cacheKey, { items, expires: Date.now() + TMDB_CACHE_TTL_MS });
+    setBoundedMap(popularWeekPoolCache, cacheKey, { items, expires: Date.now() + TMDB_CACHE_TTL_MS }, 30);
     return items;
   })().finally(() => {
     popularWeekInFlight.delete(cacheKey);
@@ -900,7 +908,7 @@ async function buildCuratedPopularSeriesPool(batchIndex = 0): Promise<TMDBMovie[
 
     scored.sort((a, b) => b.score - a.score || (b.movie.popularity || 0) - (a.movie.popularity || 0));
     const items = scored.map((s) => s.movie);
-    popularWeekPoolCache.set(cacheKey, { items, expires: Date.now() + TMDB_CACHE_TTL_MS });
+    setBoundedMap(popularWeekPoolCache, cacheKey, { items, expires: Date.now() + TMDB_CACHE_TTL_MS }, 30);
     return items;
   })().finally(() => {
     popularWeekInFlight.delete(cacheKey);
@@ -1222,7 +1230,7 @@ async function curateSimilarForDetails(
     });
     const ranked = rankedAll.filter((m) => !collectionIdSet.has(m.id)).slice(0, 80);
     profile.rankedPool = ranked;
-    similarProfileCache.set(cacheKey, profile);
+    setBoundedMap(similarProfileCache, cacheKey, profile, 80);
     return ranked;
   }
 
@@ -1300,7 +1308,7 @@ async function curateSimilarForDetails(
   const ranked = rankedAll.filter((m) => !collectionIdSet.has(m.id)).slice(0, 80);
 
   profile.rankedPool = ranked;
-  similarProfileCache.set(cacheKey, profile);
+  setBoundedMap(similarProfileCache, cacheKey, profile, 80);
   return ranked;
 }
 
@@ -1440,7 +1448,7 @@ export const tmdb = {
 
     const similarRanked = await curateSimilarForDetails(movie, 'movie', true);
     movie.similar = { results: similarRanked };
-    mediaDetailsCache.set(cacheKey, { data: movie, expires: Date.now() + TMDB_CACHE_TTL_MS });
+    setBoundedMap(mediaDetailsCache, cacheKey, { data: movie, expires: Date.now() + TMDB_CACHE_TTL_MS }, 80);
     return movie;
   },
 
@@ -2538,7 +2546,7 @@ export const tmdb = {
     if (show.recommendations) show.recommendations.results = normList(show.recommendations.results);
     const similarRanked = await curateSimilarForDetails(show, 'tv', true);
     show.similar = { results: similarRanked };
-    mediaDetailsCache.set(cacheKey, { data: show, expires: Date.now() + TMDB_CACHE_TTL_MS });
+    setBoundedMap(mediaDetailsCache, cacheKey, { data: show, expires: Date.now() + TMDB_CACHE_TTL_MS }, 80);
     return show;
   },
 

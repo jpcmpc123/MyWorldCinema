@@ -94,18 +94,28 @@ interface DragState {
 }
 
 import { HomePage } from '../pages/HomePage';
-import { SeriesHubPage } from '../pages/SeriesHubPage';
-import { DiaryPage } from '../pages/DiaryPage';
-import { ListsPage } from '../pages/ListsPage';
 
 const MAIN_PANELS: {
   key: string;
-  Component: React.FC;
+  Component: React.ComponentType;
+  preload?: () => void;
 }[] = [
   { key: 'films', Component: HomePage },
-  { key: 'series', Component: SeriesHubPage },
-  { key: 'reviews', Component: DiaryPage },
-  { key: 'lists', Component: ListsPage },
+  {
+    key: 'series',
+    Component: lazyWithRetry(() => import('../pages/SeriesHubPage'), 'SeriesHubPage'),
+    preload: () => void import('../pages/SeriesHubPage'),
+  },
+  {
+    key: 'reviews',
+    Component: lazyWithRetry(() => import('../pages/DiaryPage'), 'DiaryPage'),
+    preload: () => void import('../pages/DiaryPage'),
+  },
+  {
+    key: 'lists',
+    Component: lazyWithRetry(() => import('../pages/ListsPage'), 'ListsPage'),
+    preload: () => void import('../pages/ListsPage'),
+  },
 ];
 
 const PROFILE_PANELS: {

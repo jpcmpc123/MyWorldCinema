@@ -8,9 +8,15 @@ import { useLanguage } from '../i18n/LanguageContext';
 
 // Cache em memória de URLs de pôsteres já carregados na sessão para renderização instantânea (0ms, sem flash)
 const loadedPosterUrls = new Set<string>();
+const MAX_LOADED_POSTER_URLS = 500;
 
 export function markPosterUrlLoaded(url: string | null | undefined): void {
-  if (url) loadedPosterUrls.add(url);
+  if (!url) return;
+  if (loadedPosterUrls.size >= MAX_LOADED_POSTER_URLS && !loadedPosterUrls.has(url)) {
+    const oldest = loadedPosterUrls.values().next().value;
+    if (oldest) loadedPosterUrls.delete(oldest);
+  }
+  loadedPosterUrls.add(url);
 }
 
 export function isPosterUrlLoaded(url: string | null | undefined): boolean {
@@ -191,6 +197,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const currentStars = hoverStar !== null ? hoverStar : (rating ?? 0);
 
   const handlePrefetch = () => {
+    void import('../pages/FilmPage');
     if (tv) {
       tmdb.getTVDetails(movie.id).catch(() => {});
     } else {

@@ -916,10 +916,15 @@ export const BrowseResultsPage: React.FC = () => {
                       </p>
                     ) : (
                       <div className="grid grid-cols-5 gap-[10px]">
-                        {visible.map(({ movie, tv }) => {
+                        {visible.map(({ movie, tv }, index) => {
                           const faded = fade && isMovieWatched(movie.id);
+                          const stagger = (index % 20) * 24;
                           return (
-                            <div key={`${tv ? 'tv' : 'm'}-${movie.id}`}>
+                            <div
+                              key={`${tv ? 'tv' : 'm'}-${movie.id}`}
+                              className="mw-poster-in"
+                              style={{ animationDelay: `${stagger}ms` }}
+                            >
                               <PosterCard
                                 movie={movie}
                                 size="fluid"
@@ -1224,8 +1229,13 @@ export const BrowseResultsPage: React.FC = () => {
           <div className="grid grid-cols-4 gap-1.5 px-2 py-2 bg-[#14181c]">
             {visible.map(({ movie, tv }, index) => {
               const faded = fade && isMovieWatched(movie.id);
+              const stagger = (index % 20) * 24;
               return (
-                <div key={`${tv ? 'tv' : 'm'}-${movie.id}`}>
+                <div
+                  key={`${tv ? 'tv' : 'm'}-${movie.id}`}
+                  className="mw-poster-in"
+                  style={{ animationDelay: `${stagger}ms` }}
+                >
                   <PosterCard
                     movie={movie}
                     size="fluid"

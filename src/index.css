@@ -267,6 +267,24 @@ button, a, [role="button"] {
   animation: mwFadeInUp 180ms var(--mw-ease);
 }
 
+/* Entrada escalonada individual de pôsteres na grade:
+   Usa `backwards` para manter `opacity: 0` durante o `animation-delay` (evitando
+   que o pôster apareça em opacity 1 e depois pisque preto ao iniciar a animação)
+   e libera o `transform` assim que termina (sem criar containing block fixo). */
+@keyframes mwPosterIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+.mw-poster-in {
+  animation: mwPosterIn 220ms var(--mw-ease) backwards;
+}
+
 /* Slide suave de 340ms da direita para a esquerda empurrando a página anterior para a esquerda */
 @keyframes mwSlideFromRightMobile {
   from {

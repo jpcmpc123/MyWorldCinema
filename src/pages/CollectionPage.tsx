@@ -426,8 +426,13 @@ export const CollectionPage: React.FC = () => {
           <div className="grid grid-cols-3 md:grid-cols-4 gap-2.5 md:gap-3.5 px-3 md:px-0 py-3 md:py-2">
             {visibleParts.map((movie, index) => {
               const faded = fadeWatched && isMovieWatched(movie.id);
+              const stagger = (index % 20) * 24;
               return (
-                <div key={movie.id}>
+                <div
+                  key={movie.id}
+                  className="mw-poster-in"
+                  style={{ animationDelay: `${stagger}ms` }}
+                >
                   <PosterCard
                     movie={movie}
                     size="fluid"

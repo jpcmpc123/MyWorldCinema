@@ -181,6 +181,10 @@ async function fetchImdbData(imdbId: string): Promise<ImdbPayload> {
   if (trivia.length === 0) trivia = triviaFromHtml(triviaHtml)
 
   const data: ImdbPayload = { specs, trivia }
+  if (imdbCache.size >= 100) {
+    const oldestKey = imdbCache.keys().next().value
+    if (oldestKey) imdbCache.delete(oldestKey)
+  }
   imdbCache.set(imdbId, { data, expiresAt: Date.now() + CACHE_TTL_MS })
   return data
 }
@@ -232,9 +236,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Supabase (pesado) fica em chunk próprio → cache separado
+        // Divide dependências pesadas em chunks próprios para cache independente e menor parse inicial
         manualChunks(id) {
           if (id.includes('@supabase')) return 'supabase';
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router')) {
+            return 'react-vendor';
+          }
+          if (id.includes('node_modules/lucide-react')) return 'icons';
         },
       },
     },

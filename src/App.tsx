@@ -11,12 +11,7 @@ import { TabViewPager } from './components/TabViewPager';
 import { useIsMobile } from './hooks/useIsMobile';
 import { tabPanelIndex, parseProfileTabRoute } from './utils/tabRoutes';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { tmdb } from './services/tmdb';
 import { HomePage } from './pages/HomePage';
-import { FilmPage } from './pages/FilmPage';
-import { ActorPage } from './pages/ActorPage';
-import { SearchPage } from './pages/SearchPage';
-import { CollectionPage } from './pages/CollectionPage';
 
 function parseDetailRoute(pathname: string): { type: 'movie' | 'tv'; id: number } | null {
   const m = pathname.match(/^\/(film|tv)\/(\d+)/);
@@ -82,7 +77,11 @@ function GlobalModals() {
   );
 }
 
-// Páginas secundárias com code splitting resiliente
+// Páginas secundárias e de detalhes com code splitting resiliente
+const FilmPage = lazyWithRetry(() => import('./pages/FilmPage'), 'FilmPage');
+const ActorPage = lazyWithRetry(() => import('./pages/ActorPage'), 'ActorPage');
+const SearchPage = lazyWithRetry(() => import('./pages/SearchPage'), 'SearchPage');
+const CollectionPage = lazyWithRetry(() => import('./pages/CollectionPage'), 'CollectionPage');
 const FilmsHubPage = lazyWithRetry(() => import('./pages/FilmsHubPage'), 'FilmsHubPage');
 const FilmsPage = lazyWithRetry(() => import('./pages/FilmsPage'), 'FilmsPage');
 const SeriesHubPage = lazyWithRetry(() => import('./pages/SeriesHubPage'), 'SeriesHubPage');
@@ -97,6 +96,23 @@ const AuthPage = lazyWithRetry(() => import('./pages/AuthPage'), 'AuthPage');
 const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'), 'SettingsPage');
 const BrowseDrilldownPage = lazyWithRetry(() => import('./pages/BrowseDrilldownPage'), 'BrowseDrilldownPage');
 const BrowseResultsPage = lazyWithRetry(() => import('./pages/BrowseResultsPage'), 'BrowseResultsPage');
+
+// Pré-aquece os chunks de navegação mais comuns em background após o 1º paint
+if (typeof window !== 'undefined') {
+  const warmRoutes = () => {
+    void import('./pages/FilmPage');
+    void import('./pages/SearchPage');
+    void import('./pages/ActorPage');
+  };
+  const win = window as Window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  };
+  if (typeof win.requestIdleCallback === 'function') {
+    win.requestIdleCallback(warmRoutes, { timeout: 2000 });
+  } else {
+    window.setTimeout(warmRoutes, 1200);
+  }
+}
 
 function PageLoader() {
   return (

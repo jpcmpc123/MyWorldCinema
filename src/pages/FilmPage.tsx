@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Eye,
@@ -27,10 +27,7 @@ import { StarRating } from '../components/StarRating';
 import { RatingHistogram } from '../components/RatingHistogram';
 import { WhereToWatch } from '../components/WhereToWatch';
 import { PosterCard } from '../components/PosterCard';
-import { ImagePickerModal } from '../components/ImagePickerModal';
 import { Backdrop } from '../components/Backdrop';
-import { ActionBottomSheet } from '../components/ActionBottomSheet';
-import { PosterLightbox } from '../components/PosterLightbox';
 import { openPersonProfile, personRoleFromJob, type PersonRole } from '../utils/personNav';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
@@ -39,6 +36,16 @@ import {
   syncTabIndicatorToButton,
   type IndicatorPos,
 } from '../utils/tabIndicator';
+
+const ImagePickerModal = lazy(() =>
+  import('../components/ImagePickerModal').then((m) => ({ default: m.ImagePickerModal })),
+);
+const ActionBottomSheet = lazy(() =>
+  import('../components/ActionBottomSheet').then((m) => ({ default: m.ActionBottomSheet })),
+);
+const PosterLightbox = lazy(() =>
+  import('../components/PosterLightbox').then((m) => ({ default: m.PosterLightbox })),
+);
 
 export type TabKey = 'cast' | 'crew' | 'details' | 'genres' | 'releases';
 
@@ -63,6 +70,8 @@ function formatNumber(num: number): string {
 const loadedImageUrls = new Set<string>();
 const inFlightImagePromises = new Map<string, Promise<void>>();
 const pinnedDecodedImages: HTMLImageElement[] = [];
+const MAX_PINNED_DECODED_IMAGES = 12;
+const MAX_LOADED_IMAGE_URLS = 300;
 
 export function isImageUrlPreloaded(url: string | null | undefined): boolean {
   if (!url) return false;
@@ -84,9 +93,13 @@ export function preloadSingleImage(url: string): Promise<void> {
       if (settled) return;
       settled = true;
       inFlightImagePromises.delete(url);
+      if (loadedImageUrls.size >= MAX_LOADED_IMAGE_URLS) {
+        const oldest = loadedImageUrls.values().next().value;
+        if (oldest) loadedImageUrls.delete(oldest);
+      }
       loadedImageUrls.add(url);
       pinnedDecodedImages.push(img);
-      if (pinnedDecodedImages.length > 60) {
+      if (pinnedDecodedImages.length > MAX_PINNED_DECODED_IMAGES) {
         pinnedDecodedImages.shift();
       }
       resolve();
@@ -1602,41 +1615,45 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
         </div>
       </div>
 
-      {/* Set Poster / Backdrop Picker */}
-      {imagePicker && (
-        <ImagePickerModal
-          mode={imagePicker}
-          movieId={movie.id}
-          currentUrl={imagePicker === 'poster' ? posterUrl : backdropUrl}
-          onSelect={(url) =>
-            setMovieOverride(
-              movie.id,
-              imagePicker === 'poster' ? { poster: url } : { backdrop: url }
-            )
-          }
-          onClose={() => setImagePicker(null)}
-        />
-      )}
+      {/* Set Poster / Backdrop Picker & Modals sob demanda */}
+      <Suspense fallback={null}>
+        {imagePicker && (
+          <ImagePickerModal
+            mode={imagePicker}
+            movieId={movie.id}
+            currentUrl={imagePicker === 'poster' ? posterUrl : backdropUrl}
+            onSelect={(url) =>
+              setMovieOverride(
+                movie.id,
+                imagePicker === 'poster' ? { poster: url } : { backdrop: url }
+              )
+            }
+            onClose={() => setImagePicker(null)}
+          />
+        )}
 
-      {/* Gaveta de ações mobile (Watch/Like/Watchlist/Rate/Share) */}
-      {showActionSheet && (
-        <ActionBottomSheet
-          open={showActionSheet}
-          onClose={() => setShowActionSheet(false)}
-          movie={{ id: movie.id, title: movie.title, release_date: movie.release_date }}
-          onPickImage={(mode) => setImagePicker(mode)}
-          onViewPoster={() => setShowPosterLightbox(true)}
-        />
-      )}
+        {/* Gaveta de ações mobile (Watch/Like/Watchlist/Rate/Share) */}
+        {showActionSheet && (
+          <ActionBottomSheet
+            open={showActionSheet}
+            onClose={() => setShowActionSheet(false)}
+            movie={{ id: movie.id, title: movie.title, release_date: movie.release_date }}
+            onPickImage={(mode) => setImagePicker(mode)}
+            onViewPoster={() => setShowPosterLightbox(true)}
+          />
+        )}
 
-      {/* Visualização ampliada do pôster (Mobile: largura total + zoom + swipe-down | PC: lightbox com X) */}
-      <PosterLightbox
-        open={showPosterLightbox}
-        src={posterPath ? tmdb.getImageUrl(posterPath, 'w780') : posterUrl}
-        previewSrc={isMobile ? posterMobileUrl : posterUrl}
-        alt={movie.title}
-        onClose={() => setShowPosterLightbox(false)}
-      />
+        {/* Visualização ampliada do pôster (Mobile: largura total + zoom + swipe-down | PC: lightbox com X) */}
+        {showPosterLightbox && (
+          <PosterLightbox
+            open={showPosterLightbox}
+            src={posterPath ? tmdb.getImageUrl(posterPath, 'w780') : posterUrl}
+            previewSrc={isMobile ? posterMobileUrl : posterUrl}
+            alt={movie.title}
+            onClose={() => setShowPosterLightbox(false)}
+          />
+        )}
+      </Suspense>
 
       {/* 3. Trailer Modal */}
       {showTrailerModal && trailerVideo && (

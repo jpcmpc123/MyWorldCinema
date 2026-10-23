@@ -51,9 +51,19 @@ function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>, limitPerSec
       seen.add(url);
       const img = new Image();
       img.decoding = 'async';
-      img.onload = () => markPosterUrlLoaded(url);
+      img.onload = () => {
+        img.onload = null;
+        img.onerror = null;
+        markPosterUrlLoaded(url);
+      };
+      img.onerror = () => {
+        img.onload = null;
+        img.onerror = null;
+      };
       img.src = url;
       if (img.complete && img.naturalWidth > 0) {
+        img.onload = null;
+        img.onerror = null;
         markPosterUrlLoaded(url);
       }
     }
@@ -83,16 +93,26 @@ function readStorage(key: string): HubSectionsData | null {
 
 function writeStorage(key: string, data: HubSectionsData): void {
   if (typeof window === 'undefined') return;
-  const serialized = JSON.stringify(data);
-  try {
-    window.sessionStorage.setItem(key, serialized);
-  } catch {
-    /* sessionStorage cheio ou desabilitado */
-  }
-  try {
-    window.localStorage.setItem(key, serialized);
-  } catch {
-    /* localStorage cheio ou desabilitado */
+  const persist = () => {
+    const serialized = JSON.stringify(data);
+    try {
+      window.sessionStorage.setItem(key, serialized);
+    } catch {
+      /* sessionStorage cheio ou desabilitado */
+    }
+    try {
+      window.localStorage.setItem(key, serialized);
+    } catch {
+      /* localStorage cheio ou desabilitado */
+    }
+  };
+  const win = window as Window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  };
+  if (typeof win.requestIdleCallback === 'function') {
+    win.requestIdleCallback(persist, { timeout: 1500 });
+  } else {
+    window.setTimeout(persist, 100);
   }
 }
 

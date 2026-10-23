@@ -276,7 +276,10 @@ export function ActorPage() {
     (activeTab !== 'Bio' ? tabs.find((tab) => tab.key === activeTab) : null) ??
     roleTabs[0] ??
     tabs[0];
-  const tabItems = isMobile ? (activeTabDef?.items ?? []) : (desktopActiveTabDef?.items ?? []);
+  const tabItems = useMemo(
+    () => (isMobile ? (activeTabDef?.items ?? []) : (desktopActiveTabDef?.items ?? [])),
+    [isMobile, activeTabDef?.items, desktopActiveTabDef?.items],
+  );
 
   // ---- Filtro por Serviço de Streaming (desktop) ---------------------------
   useEffect(() => {
