@@ -96,8 +96,14 @@ export function useProfileByUsername(
     };
 
     void load();
+    const onPullToRefresh = (evt: Event) => {
+      const customEvt = evt as CustomEvent<{ registerPromise?: (p: Promise<unknown>) => void }>;
+      customEvt.detail?.registerPromise?.(load());
+    };
+    window.addEventListener('mw:pull-to-refresh', onPullToRefresh);
     return () => {
       cancelled = true;
+      window.removeEventListener('mw:pull-to-refresh', onPullToRefresh);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, isOwnProfile]);

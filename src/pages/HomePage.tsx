@@ -52,8 +52,10 @@ export const HomePage: React.FC = () => {
       }
     }
     loadData();
-    const onRefresh = () => {
-      void loadData();
+    const onRefresh = (evt: Event) => {
+      const customEvt = evt as CustomEvent<{ registerPromise?: (p: Promise<unknown>) => void }>;
+      const task = loadData();
+      customEvt.detail?.registerPromise?.(task);
     };
     window.addEventListener('mw:pull-to-refresh', onRefresh);
     return () => {

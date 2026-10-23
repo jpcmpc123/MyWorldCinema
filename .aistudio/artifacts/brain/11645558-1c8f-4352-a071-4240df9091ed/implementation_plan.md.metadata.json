@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de otimização de performance, memória, bundle JS e cache da API TMDB sem alterar o visual ou funcionalidades do aplicativo nem remover arquivos de backup/screenshots.",
-  "updatedAt":  "2026-10-23T13:51:46.534676615Z",
+  "summary":  "Plano para garantir atualização real dos dados (limpeza dos caches internos da TMDB + recarregamento em segundo plano dos dados do Supabase no perfil/diário/watchlist) no pull-to-refresh mobile sem piscar a tela, mantendo a aba da lupinha (Pesquisa e filtros) 100% livre do indicador de recarregamento.",
+  "updatedAt":  "2026-10-23T15:45:01.603922592Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

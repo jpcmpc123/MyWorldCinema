@@ -16,10 +16,17 @@ const MAX_TRANSLATE_Y = 28;   // Deslocamento máximo abaixo da barra ao puxar (
 const TRIGGER_PULL_PX = 68;   // Distância amortecida necessária para disparar o refresh
 
 function isPullToRefreshEnabled(pathname: string, username: string): boolean {
+  // Bloqueio total na aba de pesquisa (lupinha), filtros/resultados e páginas de detalhe
   if (
-    pathname.startsWith('/search') ||
+    pathname === '/search' ||
+    pathname.startsWith('/search/') ||
     pathname.startsWith('/browse') ||
-    /^\/(film|tv|actor|collection)\/\d+/.test(pathname)
+    pathname.startsWith('/films/') ||
+    pathname.startsWith('/series/') ||
+    /^\/(film|tv|actor|collection)\/\d+/.test(pathname) ||
+    pathname === '/settings' ||
+    pathname === '/signin' ||
+    pathname === '/signup'
   ) {
     return false;
   }
@@ -118,9 +125,26 @@ export const PullToRefresh: React.FC = () => {
 
       const dataRefreshPromise = (async () => {
         try {
+          // 1. Limpa todos os caches em memória + sessionStorage/localStorage (tabDataCache + tmdb)
           tabDataCache.invalidateAll();
-          window.dispatchEvent(new CustomEvent('mw:pull-to-refresh'));
+
+          // 2. Coleta as promises reais de recarregamento das abas ativas e do Supabase
+          const registeredPromises: Promise<unknown>[] = [];
+          window.dispatchEvent(
+            new CustomEvent('mw:pull-to-refresh', {
+              detail: {
+                registerPromise: (p: Promise<unknown>) => {
+                  if (p && typeof p.then === 'function') {
+                    registeredPromises.push(p);
+                  }
+                },
+              },
+            }),
+          );
+
+          // 3. Garante a renovação dos hubs de Filmes e Séries + aguarda listeners do Supabase/Perfil
           await Promise.allSettled([
+            ...registeredPromises,
             tmdb.getFilmsHubSections().then((hub) => tabDataCache.setFilmsHub(hub)),
             tmdb.getSeriesHubSections().then((hub) => tabDataCache.setSeriesHub(hub)),
           ]);

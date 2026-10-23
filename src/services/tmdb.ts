@@ -1313,6 +1313,15 @@ async function curateSimilarForDetails(
 }
 
 export const tmdb = {
+  clearRuntimeCaches(): void {
+    popularWeekPoolCache.clear();
+    popularWeekInFlight.clear();
+    filmsHubInFlight = null;
+    seriesHubInFlight = null;
+    mediaDetailsCache.clear();
+    similarProfileCache.clear();
+  },
+
   getCachedDetails(id: number, type: 'movie' | 'tv'): TMDBMovieDetails | null {
     const key = `${type}:${id}:${tmdbLanguage}`;
     const entry = mediaDetailsCache.get(key);

@@ -392,19 +392,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem('lb_watchlist');
       return;
     }
-    if (syncedUserIdRef.current === authUser.id) return;
+    const isInitialSync = syncedUserIdRef.current !== authUser.id;
     syncedUserIdRef.current = authUser.id;
 
-    // Zera o estado local imediatamente para nÃ£o vazar dados de demo/localStorage
-    // em "flash" enquanto o Supabase responde (ex.: refresh na pÃ¡gina de perfil).
-    setLogs([]);
-    setWatchedMovieIds([]);
-    setLikedMovieIds([]);
-    setRatingsMap({});
-    setReviews([]);
-    setWatchlist([]);
-    setTop4MovieIds([0, 0, 0, 0]);
-    setMovieOverrides({});
+    if (isInitialSync) {
+      // Zera o estado local imediatamente apenas na troca de conta/login inicial
+      // para não vazar dados de demo/localStorage em "flash" enquanto o Supabase responde.
+      setLogs([]);
+      setWatchedMovieIds([]);
+      setLikedMovieIds([]);
+      setRatingsMap({});
+      setReviews([]);
+      setWatchlist([]);
+      setTop4MovieIds([0, 0, 0, 0]);
+      setMovieOverrides({});
+    }
 
     const loadRemoteData = async () => {
       const [logsRes, watchlistRes, favRes, overridesRes] = await Promise.all([
@@ -417,7 +419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]);
 
       if (overridesRes.error) {
-        console.warn('film_overrides indisponÃ­vel (rode supabase/migration_film_overrides.sql):', overridesRes.error.message);
+        console.warn('film_overrides indisponível (rode supabase/migration_film_overrides.sql):', overridesRes.error.message);
       } else if (overridesRes.data) {
         const map: Record<number, { poster?: string; backdrop?: string }> = {};
         for (const row of overridesRes.data as { film_id: number; poster_url: string | null; backdrop_url: string | null }[]) {
@@ -429,15 +431,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setMovieOverrides(map);
       }
 
-      // Top 4 vindo do Supabase sobrepÃµe o local (quando a coluna existir e tiver dados)
+      // Top 4 vindo do Supabase sobrepõe o local (quando a coluna existir e tiver dados)
       if (favRes.error) {
-        console.warn('favorite_films indisponÃ­vel (rode supabase/migration_settings.sql):', favRes.error.message);
+        console.warn('favorite_films indisponível (rode supabase/migration_settings.sql):', favRes.error.message);
       } else if (Array.isArray(favRes.data?.favorite_films)) {
-        // Conta nova tem favorite_films = {} â€” nesse caso os 4 slots ficam vazios
+        // Conta nova tem favorite_films = {} — nesse caso os 4 slots ficam vazios
         const ids = (favRes.data.favorite_films as unknown[])
           .filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
           .slice(0, 4);
-        // Garante 4 slots; slots vazios sÃ£o representados como 0
+        // Garante 4 slots; slots vazios são representados como 0
         while (ids.length < 4) ids.push(0);
         setTop4MovieIds(ids);
       }
@@ -493,9 +495,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
 
-    void loadRemoteData()
-      .catch((err) => console.error('Supabase remote load failed:', err))
-      .finally(() => setSyncedUserId(authUser.id));
+    if (isInitialSync) {
+      void loadRemoteData()
+        .catch((err) => console.error('Supabase remote load failed:', err))
+        .finally(() => setSyncedUserId(authUser.id));
+    }
+
+    const onPullToRefresh = (evt: Event) => {
+      const customEvt = evt as CustomEvent<{ registerPromise?: (p: Promise<unknown>) => void }>;
+      const task = loadRemoteData().catch((err) => {
+        console.error('Supabase pull-to-refresh failed:', err);
+      });
+      customEvt.detail?.registerPromise?.(task);
+    };
+    window.addEventListener('mw:pull-to-refresh', onPullToRefresh);
+
+    return () => {
+      window.removeEventListener('mw:pull-to-refresh', onPullToRefresh);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, authUser?.id]);
 

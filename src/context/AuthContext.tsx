@@ -102,8 +102,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
+    const onPullToRefresh = (evt: Event) => {
+      const customEvt = evt as CustomEvent<{ registerPromise?: (p: Promise<unknown>) => void }>;
+      const task = (async () => {
+        if (!supabase) return;
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.user) {
+          await loadProfile(data.session.user.id, data.session.user.email);
+        }
+      })();
+      customEvt.detail?.registerPromise?.(task);
+    };
+    window.addEventListener('mw:pull-to-refresh', onPullToRefresh);
+
     return () => {
       subscription.subscription.unsubscribe();
+      window.removeEventListener('mw:pull-to-refresh', onPullToRefresh);
     };
   }, [loadProfile]);
 

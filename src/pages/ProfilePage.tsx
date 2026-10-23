@@ -62,6 +62,7 @@ export const ProfilePage: React.FC = () => {
     async function loadTop4() {
       const fetched = await Promise.all(
         top4MovieIds.map(async (id) => {
+          if (!id) return null;
           try {
             return await tmdb.getMovieDetails(id);
           } catch {
@@ -71,7 +72,13 @@ export const ProfilePage: React.FC = () => {
       );
       setTop4Movies(fetched);
     }
-    loadTop4();
+    void loadTop4();
+    const onRefresh = (evt: Event) => {
+      const customEvt = evt as CustomEvent<{ registerPromise?: (p: Promise<unknown>) => void }>;
+      customEvt.detail?.registerPromise?.(loadTop4());
+    };
+    window.addEventListener('mw:pull-to-refresh', onRefresh);
+    return () => window.removeEventListener('mw:pull-to-refresh', onRefresh);
   }, [top4MovieIds]);
 
   // Load Watched Movies
@@ -89,7 +96,13 @@ export const ProfilePage: React.FC = () => {
       );
       setWatchedMovies(fetched.filter(Boolean) as TMDBMovie[]);
     }
-    loadWatched();
+    void loadWatched();
+    const onRefresh = (evt: Event) => {
+      const customEvt = evt as CustomEvent<{ registerPromise?: (p: Promise<unknown>) => void }>;
+      customEvt.detail?.registerPromise?.(loadWatched());
+    };
+    window.addEventListener('mw:pull-to-refresh', onRefresh);
+    return () => window.removeEventListener('mw:pull-to-refresh', onRefresh);
   }, [watchedMovieIds]);
 
   // Load Liked Movies
@@ -107,7 +120,13 @@ export const ProfilePage: React.FC = () => {
       );
       setLikedMovies(fetched.filter(Boolean) as TMDBMovie[]);
     }
-    loadLiked();
+    void loadLiked();
+    const onRefresh = (evt: Event) => {
+      const customEvt = evt as CustomEvent<{ registerPromise?: (p: Promise<unknown>) => void }>;
+      customEvt.detail?.registerPromise?.(loadLiked());
+    };
+    window.addEventListener('mw:pull-to-refresh', onRefresh);
+    return () => window.removeEventListener('mw:pull-to-refresh', onRefresh);
   }, [likedMovieIds]);
 
   const setTab = (tab: string) => {

@@ -177,6 +177,7 @@ export const tabDataCache = {
   invalidateAll(): void {
     memoryFilmsHub = null;
     memorySeriesHub = null;
+    tmdb.clearRuntimeCaches();
     if (typeof window !== 'undefined') {
       try {
         window.sessionStorage.removeItem(FILMS_KEY);
