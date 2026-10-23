@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link, useParams, Navigate, useLocation } from 'react-router-dom';
-import { MoreHorizontal, Search, Heart, ChevronRight, User } from 'lucide-react';
+import { MoreHorizontal, Search, Heart, ChevronRight, User, Plus, Film } from 'lucide-react';
 import { RatingHistogram } from '../components/RatingHistogram';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -538,7 +538,7 @@ export const ProfilePage: React.FC = () => {
     if (tabId === 'lists') {
       return (
         <div className="space-y-4">
-          <h2 className="text-xs uppercase tracking-widest font-bold text-lb-text border-b border-lb-elevated pb-2">
+          <h2 className="hidden md:block text-xs uppercase tracking-widest font-bold text-lb-text border-b border-lb-elevated pb-2">
             {t('nav_lists')} ({viewListsCount})
           </h2>
           {lists.length === 0 ? (
@@ -546,19 +546,85 @@ export const ProfilePage: React.FC = () => {
               <p className="text-sm text-white font-semibold">{t('person_nothing')}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {lists.map((list) => (
-                <Link
-                  key={list.id}
-                  to={`/list/${list.id}`}
-                  className="bg-lb-surface border border-lb-elevated hover:border-lb-green rounded p-4 transition-colors block"
-                >
-                  <h3 className="text-sm font-bold text-white">{list.title}</h3>
-                  <p className="text-xs text-lb-muted mt-1">{list.movies.length} {t('home_films_word')}</p>
-                </Link>
-              ))}
-            </div>
+            <>
+              {/* Mobile Letterboxd Profile Lists strip */}
+              <div className="md:hidden -mx-4 divide-y divide-white/10 border-b border-white/10">
+                {lists.map((list) => {
+                  const count = list.movies.length;
+                  const countLabel = `${count} ${count === 1 ? 'film' : t('home_films_word')}`;
+                  const previewMovies = list.movies.slice(0, 5);
+                  return (
+                    <Link
+                      key={list.id}
+                      to={`/list/${list.id}`}
+                      className="block px-4 py-3.5 active:bg-white/[0.03] transition-colors"
+                    >
+                      <div className="flex items-baseline justify-between gap-3 mb-2.5">
+                        <h3 className="text-[15px] font-bold text-white leading-snug truncate">
+                          {list.title}
+                        </h3>
+                        <span className="text-[12px] text-[#99aabb] shrink-0 tabular-nums">
+                          {countLabel}
+                        </span>
+                      </div>
+                      {previewMovies.length > 0 && (
+                        <div className="flex items-center w-full">
+                          {previewMovies.map((m, idx) => {
+                            const posterUrl = m.poster_path
+                              ? tmdb.getImageUrl(m.poster_path, 'w185')
+                              : null;
+                            return (
+                              <div
+                                key={`${m.id}-${idx}`}
+                                className="w-[20%] aspect-[2/3] bg-[#1c2228] overflow-hidden border-y border-r first:border-l border-white/15 first:rounded-l-[4px] last:rounded-r-[4px] shrink-0"
+                              >
+                                {posterUrl ? (
+                                  <img
+                                    loading="lazy"
+                                    decoding="async"
+                                    src={posterUrl}
+                                    alt={m.title}
+                                    className="w-full h-full object-cover block"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[#556677]">
+                                    <Film className="w-5 h-5" />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Desktop grid */}
+              <div className="hidden md:grid md:grid-cols-2 gap-4">
+                {lists.map((list) => (
+                  <Link
+                    key={list.id}
+                    to={`/list/${list.id}`}
+                    className="bg-lb-surface border border-lb-elevated hover:border-lb-green rounded p-4 transition-colors block"
+                  >
+                    <h3 className="text-sm font-bold text-white">{list.title}</h3>
+                    <p className="text-xs text-lb-muted mt-1">{list.movies.length} {t('home_films_word')}</p>
+                  </Link>
+                ))}
+              </div>
+            </>
           )}
+
+          {/* Mobile floating green + button */}
+          <Link
+            to="/list/new"
+            aria-label={t('create_list_title')}
+            className="md:hidden fixed right-4 bottom-[calc(72px+env(safe-area-inset-bottom,0px))] z-40 w-[52px] h-[52px] rounded-[16px] bg-[#00e054] hover:bg-[#00c84a] active:scale-95 text-[#14181c] shadow-[0_6px_20px_rgba(0,0,0,0.65)] flex items-center justify-center transition-transform"
+          >
+            <Plus className="w-6 h-6 stroke-[2.75]" />
+          </Link>
         </div>
       );
     }

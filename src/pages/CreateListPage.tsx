@@ -1,18 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Search,
   Plus,
-  Trash2,
   ArrowUp,
   ArrowDown,
+  ArrowLeft,
   ChevronDown,
   X,
   Check,
+  Globe,
+  GripVertical,
+  Film,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { tmdb, type TMDBSearchResult } from '../services/tmdb';
 import { useLanguage } from '../i18n/LanguageContext';
+
+const RECENT_SEARCHES_KEY = 'mw_list_recent_searches';
 
 interface SelectedListItem {
   id: number;
@@ -25,17 +30,53 @@ interface SelectedListItem {
 
 export const CreateListPage: React.FC = () => {
   const navigate = useNavigate();
-  const { createList } = useApp();
+  const { id: editListId } = useParams<{ id?: string }>();
+  const { lists, createList, updateList, user } = useApp();
+  const { isAuthenticated, profile } = useAuth();
   const { t } = useLanguage();
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [isRanked, setIsRanked] = useState(false);
-  const [visibility, setVisibility] = useState<'public' | 'friends' | 'private'>('public');
-  const [tags, setTags] = useState<string[]>([]);
+  const existingList = editListId ? lists.find((l) => l.id === editListId) : undefined;
+  const isEditing = Boolean(existingList);
+
+  const displayUsername = isAuthenticated && profile ? profile.username : user.username;
+
+  const [title, setTitle] = useState(() => existingList?.title ?? '');
+  const [description, setDescription] = useState(() => existingList?.description ?? '');
+  const [isRanked, setIsRanked] = useState(() => existingList?.isRanked ?? false);
+  // Por padrão a lista fica privada ('private'), e ao tocar em Public vira 'public'
+  const [visibility, setVisibility] = useState<'public' | 'friends' | 'private'>(() =>
+    existingList ? (existingList.isPrivate ? 'private' : 'public') : 'private',
+  );
+  const [tags, setTags] = useState<string[]>(() => existingList?.tags ?? []);
   const [tagInput, setTagInput] = useState('');
   const [showHtmlHint, setShowHtmlHint] = useState(false);
-  const [items, setItems] = useState<SelectedListItem[]>([]);
+  const [items, setItems] = useState<SelectedListItem[]>(() =>
+    existingList
+      ? existingList.movies.map((m) => ({
+          id: m.id,
+          title: m.title,
+          poster_path: m.poster_path,
+          release_date: m.release_date || '',
+          notes: m.notes || '',
+        }))
+      : [],
+  );
+
+  // Mobile 3-screen state ('form' = New List, 'films' = Films list, 'search' = Name of film...)
+  const [mobileScreen, setMobileScreen] = useState<'form' | 'films' | 'search'>('form');
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.filter((s) => typeof s === 'string');
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   // Desktop toolbar states
   const [desktopView, setDesktopView] = useState<'list' | 'grid'>('grid');
@@ -49,9 +90,19 @@ export const CreateListPage: React.FC = () => {
   const [, setIsSearching] = useState(false);
 
   const addInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
   const dropdownWrapperRef = useRef<HTMLDivElement | null>(null);
   const sortWrapperRef = useRef<HTMLDivElement | null>(null);
   const csvInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (mobileScreen === 'search') {
+      const id = window.setTimeout(() => {
+        mobileSearchInputRef.current?.focus();
+      }, 40);
+      return () => window.clearTimeout(id);
+    }
+  }, [mobileScreen]);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -273,7 +324,61 @@ export const CreateListPage: React.FC = () => {
     }
   };
 
-  const saveListAndNavigate = () => {
+  const saveRecentSearch = (term: string) => {
+    const clean = term.trim().toLowerCase();
+    if (!clean) return;
+    setRecentSearches((prev) => {
+      const next = [clean, ...prev.filter((s) => s.toLowerCase() !== clean)].slice(0, 12);
+      try {
+        localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const handleSelectMovieMobile = (movie: TMDBSearchResult) => {
+    if (query.trim()) {
+      saveRecentSearch(query.trim());
+    }
+    addMovie(movie);
+    setMobileScreen('films');
+  };
+
+  const reorderItems = (fromIndex: number, toIndex: number) => {
+    if (
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= items.length ||
+      toIndex >= items.length
+    ) {
+      return;
+    }
+    setItems((prev) => {
+      const copy = [...prev];
+      const [moved] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, moved);
+      return copy;
+    });
+  };
+
+  const handleTouchMoveGrip = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (dragIdx === null) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const row = el?.closest('[data-film-row-idx]');
+    if (!row) return;
+    const overIdx = Number(row.getAttribute('data-film-row-idx'));
+    if (!Number.isNaN(overIdx) && overIdx !== dragIdx) {
+      reorderItems(dragIdx, overIdx);
+      setDragIdx(overIdx);
+    }
+  };
+
+  const saveListAndNavigate = (targetPath?: string) => {
     if (!title.trim() || items.length === 0) return;
 
     const finalTags = [...tags];
@@ -281,223 +386,483 @@ export const CreateListPage: React.FC = () => {
       finalTags.push(tagInput.trim());
     }
 
-    createList({
+    const payload = {
       title: title.trim(),
       description: description.trim(),
       isRanked,
       isPrivate: visibility === 'private',
       tags: finalTags.length > 0 ? finalTags : undefined,
       movies: items,
-    });
+    };
 
-    navigate('/lists');
-  };
+    if (isEditing && editListId) {
+      updateList(editListId, payload);
+      navigate(targetPath || `/list/${editListId}`, { replace: true });
+      return;
+    }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveListAndNavigate();
+    const newListId = createList(payload);
+    navigate(targetPath || `/list/${newListId}`, { replace: true });
   };
 
   const isInputWhite = isAddFocused || query.trim().length > 0;
+  const canSave = title.trim().length > 0 && items.length > 0;
 
   return (
     <>
       {/* =====================================================================
-          MOBILE LAYOUT (< 768px) — Inalterado conforme solicitado
+          MOBILE LAYOUT (< 768px) — Fluxo nativo Letterboxd (New/Edit List / Films / Search)
           ===================================================================== */}
-      <div className="md:hidden max-w-4xl mx-auto px-4 py-8 space-y-8">
-        <div className="border-b border-lb-elevated pb-4">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            {t('create_list_title')}
-          </h1>
-          <p className="text-xs text-lb-text mt-1">
-            {t('create_list_desc')}
-          </p>
-        </div>
+      <div className="md:hidden fixed inset-0 z-50 bg-[#14181c] flex flex-col">
+        {mobileScreen === 'form' && (
+          <>
+            {/* Top Bar Preta: ✕ | New List / Edit List | ✓ */}
+            <header className="bg-black h-[56px] px-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  aria-label={t('btn_cancel')}
+                  onClick={() => navigate(-1)}
+                  className="min-w-[44px] min-h-[44px] -ml-2.5 flex items-center justify-center text-white active:opacity-70 cursor-pointer"
+                >
+                  <X className="w-6 h-6 stroke-[2.25]" />
+                </button>
+                <h1 className="text-[19px] font-bold text-white tracking-tight ml-3">
+                  {isEditing ? 'Edit List' : 'New List'}
+                </h1>
+              </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Title & Description */}
-          <div className="bg-lb-surface border border-lb-elevated rounded-lg p-5 space-y-4">
-            <div>
-              <label className="block text-xs uppercase font-bold text-lb-muted mb-1">
-                {t('create_list_name')} *
-              </label>
-              <input
-                type="text"
-                placeholder={t('create_list_name_ph')}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-                className="w-full bg-lb-bg border border-lb-elevated rounded p-2.5 text-sm text-white focus:outline-none focus:border-lb-green"
-              />
-            </div>
+              <button
+                type="button"
+                aria-label={t('btn_save')}
+                disabled={!canSave}
+                onClick={() => saveListAndNavigate()}
+                className={`min-w-[44px] min-h-[44px] -mr-2.5 flex items-center justify-center transition-opacity ${
+                  canSave
+                    ? 'text-white active:opacity-70 cursor-pointer'
+                    : 'text-white/30 cursor-not-allowed'
+                }`}
+              >
+                <Check className="w-6 h-6 stroke-[2.25]" />
+              </button>
+            </header>
 
-            <div>
-              <label className="block text-xs uppercase font-bold text-lb-muted mb-1">
-                {t('create_list_description')}
-              </label>
-              <textarea
-                rows={3}
-                placeholder={t('create_list_desc_ph')}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-lb-bg border border-lb-elevated rounded p-2.5 text-xs text-white focus:outline-none focus:border-lb-green"
-              />
-            </div>
-
-            <div>
-              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-lb-white">
-                <input
-                  type="checkbox"
-                  checked={isRanked}
-                  onChange={(e) => setIsRanked(e.target.checked)}
-                  className="rounded border-lb-elevated text-lb-green bg-lb-bg"
-                />
-                <span className="font-semibold">{t('create_list_ranked')}</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Film Search & Add */}
-          <div className="bg-lb-surface border border-lb-elevated rounded-lg p-5 space-y-4">
-            <label className="block text-xs uppercase font-bold text-lb-muted">
-              {t('create_list_add_films')}
-            </label>
-
-            <div className="relative">
-              <div className="flex items-center bg-lb-bg border border-lb-elevated rounded px-3 py-2">
-                <Search className="w-4 h-4 text-lb-muted mr-2" />
+            {/* Corpo Rolável: List name + Add description... + Add/Edit entries... */}
+            <div className="flex-1 overflow-y-auto flex flex-col">
+              {/* List name */}
+              <div className="px-4 pt-3.5 pb-1">
                 <input
                   type="text"
-                  placeholder={t('create_list_search_ph')}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="bg-transparent text-sm text-white focus:outline-none w-full"
+                  placeholder="List name"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full bg-[#2c3440] rounded-[3px] px-3.5 py-2.5 text-[16px] text-white placeholder-[#778899] focus:outline-none"
                 />
               </div>
 
-              {results.length > 0 && (
-                <div className="absolute top-12 left-0 right-0 bg-lb-bg border border-lb-elevated rounded shadow-2xl z-20 max-h-60 overflow-y-auto divide-y divide-lb-elevated">
-                  {results.map((m) => (
-                    <button
-                      type="button"
-                      key={m.id}
-                      onClick={() => addMovie(m)}
-                      className="p-2.5 flex items-center gap-3 hover:bg-lb-elevated cursor-pointer group w-full text-left"
-                    >
-                      <img
-                        loading="lazy"
-                        decoding="async"
-                        src={tmdb.getImageUrl(m.poster_path, 'w92')}
-                        alt={m.title}
-                        className="w-8 h-12 object-cover rounded bg-lb-elevated"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-white group-hover:text-lb-green truncate">
-                          {m.title}
-                        </p>
-                        <p className="text-[11px] text-lb-muted">{m.release_date?.slice(0, 4)}</p>
-                      </div>
-                      <Plus className="w-4 h-4 text-lb-green" />
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Add description... */}
+              <div className="px-4 py-3 border-b border-white/10">
+                <textarea
+                  rows={2}
+                  placeholder="Add description..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-transparent text-[14px] text-[#ccddee] placeholder-[#667788] focus:outline-none resize-none leading-relaxed"
+                />
+              </div>
+
+              {/* Add entries... / Edit entries... */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setMobileScreen(items.length === 0 ? 'search' : 'films')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setMobileScreen(items.length === 0 ? 'search' : 'films');
+                  }
+                }}
+                className="flex-1 px-4 py-3.5 flex flex-col cursor-pointer active:bg-white/[0.02] transition-colors"
+              >
+                <span className="text-[14px] text-[#667788] mb-3">
+                  {items.length === 0 ? 'Add entries...' : 'Edit entries...'}
+                </span>
+
+                {items.length > 0 && (
+                  <div className="grid grid-cols-5 gap-2 pb-4">
+                    {items.map((item, idx) => {
+                      const posterUrl = item.poster_path
+                        ? tmdb.getImageUrl(item.poster_path, 'w185')
+                        : null;
+                      return (
+                        <div key={item.id} className="relative aspect-[2/3]">
+                          <div className="w-full h-full rounded-[4px] overflow-hidden border border-white/15 bg-[#1c2228]">
+                            {posterUrl ? (
+                              <img
+                                loading="lazy"
+                                decoding="async"
+                                src={posterUrl}
+                                alt={item.title}
+                                className="w-full h-full object-cover block"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[#556677]">
+                                <Film className="w-5 h-5" />
+                              </div>
+                            )}
+                          </div>
+
+                          {isRanked && (
+                            <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 min-w-[20px] h-[20px] px-1 rounded-full bg-[#2c3440] border border-[#445566] text-[11px] font-bold text-[#ccddee] flex items-center justify-center shadow-md tabular-nums">
+                              {idx + 1}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Added Films List */}
-            <div className="space-y-3 pt-2">
-              {items.map((item, idx) => (
-                <div
-                  key={item.id}
-                  className="bg-lb-bg border border-lb-elevated rounded p-3 flex gap-3 items-center group"
+            {/* Rodapé Fixo: Add tags... + Public / Ranked toggles */}
+            <div className="shrink-0 bg-[#14181c]">
+              {/* Add tags... */}
+              <div className="border-t border-b border-white/10 px-4 py-2.5 flex flex-wrap items-center gap-1.5 min-h-[46px]">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 bg-[#2c3440] text-[#ccddee] text-[12px] px-2 py-0.5 rounded-[3px]"
+                  >
+                    <span>{tag}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeTag(tag)}
+                      className="text-[#778899] hover:text-white cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={handleTagKeyDown}
+                  onBlur={commitTag}
+                  placeholder={tags.length === 0 ? 'Add tags...' : ''}
+                  className="flex-1 min-w-[110px] bg-transparent text-[14px] text-[#ccddee] placeholder-[#667788] focus:outline-none"
+                />
+              </div>
+
+              {/* Barra inferior: Public | Ranked */}
+              <div className="grid grid-cols-2 h-[64px] bg-[#181e24] pb-[env(safe-area-inset-bottom,0px)]">
+                {/* Toggle Public (por padrão desativado = lista privada; ativado = pública) */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibility((v) => (v === 'public' ? 'private' : 'public'))
+                  }
+                  className={`flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors ${
+                    visibility === 'public' ? 'text-[#cceeff]' : 'text-[#99aabb]'
+                  }`}
                 >
-                  {isRanked && (
-                    <span className="font-mono font-bold text-sm text-lb-green w-6 text-center">
-                      #{idx + 1}
-                    </span>
-                  )}
-
-                  <img
-                    loading="lazy"
-                    decoding="async"
-                    src={tmdb.getImageUrl(item.poster_path, 'w92')}
-                    alt={item.title}
-                    className="w-10 h-15 object-cover rounded shadow"
-                  />
-
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-white truncate">{item.title}</span>
-                      <span className="text-xs text-lb-muted">{item.release_date?.slice(0, 4)}</span>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder={t('create_list_note_ph')}
-                      value={item.notes}
-                      onChange={(e) => updateNotes(item.id, e.target.value)}
-                      className="w-full bg-lb-surface border border-lb-elevated rounded px-2 py-1 text-xs text-lb-white focus:outline-none focus:border-lb-green"
-                    />
+                  <div className="relative inline-flex items-center justify-center">
+                    {visibility === 'public' && (
+                      <span className="absolute -top-1 -left-2 w-3.5 h-3.5 rounded-full bg-[#99ccff] text-[#14181c] flex items-center justify-center shadow">
+                        <Check className="w-2.5 h-2.5 stroke-[3.5]" />
+                      </span>
+                    )}
+                    <Globe className="w-5 h-5" />
                   </div>
+                  <span className="text-[12px] font-normal">Public</span>
+                </button>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      disabled={idx === 0}
-                      onClick={() => moveItem(idx, 'up')}
-                      className="p-1 text-lb-muted hover:text-white disabled:opacity-30"
+                {/* Toggle Ranked */}
+                <button
+                  type="button"
+                  onClick={() => setIsRanked((v) => !v)}
+                  className={`flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors ${
+                    isRanked ? 'text-[#cceeff]' : 'text-[#99aabb]'
+                  }`}
+                >
+                  <div className="relative inline-flex items-center justify-center">
+                    {isRanked && (
+                      <span className="absolute -top-1 -left-2 w-3.5 h-3.5 rounded-full bg-[#99ccff] text-[#14181c] flex items-center justify-center shadow">
+                        <Check className="w-2.5 h-2.5 stroke-[3.5]" />
+                      </span>
+                    )}
+                    {/* Trophy with Star SVG */}
+                    <svg
+                      className="w-5 h-5"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden="true"
                     >
-                      <ArrowUp className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={idx === items.length - 1}
-                      onClick={() => moveItem(idx, 'down')}
-                      className="p-1 text-lb-muted hover:text-white disabled:opacity-30"
-                    >
-                      <ArrowDown className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeMovie(item.id)}
-                      className="p-1 text-lb-muted hover:text-lb-red ml-1"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0 0 11 15.9V19H7v2h10v-2h-4v-3.1a5.01 5.01 0 0 0 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1zm-7-2.3 1.09 2.21 2.44.35-1.77 1.72.42 2.43L12 11.26l-2.18 1.15.42-2.43-1.77-1.72 2.44-.35L12 5.7z" />
+                    </svg>
                   </div>
-                </div>
-              ))}
-
-              {items.length === 0 && (
-                <p className="text-center py-6 text-xs text-lb-muted">
-                  {t('create_list_empty')}
-                </p>
-              )}
+                  <span className="text-[12px] font-normal">Ranked</span>
+                </button>
+              </div>
             </div>
-          </div>
+          </>
+        )}
 
-          {/* Save CTA */}
-          <div className="flex justify-end gap-3 pt-2">
+        {mobileScreen === 'films' && (
+          <>
+            {/* Top Bar Preta: ← | Films */}
+            <header className="bg-black h-[56px] px-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  aria-label="Back"
+                  onClick={() => setMobileScreen('form')}
+                  className="min-w-[44px] min-h-[44px] -ml-2.5 flex items-center justify-center text-white active:opacity-70 cursor-pointer"
+                >
+                  <ArrowLeft className="w-6 h-6 stroke-[2.25]" />
+                </button>
+                <h1 className="text-[19px] font-bold text-white tracking-tight ml-3">
+                  Films
+                </h1>
+              </div>
+            </header>
+
+            {/* Lista de Filmes Adicionados com Reordenação */}
+            <div
+              className="flex-1 overflow-y-auto divide-y divide-white/10 border-b border-white/10 pb-24"
+              onTouchMove={handleTouchMoveGrip}
+              onTouchEnd={() => setDragIdx(null)}
+            >
+              {items.map((item, idx) => {
+                const year = item.release_date?.slice(0, 4) || '';
+                const posterUrl = item.poster_path
+                  ? tmdb.getImageUrl(item.poster_path, 'w185')
+                  : null;
+                return (
+                  <div
+                    key={item.id}
+                    data-film-row-idx={idx}
+                    draggable
+                    onDragStart={() => setDragIdx(idx)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (dragIdx !== null && dragIdx !== idx) {
+                        reorderItems(dragIdx, idx);
+                        setDragIdx(idx);
+                      }
+                    }}
+                    onDragEnd={() => setDragIdx(null)}
+                    className={`px-4 py-3 flex items-center gap-3.5 bg-[#14181c] transition-colors ${
+                      dragIdx === idx ? 'bg-white/[0.06]' : ''
+                    }`}
+                  >
+                    {/* Pôster com badge numérico apenas quando Ranked está ativo */}
+                    <div className="relative w-[42px] aspect-[2/3] shrink-0">
+                      <div className="w-full h-full rounded-[3px] overflow-hidden border border-white/15 bg-[#1c2228]">
+                        {posterUrl ? (
+                          <img
+                            loading="lazy"
+                            decoding="async"
+                            src={posterUrl}
+                            alt={item.title}
+                            className="w-full h-full object-cover block"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[#556677]">
+                            <Film className="w-4 h-4" />
+                          </div>
+                        )}
+                      </div>
+                      {isRanked && (
+                        <span className="absolute -top-1.5 -left-1.5 min-w-[20px] h-[20px] px-1 rounded-full bg-[#1c2228] border border-white/25 text-[11px] font-bold text-white flex items-center justify-center shadow tabular-nums">
+                          {idx + 1}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Título + Ano */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-1.5 flex-wrap">
+                        <span className="text-[15px] font-bold text-white leading-snug">
+                          {item.title}
+                        </span>
+                        {year && (
+                          <span className="text-[13px] font-normal text-[#778899] tabular-nums">
+                            {year}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Remover + Grip de 6 pontos para arrastar */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        aria-label="Remove film"
+                        onClick={() => removeMovie(item.id)}
+                        className="w-9 h-9 flex items-center justify-center text-[#556677] hover:text-[#ff4455] active:opacity-70 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Reorder film"
+                        onTouchStart={() => setDragIdx(idx)}
+                        className="w-9 h-11 flex items-center justify-center text-[#778899] touch-none cursor-grab active:cursor-grabbing"
+                      >
+                        <GripVertical className="w-5 h-5" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Botão Flutuante Verde '+' */}
             <button
               type="button"
-              onClick={() => navigate('/lists')}
-              className="px-4 py-2 text-xs font-bold uppercase text-lb-text hover:text-white"
+              aria-label="Add film"
+              onClick={() => setMobileScreen('search')}
+              className="fixed right-4 bottom-6 z-50 w-[52px] h-[52px] rounded-[16px] bg-[#00e054] hover:bg-[#00c84a] active:scale-95 text-[#14181c] shadow-[0_6px_20px_rgba(0,0,0,0.65)] flex items-center justify-center transition-transform cursor-pointer"
             >
-              {t('btn_cancel')}
+              <Plus className="w-6 h-6 stroke-[2.75]" />
             </button>
-            <button
-              type="submit"
-              disabled={!title.trim() || items.length === 0}
-              className={`px-6 py-2.5 rounded font-black text-xs uppercase tracking-wider transition-all ${
-                title.trim() && items.length > 0
-                  ? 'bg-lb-green hover:bg-lb-green-hover text-lb-bg cursor-pointer shadow-[0_0_12px_rgba(0,224,84,0.3)]'
-                  : 'bg-lb-elevated text-lb-muted cursor-not-allowed'
-              }`}
-            >
-              {t('create_list_save')}
-            </button>
-          </div>
-        </form>
+          </>
+        )}
+
+        {mobileScreen === 'search' && (
+          <>
+            {/* Top Bar Preta de Busca: ← | Name of film... */}
+            <header className="bg-black h-[56px] px-4 flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                aria-label="Back"
+                onClick={() => {
+                  setQuery('');
+                  setResults([]);
+                  setMobileScreen(items.length > 0 ? 'films' : 'form');
+                }}
+                className="min-w-[44px] min-h-[44px] -ml-2.5 flex items-center justify-center text-white active:opacity-70 cursor-pointer shrink-0"
+              >
+                <ArrowLeft className="w-6 h-6 stroke-[2.25]" />
+              </button>
+
+              <input
+                ref={mobileSearchInputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && query.trim()) {
+                    saveRecentSearch(query.trim());
+                  }
+                }}
+                placeholder="Name of film..."
+                className="flex-1 bg-transparent text-[17px] text-white placeholder-[#778899] focus:outline-none"
+              />
+
+              {query.length > 0 && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => {
+                    setQuery('');
+                    setResults([]);
+                    mobileSearchInputRef.current?.focus();
+                  }}
+                  className="min-w-[40px] min-h-[40px] -mr-2 flex items-center justify-center text-[#778899] hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </header>
+
+            {/* Corpo: RECENT SEARCHES (quando vazio) ou Resultados em Tempo Real */}
+            <div className="flex-1 overflow-y-auto bg-[#14181c]">
+              {query.trim().length < 2 ? (
+                <div>
+                  <div className="px-4 py-3 border-b border-white/10">
+                    <span className="text-[12px] font-normal uppercase tracking-wider text-[#99aabb]">
+                      RECENT SEARCHES
+                    </span>
+                  </div>
+                  {recentSearches.length > 0 && (
+                    <div className="divide-y divide-white/5">
+                      {recentSearches.map((term) => (
+                        <button
+                          type="button"
+                          key={term}
+                          onClick={() => setQuery(term)}
+                          className="w-full text-left px-4 py-3.5 text-[15px] text-[#778899] hover:text-white active:bg-white/5 block cursor-pointer"
+                        >
+                          {term}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="divide-y divide-white/10">
+                  {results.map((m) => {
+                    const year = m.release_date?.slice(0, 4) || '';
+                    const directorText =
+                      m.directors && m.directors.length > 0
+                        ? m.directors.slice(0, 2).join(', ')
+                        : '';
+                    const posterUrl = m.poster_path
+                      ? tmdb.getImageUrl(m.poster_path, 'w185')
+                      : null;
+
+                    return (
+                      <button
+                        type="button"
+                        key={m.id}
+                        onClick={() => handleSelectMovieMobile(m)}
+                        className="w-full text-left px-4 py-2.5 flex items-center gap-3.5 active:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        <div className="w-[40px] aspect-[2/3] rounded-[3px] overflow-hidden border border-white/15 bg-[#1c2228] shrink-0">
+                          {posterUrl ? (
+                            <img
+                              loading="lazy"
+                              decoding="async"
+                              src={posterUrl}
+                              alt={m.title}
+                              className="w-full h-full object-cover block"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[#556677]">
+                              <Film className="w-4 h-4" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-1.5 flex-wrap">
+                            <span className="text-[15px] font-bold text-white leading-snug">
+                              {m.title}
+                            </span>
+                            {year && (
+                              <span className="text-[13px] font-normal text-[#778899] tabular-nums">
+                                {year}
+                              </span>
+                            )}
+                          </div>
+                          {directorText && (
+                            <p className="text-[12px] text-[#667788] truncate mt-0.5">
+                              {directorText}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* =====================================================================
@@ -869,7 +1234,7 @@ export const CreateListPage: React.FC = () => {
                 {/* Save */}
                 <button
                   type="button"
-                  onClick={saveListAndNavigate}
+                  onClick={() => saveListAndNavigate('/lists')}
                   disabled={!title.trim() || items.length === 0}
                   className={`h-[32px] px-4 font-bold text-[13px] rounded-[3px] transition-colors ${
                     title.trim() && items.length > 0
@@ -906,13 +1271,19 @@ export const CreateListPage: React.FC = () => {
                 {items.map((item, idx) => (
                   <div key={item.id} className="group relative">
                     <div className="relative aspect-[2/3] rounded-[3px] overflow-hidden border border-white/15 bg-[#1c2228] shadow">
-                      <img
-                        loading="lazy"
-                        decoding="async"
-                        src={tmdb.getImageUrl(item.poster_path, 'w342')}
-                        alt={item.title}
-                        className="w-full h-full object-cover"
-                      />
+                      {item.poster_path ? (
+                        <img
+                          loading="lazy"
+                          decoding="async"
+                          src={tmdb.getImageUrl(item.poster_path, 'w342')}
+                          alt={item.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[#556677]">
+                          <Film className="w-6 h-6" />
+                        </div>
+                      )}
                       {/* Hover overlay with move / remove actions */}
                       <div className="absolute inset-0 bg-black/65 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
                         <div className="flex justify-end">
@@ -975,13 +1346,19 @@ export const CreateListPage: React.FC = () => {
                       </span>
                     )}
 
-                    <img
-                      loading="lazy"
-                      decoding="async"
-                      src={tmdb.getImageUrl(item.poster_path, 'w92')}
-                      alt={item.title}
-                      className="w-11 aspect-[2/3] object-cover rounded-[2px] border border-white/10 shadow"
-                    />
+                    {item.poster_path ? (
+                      <img
+                        loading="lazy"
+                        decoding="async"
+                        src={tmdb.getImageUrl(item.poster_path, 'w92')}
+                        alt={item.title}
+                        className="w-11 aspect-[2/3] object-cover rounded-[2px] border border-white/10 shadow"
+                      />
+                    ) : (
+                      <div className="w-11 aspect-[2/3] rounded-[2px] border border-white/10 bg-[#1c2228] flex items-center justify-center text-[#556677]">
+                        <Film className="w-4 h-4" />
+                      </div>
+                    )}
 
                     <div className="flex-1 min-w-0 space-y-1.5">
                       <div className="flex items-baseline gap-2">

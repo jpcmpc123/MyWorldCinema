@@ -31,7 +31,8 @@ interface AppContextType {
   top4MovieIds: number[];
   setTop4Movie: (slotIndex: number, movieId: number) => void;
   lists: MovieList[];
-  createList: (newList: Omit<MovieList, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>) => void;
+  createList: (newList: Omit<MovieList, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>) => string;
+  updateList: (listId: string, updates: Omit<MovieList, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>) => void;
   deleteList: (listId: string) => void;
   reviews: Review[];
   addReview: (newReview: Omit<Review, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>) => void;
@@ -725,7 +726,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [isAuthenticated, authUser]);
 
-  const createList = useCallback((newList: Omit<MovieList, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>) => {
+  const createList = useCallback((newList: Omit<MovieList, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>): string => {
     const u = userRef.current;
     const list: MovieList = {
       ...newList,
@@ -740,6 +741,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
     setLists((prev) => [list, ...prev]);
+    return list.id;
+  }, []);
+
+  const updateList = useCallback((listId: string, updates: Omit<MovieList, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>) => {
+    setLists((prev) =>
+      prev.map((l) =>
+        l.id === listId
+          ? {
+              ...l,
+              ...updates,
+            }
+          : l,
+      ),
+    );
   }, []);
 
   const deleteList = useCallback((listId: string) => {
@@ -840,6 +855,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTop4Movie,
       lists,
       createList,
+      updateList,
       deleteList,
       reviews,
       addReview,
@@ -861,7 +877,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       user, updateUser, logs, saveLog, deleteLog, watchlist, toggleWatchlist,
       isMovieInWatchlist, watchedMovieIds, toggleWatched, isMovieWatched,
       likedMovieIds, toggleLikeMovie, isMovieLiked, ratingsMap, setMovieRating,
-      top4MovieIds, setTop4Movie, lists, createList, deleteList, reviews,
+      top4MovieIds, setTop4Movie, lists, createList, updateList, deleteList, reviews,
       addReview, movieOverrides, setMovieOverride, isLogModalOpen,
       selectedMovieForLog, openLogModal, closeLogModal, isTop4PickerOpen,
       activeTop4Slot, openTop4Picker, closeTop4Picker, actionSheetMovie,

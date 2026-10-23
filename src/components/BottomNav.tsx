@@ -27,7 +27,8 @@ export const BottomNav: React.FC = () => {
 
   const profileActive =
     parseProfileTabRoute(pathname, displayUsername) !== null ||
-    pathname === '/settings';
+    pathname === '/settings' ||
+    pathname.startsWith('/list/');
 
   const isHomeActive =
     isMainTabRoute(pathname) ||
@@ -35,7 +36,6 @@ export const BottomNav: React.FC = () => {
     pathname.startsWith('/series') ||
     pathname.startsWith('/tv') ||
     pathname.startsWith('/film/') ||
-    pathname.startsWith('/list/') ||
     pathname.startsWith('/browse/');
   const isSearchActive = pathname.startsWith('/search');
   const isActivityActive = pathname.startsWith('/activity');
@@ -43,6 +43,10 @@ export const BottomNav: React.FC = () => {
   // Item ativo ganha a pílula azul-acinzentada com ícone azul-claro
   // (cores/dimensões no CSS .bottom-nav-item / .bottom-nav-item.active)
   const item = (active: boolean) => `bottom-nav-item${active ? ' active' : ''}`;
+
+  if (pathname === '/list/new' || /^\/list\/[^/]+\/edit$/.test(pathname)) {
+    return null;
+  }
 
   return (
     <nav
