@@ -94,8 +94,13 @@ export const SeriesHubPage: React.FC = () => {
       }
     }
     loadData();
+    const onRefresh = () => {
+      void loadData();
+    };
+    window.addEventListener('mw:pull-to-refresh', onRefresh);
     return () => {
       cancelled = true;
+      window.removeEventListener('mw:pull-to-refresh', onRefresh);
     };
   }, []);
 

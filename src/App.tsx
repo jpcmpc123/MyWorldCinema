@@ -12,6 +12,7 @@ import { useIsMobile } from './hooks/useIsMobile';
 import { tabPanelIndex, parseProfileTabRoute } from './utils/tabRoutes';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { HomePage } from './pages/HomePage';
+import { PullToRefresh } from './components/PullToRefresh';
 
 function parseDetailRoute(pathname: string): { type: 'movie' | 'tv'; id: number } | null {
   const m = pathname.match(/^\/(film|tv)\/(\d+)/);
@@ -334,6 +335,9 @@ function AppShell() {
         pushingOut={headerPushingOut}
         pushPhase={slidePhase}
       />
+
+      {/* Mobile Pull-to-Refresh (estilo nativo Letterboxd / SwipeRefreshLayout) */}
+      <PullToRefresh />
 
       {/* Main Content Viewport (pb: espaço para a BottomNav de 60px no mobile) */}
       <main className="relative flex-1 flex flex-col max-md:overflow-x-clip md:overflow-x-visible pb-[calc(60px+env(safe-area-inset-bottom,0px)+16px)] md:pb-0">

@@ -174,6 +174,21 @@ export const tabDataCache = {
     prewarmHubPosters(entry, 6);
   },
 
+  invalidateAll(): void {
+    memoryFilmsHub = null;
+    memorySeriesHub = null;
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.removeItem(FILMS_KEY);
+        window.sessionStorage.removeItem(SERIES_KEY);
+        window.localStorage.removeItem(FILMS_KEY);
+        window.localStorage.removeItem(SERIES_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+  },
+
   /**
    * Pré-carrega assincronamente as vitrines das abas principais
    * priorizando Filmes primeiro para não disputar conexões na abertura.
@@ -197,4 +212,5 @@ export const tabDataCache = {
     }
   },
 };
+
 
