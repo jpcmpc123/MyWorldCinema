@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano para garantir atualização real dos dados (limpeza dos caches internos da TMDB + recarregamento em segundo plano dos dados do Supabase no perfil/diário/watchlist) no pull-to-refresh mobile sem piscar a tela, mantendo a aba da lupinha (Pesquisa e filtros) 100% livre do indicador de recarregamento.",
-  "updatedAt":  "2026-10-23T15:45:01.603922592Z",
+  "summary":  "Plano de implementação para remover qualquer degradê ou escurecimento no topo do backdrop no celular e estender o backdrop por trás da barra de status (horas e notificações) no modo edge-to-edge mobile.",
+  "updatedAt":  "2026-10-23T20:40:48.012871183Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

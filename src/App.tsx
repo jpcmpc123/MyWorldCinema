@@ -247,6 +247,18 @@ function AppShell() {
   const outgoingLocation = isTransitioning ? outgoingState.location : null;
   const outgoingScrollY = isTransitioning ? outgoingState.scrollY : 0;
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const isDetailOnMobile = Boolean(isMobile && parseDetailRoute(committedLocation.pathname));
+    const targetColor = isDetailOnMobile ? 'transparent' : '#000000';
+    const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+    metas.forEach((meta) => {
+      if (meta.getAttribute('content') !== targetColor) {
+        meta.setAttribute('content', targetColor);
+      }
+    });
+  }, [isMobile, committedLocation.pathname]);
+
   const isMainTab = isMobile && tabPanelIndex(committedLocation.pathname) >= 0;
   const outgoingIsMainTab = Boolean(
     isMobile && outgoingLocation && tabPanelIndex(outgoingLocation.pathname) >= 0,

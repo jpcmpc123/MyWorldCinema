@@ -679,13 +679,13 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     >
       {/* 1. Cinematic Hero Vignette Backdrop */}
       {backdropUrl && (
-        <div className="max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:h-[calc(56.25vw+26px)] max-md:overflow-hidden max-md:z-0 max-md:[&_.backdrop-container]:!h-full max-md:[&_.backdrop-container]:!pt-0">
+        <div className="max-md:absolute max-md:inset-x-0 max-md:top-0 max-md:h-[calc(56.25vw+26px+env(safe-area-inset-top,0px))] max-md:overflow-hidden max-md:z-0 max-md:[&_.backdrop-container]:!h-full max-md:[&_.backdrop-container]:!pt-0">
           <Backdrop src={backdropUrl} alt={movie.title} />
         </div>
       )}
 
       {/* Floating back + overflow buttons over the backdrop — mobile only (app-style, sem backdrop-blur pesado na GPU) */}
-      <div className="md:hidden absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 pt-2.5">
+      <div className="md:hidden absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 pt-[calc(env(safe-area-inset-top,0px)+10px)]">
         <button
           onClick={() => navigate(-1)}
           aria-label={t('film_back')}
@@ -705,7 +705,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       {/* 2. Main Content Container: 3-column Letterboxd layout (950px total) */}
       <div
         className={`relative z-10 max-w-[950px] mx-auto px-4 md:px-0 pb-16 ${
-          backdropUrl ? 'pt-[calc(56.25vw+11px)] md:pt-[472px]' : 'pt-20'
+          backdropUrl ? 'pt-[calc(56.25vw+11px+env(safe-area-inset-top,0px))] md:pt-[472px]' : 'pt-20'
         }`}
       >
         <div className="flex flex-col md:flex-row md:gap-x-[50px] items-start">

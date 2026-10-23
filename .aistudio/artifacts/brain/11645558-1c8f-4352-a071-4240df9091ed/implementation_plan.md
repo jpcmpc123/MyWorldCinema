@@ -1,65 +1,62 @@
-# Atualização Real no Pull-to-Refresh Mobile e Exclusão na Aba da Lupinha
+# Backdrop Mobile Sem Degradê no Topo e Integrado à Barra de Horas (Edge-to-Edge)
 
-Garantir que o gesto de puxar para recarregar (pull-to-refresh) no celular execute uma atualização real dos catálogos da API TMDB e dos dados do usuário no Supabase sem piscar a tela, mantendo a aba de Pesquisa (lupinha) e todas as suas subpáginas totalmente livres desse indicador.
+Remover completamente qualquer degradê ou escurecimento na parte superior do backdrop no celular e configurar o layout mobile em tela cheia (*edge-to-edge*) para que a imagem do backdrop suba limpa até o topo da tela, por trás da barra de horas e notificações, exatamente como na referência da Imagem 1, mantendo o computador (desktop) inalterado.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> Decisões confirmadas para o funcionamento do recarregamento mobile:
+> Decisões confirmadas pelas suas respostas:
 
-- **Atualização real sem piscar a tela (Confirmado)**: Ao puxar e soltar nas abas permitidas, o aplicativo limpará os caches em memória da TMDB (incluindo os pools de *Populares da Semana* e detalhes em RAM) e buscará novamente os dados atualizados da TMDB e do Supabase (diário, assistidos, curtidas, notas, watchlist, Top 4 e overrides) em segundo plano, atualizando a interface suavemente sem recarregar a página inteira do navegador (sem tela preta/branca de F5).
-- **Sem looping/recarregamento na aba da Lupinha (Confirmado)**: O indicador de puxar para recarregar fica estritamente bloqueado na aba de busca (ícone da lupinha), nos resultados de pesquisa, nos filtros (*Lançamento*, *Gênero*, *País*, *Idioma*, *Streaming*, *Mais populares*, *Mais bem avaliados*, *Mais aguardados*) e nas páginas de detalhes de filmes, séries e elenco.
+- **Zero degradê ou efeito no topo do backdrop (Confirmado)**: O degradê preto superior (`to bottom, #000000 ...`) que havia sido aplicado no topo do backdrop mobile será totalmente removido. A parte superior da imagem ficará 100% limpa e sem efeito.
+- **Nenhum escurecimento na parte superior (Confirmado)**: O backdrop manterá apenas a fusão inferior com o fundo `#14181c` (onde entram o título e o pôster), deixando o topo da fotografia com brilho e cores originais.
+- **Escopo exclusivo no celular (Confirmado)**: Todas as alterações serão aplicadas estritamente na visualização mobile (`max-width: 767px` / PWA mobile), sem tocar no layout do computador (`>= 768px`).
 
 ## 1. Overview & Core Concept
 
-- **O que foi diagnosticado**:
-  1. Embora o `PullToRefresh` limpasse o `tabDataCache`, o serviço da TMDB mantinha um segundo cache interno em memória (`popularWeekPoolCache` e `mediaDetailsCache`) com duração de 30 minutos. Assim, ao puxar para atualizar, a chamada retornava instantaneamente os mesmos objetos cacheados na memória RAM em vez de consultar a API da TMDB novamente.
-  2. Nas abas de Perfil, Diário, Watchlist e Atividade, os dados do usuário no Supabase (`film_logs`, `watchlist`, `profiles`, `film_overrides`) só eram carregados uma única vez no login e não escutavam o evento de recarregamento.
-- **Valor entregue**: Puxar para baixo nas abas principais ou no perfil agora força uma nova consulta real à TMDB e ao Supabase, refletindo imediatamente novos registros, alterações de pôster/backdrop, favoritos e catálogos atualizados.
+- **O que será feito**:
+  1. **Remoção total do degradê escuro no topo do backdrop mobile**: Na máscara `.backdrop-wrapper > .backdropmask:before` para telas mobile (`max-width: 767px`), será removida a camada `linear-gradient(to bottom, #000000 0%, ...)`, preservando apenas o degradê da base (`to top, #14181c ...`).
+  2. **Integração com a barra de horas e notificações (Edge-to-Edge Mobile)**:
+     - Configurar a barra de status do PWA mobile para modo translúcido/transparente (`apple-mobile-web-app-status-bar-style="black-translucent"` e `theme-color` transparente nas páginas de filme e série no celular) junto com `viewport-fit=cover`.
+     - Garantir que o container do backdrop nas páginas de Filme e Série comece no limite absoluto do topo da tela (`top: 0`, cobrindo inclusive a área `env(safe-area-inset-top, 0px)` da barra de horas e notificações), posicionando os botões flutuantes de voltar (`←`) e menu (`⋮`) logo abaixo da área segura das horas.
+     - Ativar também o modo *edge-to-edge* com barra de status transparente na configuração Android do projeto para que a imagem ocupe toda a faixa atrás do relógio e ícones de notificação.
 
 ## 2. User Experience & Visual Design
 
-- **Fluxo de Atualização Suave**:
-  - O usuário puxa a tela para baixo nas abas principais (*Filmes*, *Séries*, *Críticas*, *Listas*) ou nas abas de *Perfil* (*Perfil*, *Diário*, *Listas*, *Watchlist*).
-  - O círculo branco com a seta escura (`#14181c`) desce de trás da barra superior preta e entra em rotação contínua enquanto as requisições reais à TMDB e ao Supabase são concluídas.
-  - Os cartões e estatísticas da tela são atualizados no lugar (*in-place*), sem desmontar a página e sem piscar a tela, e o círculo branco recolhe suavemente.
-- **Bloqueio Total na Aba da Lupinha**:
-  - Na aba da lupinha (Pesquisa) e em qualquer tela aberta a partir dela (filtros de ano, década, gênero, país, idioma, streaming ou resultados), o gesto de puxar para baixo não exibe nenhum círculo ou looping de carregamento.
+- **Topo do Backdrop Limpo (Como na Imagem 1)**:
+  - Ao abrir qualquer página de filme (`/film/:id`) ou série (`/tv/:id`) no celular, a imagem do backdrop aparece nítida e sem nenhuma faixa ou sombra preta artificial no topo.
+  - A imagem se estende até a borda superior da tela em dispositivos com suporte a *edge-to-edge* (`viewport-fit=cover`), enquanto a base do backdrop continua se fundindo suavemente na cor `#14181c` atrás do título e do pôster.
+- **Botões Flutuantes (`←` e `⋮`)**:
+  - Os dois botões circulares continuam sobre o backdrop no celular, respeitando automaticamente o espaçamento da barra de horas (`env(safe-area-inset-top)`) quando o conteúdo desenha por trás das notificações.
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decisão 1: Limpeza Completa dos Caches em Memória da TMDB**
-  - *Abordagem Escolhida*: Expor um método de limpeza dos caches internos de vitrines e detalhes da TMDB para ser acionado junto com o `tabDataCache.invalidateAll()` no momento do pull-to-refresh.
-  - *Por quê*: Garante que `getFilmsHubSections()` e `getSeriesHubSections()` façam requisições HTTP reais à TMDB ao puxar para atualizar, mantendo o cache rápido durante a navegação normal entre abas.
-- **Decisão 2: Re-sincronização Silenciosa com o Supabase**
-  - *Abordagem Escolhida*: Escutar o evento de atualização no contexto principal e de autenticação para recarregar `film_logs`, `watchlist`, `favorite_films`, `film_overrides` e dados do perfil diretamente do Supabase sem zerar a tela antes da resposta.
-  - *Por quê*: Evita qualquer efeito de piscar (*flash* de estado vazio) enquanto garante que alterações feitas na conta apareçam imediatamente após puxar para recarregar.
+- **Decisão 1: Máscara Mobile Apenas na Base**
+  - *Abordagem Escolhida*: Usar exclusivamente `linear-gradient(to top, #14181c 0%, #14181c 3%, rgba(20, 24, 28, 0.9) 10%, rgba(20, 24, 28, 0.55) 20%, rgba(20, 24, 28, 0.2) 32%, transparent 42%)` em `@media (max-width: 767px)`.
+  - *Por quê*: Elimina qualquer escurecimento ou linha escura no topo da foto, mantendo a transição suave apenas na parte inferior onde começa o texto do filme.
+- **Decisão 2: Barra de Status Transparente Dinâmica nas Rotas de Detalhe**
+  - *Abordagem Escolhida*: Nas rotas `/film/:id` e `/tv/:id` no celular, atualizar dinamicamente as metatags `theme-color` para transparente e configurar `black-translucent`, restaurando `#000000` nas demais telas que possuem cabeçalho preto sólido.
+  - *Por quê*: Permite que o navegador/PWA mobile não pinte um bloco preto sólido separado quando em modo *edge-to-edge*, mantendo a barra superior preta nas telas de catálogo e busca.
 
 ## 4. Technical Architecture & Data Strategy
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│               Gesto Pull-to-Refresh (Abas Principais / Perfil)         │
-│   (Bloqueado na Lupinha / Busca / Filtros / Detalhes de Filme e Série) │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                     Orquestrador de Atualização Real                   │
-│  1. Limpa tabDataCache + popularWeekPoolCache + mediaDetailsCache      │
-│  2. Dispara evento global 'mw:pull-to-refresh'                         │
-└─────────────────┬────────────────────────────────────┬─────────────────┘
-                  │                                    │
-                  ▼                                    ▼
-┌───────────────────────────────────┐┌───────────────────────────────────┐
-│        Catálogo TMDB (API)        ││      Dados do Usuário (Supabase)  │
-│ • Re-busca Filmes e Séries da     ││ • Re-consulta film_logs,          │
-│   semana, mais votados e em alta  ││   watchlist, favorite_films,      │
-│ • Atualiza HomePage e SeriesHub   ││   film_overrides e perfil         │
-│   in-place sem piscar a tela      ││ • Atualiza Perfil/Diário/Watchlist│
-└───────────────────────────────────┘└───────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                   Visualização Mobile (< 768px)                      │
+│       (Desktop >= 768px permanece 100% inalterado)                   │
+└──────────────────────────────────┬───────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│            Páginas de Detalhe (/film/:id e /tv/:id)                  │
+│  1. Meta theme-color transparente + status-bar black-translucent     │
+│  2. Backdrop ancorado no topo absoluto (sem degradê no topo)         │
+│  3. Botões flutuantes (← e ⋮) posicionados abaixo da safe-area-top   │
+└──────────────────────────────────┬───────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                 Máscara CSS (.backdropmask:before)                   │
+│  • Topo (0% -> 58%): 100% Transparente (nenhum escurecimento)        │
+│  • Base (58% -> 100%): Fusão suave para #14181c atrás do título      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
-
-- **Mapeamento de Estado e Eventos**:
-  - Quando o usuário solta o indicador após o limite de ativação, os caches em memória são invalidados antes do disparo do evento `mw:pull-to-refresh`, garantindo que tanto o pré-carregamento quanto os ouvintes nas páginas ativas recebam dados frescos da rede.
-  - O indicador aguarda a conclusão real das Promises da TMDB e do Supabase antes de recolher para cima da barra superior.
