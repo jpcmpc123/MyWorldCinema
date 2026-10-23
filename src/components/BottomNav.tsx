@@ -18,7 +18,63 @@ export const BottomNav: React.FC = () => {
   const { pathname } = useLocation();
   // Se a foto falhar (rede/URL inválida) ou não existir, cai no ícone de usuário
   const [avatarError, setAvatarError] = useState(false);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const navRef = useRef<HTMLElement | null>(null);
+  const maxHeightRef = useRef<number>(
+    typeof window !== 'undefined'
+      ? Math.max(window.innerHeight, window.visualViewport?.height ?? 0)
+      : 0,
+  );
+
+  // Detecta quando o teclado virtual do celular está aberto para impedir que a
+  // barra inferior suba e fique flutuando em cima do teclado ao rolar a busca.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const checkKeyboard = () => {
+      if (window.innerWidth >= 768) {
+        setIsKeyboardOpen(false);
+        return;
+      }
+      const vvHeight = window.visualViewport?.height ?? window.innerHeight;
+      const winHeight = window.innerHeight;
+      const currentHeight = Math.min(vvHeight, winHeight);
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isInputFocused = Boolean(
+        activeEl &&
+          (activeEl.tagName === 'INPUT' ||
+            activeEl.tagName === 'TEXTAREA' ||
+            activeEl.isContentEditable),
+      );
+
+      if (!isInputFocused && currentHeight > maxHeightRef.current) {
+        maxHeightRef.current = currentHeight;
+      }
+
+      const screenBaseline =
+        isInputFocused && window.screen?.height ? window.screen.height * 0.8 : 0;
+      const baselineHeight = Math.max(maxHeightRef.current, winHeight, screenBaseline);
+      const heightDrop = baselineHeight - currentHeight;
+
+      setIsKeyboardOpen(heightDrop > 110);
+    };
+
+    checkKeyboard();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', checkKeyboard);
+    vv?.addEventListener('scroll', checkKeyboard);
+    window.addEventListener('resize', checkKeyboard);
+    document.addEventListener('focusin', checkKeyboard);
+    document.addEventListener('focusout', checkKeyboard);
+
+    return () => {
+      vv?.removeEventListener('resize', checkKeyboard);
+      vv?.removeEventListener('scroll', checkKeyboard);
+      window.removeEventListener('resize', checkKeyboard);
+      document.removeEventListener('focusin', checkKeyboard);
+      document.removeEventListener('focusout', checkKeyboard);
+    };
+  }, []);
 
   // Bloqueia arrasto/puxão vertical ou horizontal sobre a barra inferior no celular
   // para que o navegador nunca aplique efeito de esticar (overscroll stretch) nela.
@@ -67,7 +123,17 @@ export const BottomNav: React.FC = () => {
     <nav
       ref={navRef}
       aria-label={t('nav_main')}
+      aria-hidden={isKeyboardOpen ? 'true' : undefined}
       className="bottom-nav fixed bottom-0 inset-x-0 z-50 md:hidden select-none"
+      style={
+        isKeyboardOpen
+          ? {
+              transform: 'translate3d(0, 120%, 0)',
+              visibility: 'hidden',
+              pointerEvents: 'none',
+            }
+          : undefined
+      }
     >
       {/* 1. Home / Catálogo */}
       <Link to="/" aria-label={t('nav_home')} className={item(isHomeActive)}>
