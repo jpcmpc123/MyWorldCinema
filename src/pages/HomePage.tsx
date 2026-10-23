@@ -222,7 +222,7 @@ export const HomePage: React.FC = () => {
           <section className="hidden md:block space-y-4">
             <div className="flex items-center justify-between border-b border-lb-elevated pb-2">
               <h2 className="text-xs uppercase tracking-widest font-bold text-lb-text">
-                All-Time Classics (Highest Rated)
+                {t('home_classics')}
               </h2>
               <Link
                 to="/films/browse?sort=vote_average.desc"

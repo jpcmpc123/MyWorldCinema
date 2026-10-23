@@ -292,7 +292,7 @@ export const ProfilePage: React.FC = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between border-b border-lb-elevated pb-1 text-xs">
                 <span className="uppercase tracking-wider font-bold text-lb-text text-[11px]">
-                  Watchlist
+                  {t('hdr_watchlist')}
                 </span>
                 <span className="text-lb-muted text-[11px] tabular-nums">{viewWatchlistCount}</span>
               </div>
@@ -462,7 +462,7 @@ export const ProfilePage: React.FC = () => {
       return (
         <div className="space-y-4">
           <h2 className="text-xs uppercase tracking-widest font-bold text-lb-text border-b border-lb-elevated pb-2">
-            Reviews
+            {t('reviews_label')}
           </h2>
           <div className="space-y-4">
             {logs
@@ -491,7 +491,7 @@ export const ProfilePage: React.FC = () => {
       return (
         <div className="space-y-4">
           <h2 className="text-xs uppercase tracking-widest font-bold text-lb-text border-b border-lb-elevated pb-2">
-            Activity
+            {t('nav_activity')}
           </h2>
           {logs.length === 0 ? (
             <div className="py-12 text-center space-y-2">
@@ -570,7 +570,7 @@ export const ProfilePage: React.FC = () => {
               <div className="md:hidden -mx-4 divide-y divide-white/10 border-b border-white/10">
                 {lists.map((list) => {
                   const count = list.movies.length;
-                  const countLabel = `${count} ${count === 1 ? 'film' : t('home_films_word')}`;
+                  const countLabel = `${count} ${count === 1 ? t('list_film_singular') : t('home_films_word')}`;
                   const previewMovies = list.movies.slice(0, 5);
                   return (
                     <Link
@@ -629,7 +629,7 @@ export const ProfilePage: React.FC = () => {
                     className="bg-lb-surface border border-lb-elevated hover:border-lb-green rounded p-4 transition-colors block"
                   >
                     <h3 className="text-sm font-bold text-white">{list.title}</h3>
-                    <p className="text-xs text-lb-muted mt-1">{list.movies.length} {t('home_films_word')}</p>
+                    <p className="text-xs text-lb-muted mt-1">{list.movies.length} {list.movies.length === 1 ? t('list_film_singular') : t('home_films_word')}</p>
                   </Link>
                 ))}
               </div>

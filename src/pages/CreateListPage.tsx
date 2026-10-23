@@ -428,7 +428,7 @@ export const CreateListPage: React.FC = () => {
                   <X className="w-6 h-6 stroke-[2.25]" />
                 </button>
                 <h1 className="text-[19px] font-bold text-white tracking-tight ml-3">
-                  {isEditing ? 'Edit List' : 'New List'}
+                  {isEditing ? t('edit_list_title') : t('create_list_title')}
                 </h1>
               </div>
 
@@ -453,7 +453,7 @@ export const CreateListPage: React.FC = () => {
               <div className="px-4 pt-3.5 pb-1">
                 <input
                   type="text"
-                  placeholder="List name"
+                  placeholder={t('create_list_name_mobile_ph')}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="w-full bg-[#2c3440] rounded-[3px] px-3.5 py-2.5 text-[16px] text-white placeholder-[#778899] focus:outline-none"
@@ -464,7 +464,7 @@ export const CreateListPage: React.FC = () => {
               <div className="px-4 py-3 border-b border-white/10">
                 <textarea
                   rows={2}
-                  placeholder="Add description..."
+                  placeholder={t('create_list_desc_mobile_ph')}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full bg-transparent text-[14px] text-[#ccddee] placeholder-[#667788] focus:outline-none resize-none leading-relaxed"
@@ -485,7 +485,7 @@ export const CreateListPage: React.FC = () => {
                 className="flex-1 px-4 py-3.5 flex flex-col cursor-pointer active:bg-white/[0.02] transition-colors"
               >
                 <span className="text-[14px] text-[#667788] mb-3">
-                  {items.length === 0 ? 'Add entries...' : 'Edit entries...'}
+                  {items.length === 0 ? t('create_list_add_entries') : t('create_list_edit_entries')}
                 </span>
 
                 {items.length > 0 && (
@@ -550,7 +550,7 @@ export const CreateListPage: React.FC = () => {
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyDown={handleTagKeyDown}
                   onBlur={commitTag}
-                  placeholder={tags.length === 0 ? 'Add tags...' : ''}
+                  placeholder={tags.length === 0 ? t('create_list_add_tags_ph') : ''}
                   className="flex-1 min-w-[110px] bg-transparent text-[14px] text-[#ccddee] placeholder-[#667788] focus:outline-none"
                 />
               </div>
@@ -575,7 +575,7 @@ export const CreateListPage: React.FC = () => {
                     )}
                     <Globe className="w-5 h-5" />
                   </div>
-                  <span className="text-[12px] font-normal">Public</span>
+                  <span className="text-[12px] font-normal">{t('create_list_public_short')}</span>
                 </button>
 
                 {/* Toggle Ranked */}
@@ -602,7 +602,7 @@ export const CreateListPage: React.FC = () => {
                       <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0 0 11 15.9V19H7v2h10v-2h-4v-3.1a5.01 5.01 0 0 0 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1zm-7-2.3 1.09 2.21 2.44.35-1.77 1.72.42 2.43L12 11.26l-2.18 1.15.42-2.43-1.77-1.72 2.44-.35L12 5.7z" />
                     </svg>
                   </div>
-                  <span className="text-[12px] font-normal">Ranked</span>
+                  <span className="text-[12px] font-normal">{t('create_list_ranked_short')}</span>
                 </button>
               </div>
             </div>
@@ -616,14 +616,14 @@ export const CreateListPage: React.FC = () => {
               <div className="flex items-center">
                 <button
                   type="button"
-                  aria-label="Back"
+                  aria-label={t('common_back')}
                   onClick={() => setMobileScreen('form')}
                   className="min-w-[44px] min-h-[44px] -ml-2.5 flex items-center justify-center text-white active:opacity-70 cursor-pointer"
                 >
                   <ArrowLeft className="w-6 h-6 stroke-[2.25]" />
                 </button>
                 <h1 className="text-[19px] font-bold text-white tracking-tight ml-3">
-                  Films
+                  {t('nav_films')}
                 </h1>
               </div>
             </header>
@@ -699,7 +699,7 @@ export const CreateListPage: React.FC = () => {
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
-                        aria-label="Remove film"
+                        aria-label={t('create_list_remove_film')}
                         onClick={() => removeMovie(item.id)}
                         className="w-9 h-9 flex items-center justify-center text-[#556677] hover:text-[#ff4455] active:opacity-70 cursor-pointer"
                       >
@@ -708,7 +708,7 @@ export const CreateListPage: React.FC = () => {
                       <div
                         role="button"
                         tabIndex={0}
-                        aria-label="Reorder film"
+                        aria-label={t('create_list_reorder_film')}
                         onTouchStart={() => setDragIdx(idx)}
                         className="w-9 h-11 flex items-center justify-center text-[#778899] touch-none cursor-grab active:cursor-grabbing"
                       >
@@ -723,7 +723,7 @@ export const CreateListPage: React.FC = () => {
             {/* Botão Flutuante Verde '+' */}
             <button
               type="button"
-              aria-label="Add film"
+              aria-label={t('create_list_add_film_ph')}
               onClick={() => setMobileScreen('search')}
               className="fixed right-4 bottom-6 z-50 w-[52px] h-[52px] rounded-[16px] bg-[#00e054] hover:bg-[#00c84a] active:scale-95 text-[#14181c] shadow-[0_6px_20px_rgba(0,0,0,0.65)] flex items-center justify-center transition-transform cursor-pointer"
             >
@@ -738,7 +738,7 @@ export const CreateListPage: React.FC = () => {
             <header className="bg-black h-[56px] px-4 flex items-center gap-3 shrink-0">
               <button
                 type="button"
-                aria-label="Back"
+                aria-label={t('common_back')}
                 onClick={() => {
                   setQuery('');
                   setResults([]);
@@ -759,14 +759,14 @@ export const CreateListPage: React.FC = () => {
                     saveRecentSearch(query.trim());
                   }
                 }}
-                placeholder="Name of film..."
+                placeholder={t('create_list_film_name_ph')}
                 className="flex-1 bg-transparent text-[17px] text-white placeholder-[#778899] focus:outline-none"
               />
 
               {query.length > 0 && (
                 <button
                   type="button"
-                  aria-label="Clear search"
+                  aria-label={t('search_clear')}
                   onClick={() => {
                     setQuery('');
                     setResults([]);
@@ -785,7 +785,7 @@ export const CreateListPage: React.FC = () => {
                 <div>
                   <div className="px-4 py-3 border-b border-white/10">
                     <span className="text-[12px] font-normal uppercase tracking-wider text-[#99aabb]">
-                      RECENT SEARCHES
+                      {t('search_recent').toUpperCase()}
                     </span>
                   </div>
                   {recentSearches.length > 0 && (
@@ -873,7 +873,7 @@ export const CreateListPage: React.FC = () => {
         <div className="max-w-[950px] mx-auto px-4 pt-8 pb-8">
           <div className="border-b border-[#303844] pb-2.5 mb-7">
             <h1 className="text-[26px] font-light text-[#99aabb] tracking-normal leading-tight">
-              {t('create_list_title')}
+              {isEditing ? t('edit_list_title') : t('create_list_title')}
             </h1>
           </div>
 
@@ -939,7 +939,7 @@ export const CreateListPage: React.FC = () => {
                     {t('create_list_lbl_who_can_view')}
                   </label>
                   <span
-                    title="Control whether your list is visible to everyone or only to you."
+                    title={t('create_list_who_can_view_hint')}
                     className="w-[14px] h-[14px] rounded-full bg-[#556677] text-[#14181c] text-[10px] font-extrabold inline-flex items-center justify-center cursor-help select-none"
                   >
                     ?
@@ -1009,12 +1009,14 @@ export const CreateListPage: React.FC = () => {
               </div>
               {showHtmlHint && (
                 <div className="mb-2 p-2.5 rounded-[3px] bg-[#202830] border border-[#303844] text-[11px] text-[#8899aa] leading-relaxed">
-                  You can use{' '}
+                  {t('create_list_html_hint_prefix')}{' '}
                   <code className="text-white">&lt;b&gt;</code>,{' '}
                   <code className="text-white">&lt;i&gt;</code>,{' '}
                   <code className="text-white">&lt;a href=&quot;...&quot;&gt;</code>,{' '}
-                  <code className="text-white">&lt;blockquote&gt;</code> and{' '}
-                  <code className="text-white">&lt;ul&gt;/&lt;li&gt;</code> in your description.
+                  <code className="text-white">&lt;blockquote&gt;</code>{' '}
+                  {t('create_list_html_hint_and')}{' '}
+                  <code className="text-white">&lt;ul&gt;/&lt;li&gt;</code>{' '}
+                  {t('create_list_html_hint_suffix')}
                 </div>
               )}
               <textarea
@@ -1290,7 +1292,7 @@ export const CreateListPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => removeMovie(item.id)}
-                            title="Remove"
+                            title={t('create_list_remove_film')}
                             className="w-6 h-6 rounded-full bg-black/70 text-[#99aabb] hover:text-[#ff3344] flex items-center justify-center cursor-pointer"
                           >
                             <X className="w-3.5 h-3.5" />

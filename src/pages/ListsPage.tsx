@@ -30,7 +30,7 @@ export const ListsPage: React.FC = () => {
             <div className="divide-y divide-white/10 border-b border-white/10">
               {lists.map((list) => {
                 const count = list.movies.length;
-                const countLabel = `${count} ${count === 1 ? 'film' : t('home_films_word')}`;
+                const countLabel = `${count} ${count === 1 ? t('list_film_singular') : t('home_films_word')}`;
                 const previewMovies = list.movies.slice(0, 5);
 
                 return (
@@ -208,7 +208,7 @@ export const ListsPage: React.FC = () => {
                   </p>
 
                   <div className="flex items-center justify-between text-xs text-lb-muted pt-3 border-t border-lb-elevated tabular-nums">
-                    <span>{list.movies.length} {t('home_films_word')}</span>
+                    <span>{list.movies.length} {list.movies.length === 1 ? t('list_film_singular') : t('home_films_word')}</span>
                     <div className="flex items-center gap-4">
                       <span className="flex items-center gap-1">
                         <Heart className="w-3.5 h-3.5 text-lb-orange" /> {list.likesCount}

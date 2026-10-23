@@ -185,14 +185,14 @@ export const ListDetailPage: React.FC = () => {
             <div className="flex items-center">
               <button
                 type="button"
-                aria-label="Back"
+                aria-label={t('common_back')}
                 onClick={() => navigate(-1)}
                 className="min-w-[44px] min-h-[44px] -ml-2.5 flex items-center justify-center text-white active:opacity-70 cursor-pointer"
               >
                 <ArrowLeft className="w-6 h-6 stroke-[2.25]" />
               </button>
               <h1 className="text-[19px] font-bold text-white tracking-tight ml-3">
-                List
+                {t('list_header_title')}
               </h1>
             </div>
 
@@ -201,7 +201,7 @@ export const ListDetailPage: React.FC = () => {
               <div ref={sortMenuRef} className="relative">
                 <button
                   type="button"
-                  aria-label="Sort list"
+                  aria-label={t('create_list_sort_by')}
                   onClick={() => setSortMenuOpen((v) => !v)}
                   className="min-w-[44px] min-h-[44px] flex items-center justify-center text-white active:opacity-70 cursor-pointer"
                 >
@@ -220,14 +220,14 @@ export const ListDetailPage: React.FC = () => {
                 </button>
 
                 {sortMenuOpen && (
-                  <div className="absolute right-0 top-[46px] w-48 bg-[#2c3440] border border-white/15 rounded-[6px] shadow-2xl py-1.5 z-50 text-[13px] text-[#ccddee]">
+                  <div className="absolute right-0 top-[46px] w-56 bg-[#2c3440] border border-white/15 rounded-[6px] shadow-2xl py-1.5 z-50 text-[13px] text-[#ccddee]">
                     {(
                       [
-                        { key: 'default', label: 'List order' },
-                        { key: 'reverse', label: 'Reverse order' },
-                        { key: 'title', label: 'Film name' },
-                        { key: 'newest', label: 'Release date (newest)' },
-                        { key: 'oldest', label: 'Release date (oldest)' },
+                        { key: 'default', label: t('list_sort_default') },
+                        { key: 'reverse', label: t('create_list_sort_reverse') },
+                        { key: 'title', label: t('create_list_sort_name') },
+                        { key: 'newest', label: t('create_list_sort_newest') },
+                        { key: 'oldest', label: t('create_list_sort_oldest') },
                       ] as const
                     ).map((opt) => (
                       <button
@@ -251,7 +251,7 @@ export const ListDetailPage: React.FC = () => {
               {/* More (⋮) Button -> abre Bottom Sheet igual ao Letterboxd */}
               <button
                 type="button"
-                aria-label="More options"
+                aria-label={t('film_more_actions')}
                 onClick={() => {
                   setSortMenuOpen(false);
                   setMoreSheetOpen(true);
@@ -272,7 +272,7 @@ export const ListDetailPage: React.FC = () => {
                 activeTab === 'films' ? 'text-white' : 'text-[#99aabb]'
               }`}
             >
-              <span>Films</span>
+              <span>{t('nav_films')}</span>
               {activeTab === 'films' && (
                 <span className="absolute bottom-0 inset-x-0 h-[3px] bg-[#00e054]" />
               )}
@@ -286,7 +286,7 @@ export const ListDetailPage: React.FC = () => {
               }`}
             >
               <span>
-                Comment{comments.length > 0 ? ` (${comments.length})` : ''}
+                {t('list_tab_comments')}{comments.length > 0 ? ` (${comments.length})` : ''}
               </span>
               {activeTab === 'comments' && (
                 <span className="absolute bottom-0 inset-x-0 h-[3px] bg-[#00e054]" />
@@ -326,7 +326,7 @@ export const ListDetailPage: React.FC = () => {
                 {/* Letterboxd View Switcher Icon (2 squares + lines) */}
                 <button
                   type="button"
-                  aria-label="Toggle view mode"
+                  aria-label={t('common_toggle_view')}
                   onClick={() =>
                     setMobileViewMode((v) => (v === 'grid' ? 'list' : 'grid'))
                   }
@@ -379,8 +379,8 @@ export const ListDetailPage: React.FC = () => {
                   />
                   <span className={likedList ? 'text-[#99aabb]' : 'text-[#667788]'}>
                     {totalLikes === 0
-                      ? 'No likes yet'
-                      : `${totalLikes} ${totalLikes === 1 ? 'like' : 'likes'}`}
+                      ? t('list_no_likes')
+                      : `${totalLikes} ${totalLikes === 1 ? t('list_like_singular') : t('home_likes_word')}`}
                   </span>
                 </button>
 
@@ -506,7 +506,7 @@ export const ListDetailPage: React.FC = () => {
           <div className="flex-1 flex flex-col justify-between p-4 pb-8">
             {comments.length === 0 ? (
               <div className="py-16 text-center text-[13px] text-[#667788]">
-                No comments yet.
+                {t('list_no_comments')}
               </div>
             ) : (
               <div className="divide-y divide-white/10 mb-4">
@@ -544,7 +544,7 @@ export const ListDetailPage: React.FC = () => {
                 type="text"
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Add a comment..."
+                placeholder={t('list_add_comment_ph')}
                 className="flex-1 bg-[#2c3440] rounded-[4px] px-3 py-2 text-[14px] text-white placeholder-[#778899] focus:outline-none"
               />
               <button
@@ -575,7 +575,7 @@ export const ListDetailPage: React.FC = () => {
                   {list.title}
                 </h3>
                 <p className="text-[13.5px] text-[#99aabb] mt-0.5 tabular-nums">
-                  {list.movies.length} {list.movies.length === 1 ? 'film' : 'films'}
+                  {list.movies.length} {list.movies.length === 1 ? t('list_film_singular') : t('home_films_word')}
                 </p>
               </div>
 
@@ -598,7 +598,7 @@ export const ListDetailPage: React.FC = () => {
                     >
                       <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
                     </svg>
-                    <span className="text-[15px] font-normal">Delete</span>
+                    <span className="text-[15px] font-normal">{t('list_action_delete')}</span>
                   </button>
                 )}
 
@@ -619,7 +619,7 @@ export const ListDetailPage: React.FC = () => {
                     >
                       <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z" />
                     </svg>
-                    <span className="text-[15px] font-normal">Edit</span>
+                    <span className="text-[15px] font-normal">{t('list_action_edit')}</span>
                   </button>
                 )}
 
@@ -639,7 +639,7 @@ export const ListDetailPage: React.FC = () => {
                   >
                     <path d="M7 19h10V4H7v15zm-5-2h4V6H2v11zM18 6v11h4V6h-4z" />
                   </svg>
-                  <span className="text-[15px] font-normal">View in carousel</span>
+                  <span className="text-[15px] font-normal">{t('list_view_carousel')}</span>
                 </button>
 
                 <button
@@ -648,7 +648,7 @@ export const ListDetailPage: React.FC = () => {
                   className="w-full px-6 py-3 flex items-center gap-5 text-[#99aabb] hover:text-white active:bg-white/5 cursor-pointer text-left"
                 >
                   <Share2 className="w-5 h-5 shrink-0" />
-                  <span className="text-[15px] font-normal">Share</span>
+                  <span className="text-[15px] font-normal">{t('share')}</span>
                 </button>
               </div>
             </div>
@@ -664,12 +664,12 @@ export const ListDetailPage: React.FC = () => {
                   {list.title}
                 </h3>
                 <p className="text-[12px] text-[#99aabb] tabular-nums">
-                  {list.movies.length} {list.movies.length === 1 ? 'film' : 'films'}
+                  {list.movies.length} {list.movies.length === 1 ? t('list_film_singular') : t('home_films_word')}
                 </p>
               </div>
               <button
                 type="button"
-                aria-label="Close carousel"
+                aria-label={t('list_close_carousel')}
                 onClick={() => setCarouselOpen(false)}
                 className="w-10 h-10 flex items-center justify-center text-white cursor-pointer"
               >
@@ -726,7 +726,7 @@ export const ListDetailPage: React.FC = () => {
         {/* Toast sutil de link copiado */}
         {shareCopied && (
           <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-[#2c3440] border border-white/15 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-xl">
-            Link copied
+            {t('list_link_copied')}
           </div>
         )}
 
@@ -800,7 +800,7 @@ export const ListDetailPage: React.FC = () => {
                   </div>
                 )}
                 <span className="text-white font-semibold">{list.author.displayName}</span>
-                <span>• {list.movies.length} {t('home_films_word')}</span>
+                <span>• {list.movies.length} {list.movies.length === 1 ? t('list_film_singular') : t('home_films_word')}</span>
               </div>
 
               <p className="text-xs sm:text-sm text-lb-white leading-relaxed pt-2">
