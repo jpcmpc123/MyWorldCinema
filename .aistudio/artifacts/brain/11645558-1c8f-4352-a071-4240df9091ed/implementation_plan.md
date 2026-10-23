@@ -1,62 +1,34 @@
-# Backdrop Mobile Sem Degradê no Topo e Integrado à Barra de Horas (Edge-to-Edge)
+# Plano de Implementação: Modo Carrossel Suave (Catálogo/Filtros e Listas)
 
-Remover completamente qualquer degradê ou escurecimento na parte superior do backdrop no celular e configurar o layout mobile em tela cheia (*edge-to-edge*) para que a imagem do backdrop suba limpa até o topo da tela, por trás da barra de horas e notificações, exatamente como na referência da Imagem 1, mantendo o computador (desktop) inalterado.
+## Objetivo
+Adicionar o botão de **Carrossel** ao lado do botão de **Filtros** no cabeçalho mobile das páginas de catálogo/resultados (`BrowseResultsPage`) — deixando apenas os dois ícones à direita do título, exatamente como nos prints — e implementar o visualizador de **Carrossel em Tela Cheia** ultra-suave com fundo desfocado dinâmico e barra inferior de 4 ações (**Watch**, **Like**, **Rate**, **Watchlist**), atualizando também o carrossel existente nos 3 pontinhos das **Listas** (`ListDetailPage`).
 
-## User Review & Critical Decisions
+---
 
-> [!IMPORTANT]
-> Decisões confirmadas pelas suas respostas:
+## Alterações Planejadas
 
-- **Zero degradê ou efeito no topo do backdrop (Confirmado)**: O degradê preto superior (`to bottom, #000000 ...`) que havia sido aplicado no topo do backdrop mobile será totalmente removido. A parte superior da imagem ficará 100% limpa e sem efeito.
-- **Nenhum escurecimento na parte superior (Confirmado)**: O backdrop manterá apenas a fusão inferior com o fundo `#14181c` (onde entram o título e o pôster), deixando o topo da fotografia com brilho e cores originais.
-- **Escopo exclusivo no celular (Confirmado)**: Todas as alterações serão aplicadas estritamente na visualização mobile (`max-width: 767px` / PWA mobile), sem tocar no layout do computador (`>= 768px`).
+### 1. Novo Componente Reutilizável de Carrossel (`src/components/mobile/PosterCarouselModal.tsx`)
+- **Fundo Dinâmico Desfocado**:
+  - Exibe o pôster do filme/série ativo ampliado e com desfoque suave (`blur-2xl scale-125 opacity-55`) sobre fundo escuro (`#14181c`), acompanhando em tempo real a troca de pôster durante o deslize.
+- **Cabeçalho Superior**:
+  - **Título** centralizado em destaque e **Ano de lançamento** logo abaixo (incluindo a posição `#1`, `#2` quando aberto a partir de uma lista ranqueada).
+  - Botão de fechar (`✕`) alinhado à direita, respeitando o `safe-area-inset-top`.
+- **Deslize Horizontal Ultra-Suave (Swipe Track)**:
+  - Carrossel horizontal nativo com aceleração de hardware (`snap-x snap-mandatory overflow-x-auto no-scrollbar`) e espaçamento lateral (`px-[12vw] gap-4`) que mantém o pôster principal centralizado e mostra as bordas dos pôsteres vizinhos durante o movimento.
+  - Cálculo instantâneo do item ativo via `requestAnimationFrame` no evento de rolagem para atualizar título, ano, fundo desfocado e status dos botões sem atraso.
+  - Toque no pôster central abre a página de detalhes do filme ou série (`/film/:id` ou `/tv/:id`).
+  - Carregamento automático de mais itens quando o usuário se aproxima do final da lista no catálogo (`onReachEnd`).
+- **Barra Inferior com 4 Ações Rápidas**:
+  1. **Watch (Assistido)**: Ícone de olho (`Eye`), fica verde (`#00e054`) quando marcado como assistido (`toggleWatched`).
+  2. **Like (Curtir)**: Ícone de coração (`Heart`), fica laranja (`#ff8000`) quando curtido (`toggleLikeMovie`).
+  3. **Rate (Avaliar)**: Ícone de estrela (`Star`), exibe a nota atual ou abre seletor rápido de estrelas (0.5 a 5 estrelas com suporte a meia estrela) logo acima da barra para avaliar instantaneamente (`setMovieRating`).
+  4. **Watchlist**: Ícone de relógio com selo `+` quando fora da Watchlist e relógio azul preenchido (`#40bcf4`) com selo `-` quando adicionado à Watchlist (`toggleWatchlist`), idêntico aos prints enviados.
 
-## 1. Overview & Core Concept
+### 2. Cabeçalho Mobile do Catálogo e Filtros (`src/pages/BrowseResultsPage.tsx`)
+- Na barra superior mobile, manter à direita do título **apenas**:
+  1. **Botão de Carrossel** (ícone de card central maior ladeado por dois cards menores).
+  2. **Botão de Filtros** (ícone de 3 linhas horizontais em formato de funil, com indicador verde quando houver filtros ativos).
+- Conectar o botão de Carrossel ao novo `<PosterCarouselModal />`, passando os filmes/séries filtrados atuais e carregando mais páginas automaticamente ao deslizar até o fim.
 
-- **O que será feito**:
-  1. **Remoção total do degradê escuro no topo do backdrop mobile**: Na máscara `.backdrop-wrapper > .backdropmask:before` para telas mobile (`max-width: 767px`), será removida a camada `linear-gradient(to bottom, #000000 0%, ...)`, preservando apenas o degradê da base (`to top, #14181c ...`).
-  2. **Integração com a barra de horas e notificações (Edge-to-Edge Mobile)**:
-     - Configurar a barra de status do PWA mobile para modo translúcido/transparente (`apple-mobile-web-app-status-bar-style="black-translucent"` e `theme-color` transparente nas páginas de filme e série no celular) junto com `viewport-fit=cover`.
-     - Garantir que o container do backdrop nas páginas de Filme e Série comece no limite absoluto do topo da tela (`top: 0`, cobrindo inclusive a área `env(safe-area-inset-top, 0px)` da barra de horas e notificações), posicionando os botões flutuantes de voltar (`←`) e menu (`⋮`) logo abaixo da área segura das horas.
-     - Ativar também o modo *edge-to-edge* com barra de status transparente na configuração Android do projeto para que a imagem ocupe toda a faixa atrás do relógio e ícones de notificação.
-
-## 2. User Experience & Visual Design
-
-- **Topo do Backdrop Limpo (Como na Imagem 1)**:
-  - Ao abrir qualquer página de filme (`/film/:id`) ou série (`/tv/:id`) no celular, a imagem do backdrop aparece nítida e sem nenhuma faixa ou sombra preta artificial no topo.
-  - A imagem se estende até a borda superior da tela em dispositivos com suporte a *edge-to-edge* (`viewport-fit=cover`), enquanto a base do backdrop continua se fundindo suavemente na cor `#14181c` atrás do título e do pôster.
-- **Botões Flutuantes (`←` e `⋮`)**:
-  - Os dois botões circulares continuam sobre o backdrop no celular, respeitando automaticamente o espaçamento da barra de horas (`env(safe-area-inset-top)`) quando o conteúdo desenha por trás das notificações.
-
-## 3. Key Product Decisions & Trade-Offs
-
-- **Decisão 1: Máscara Mobile Apenas na Base**
-  - *Abordagem Escolhida*: Usar exclusivamente `linear-gradient(to top, #14181c 0%, #14181c 3%, rgba(20, 24, 28, 0.9) 10%, rgba(20, 24, 28, 0.55) 20%, rgba(20, 24, 28, 0.2) 32%, transparent 42%)` em `@media (max-width: 767px)`.
-  - *Por quê*: Elimina qualquer escurecimento ou linha escura no topo da foto, mantendo a transição suave apenas na parte inferior onde começa o texto do filme.
-- **Decisão 2: Barra de Status Transparente Dinâmica nas Rotas de Detalhe**
-  - *Abordagem Escolhida*: Nas rotas `/film/:id` e `/tv/:id` no celular, atualizar dinamicamente as metatags `theme-color` para transparente e configurar `black-translucent`, restaurando `#000000` nas demais telas que possuem cabeçalho preto sólido.
-  - *Por quê*: Permite que o navegador/PWA mobile não pinte um bloco preto sólido separado quando em modo *edge-to-edge*, mantendo a barra superior preta nas telas de catálogo e busca.
-
-## 4. Technical Architecture & Data Strategy
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                   Visualização Mobile (< 768px)                      │
-│       (Desktop >= 768px permanece 100% inalterado)                   │
-└──────────────────────────────────┬───────────────────────────────────┘
-                                   │
-                                   ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│            Páginas de Detalhe (/film/:id e /tv/:id)                  │
-│  1. Meta theme-color transparente + status-bar black-translucent     │
-│  2. Backdrop ancorado no topo absoluto (sem degradê no topo)         │
-│  3. Botões flutuantes (← e ⋮) posicionados abaixo da safe-area-top   │
-└──────────────────────────────────┬───────────────────────────────────┘
-                                   │
-                                   ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                 Máscara CSS (.backdropmask:before)                   │
-│  • Topo (0% -> 58%): 100% Transparente (nenhum escurecimento)        │
-│  • Base (58% -> 100%): Fusão suave para #14181c atrás do título      │
-└──────────────────────────────────────────────────────────────────────┘
-```
+### 3. Atualização do Carrossel nas Listas (`src/pages/ListDetailPage.tsx`)
+- Substituir o modal de carrossel antigo acionado pela opção **"Ver em carrossel"** no menu de 3 pontinhos (`⋮`) pelo novo `<PosterCarouselModal />`, garantindo o mesmo visual com fundo desfocado e os 4 botões de ação na parte inferior.

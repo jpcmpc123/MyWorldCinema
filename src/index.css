@@ -1062,5 +1062,7 @@ header:not(:hover):not(:focus-within) > .site-header-bg {
   transform: scale(0.92);
 }
 
-
-
+/* Oculta a barra de navegação inferior quando o carrossel de pôsteres estiver aberto */
+body[data-carousel-open="true"] .bottom-nav {
+  display: none !important;
+}

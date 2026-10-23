@@ -15,6 +15,7 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { tmdb } from '../services/tmdb';
 import { useLanguage } from '../i18n/LanguageContext';
+import { PosterCarouselModal } from '../components/mobile/PosterCarouselModal';
 
 interface ListComment {
   id: string;
@@ -656,72 +657,17 @@ export const ListDetailPage: React.FC = () => {
         )}
 
         {/* Visualização em Carrossel (View in carousel) */}
-        {carouselOpen && (
-          <div className="fixed inset-0 z-50 bg-black/95 flex flex-col">
-            <header className="h-[56px] px-4 flex items-center justify-between shrink-0">
-              <div className="min-w-0">
-                <h3 className="text-[16px] font-bold text-white truncate">
-                  {list.title}
-                </h3>
-                <p className="text-[12px] text-[#99aabb] tabular-nums">
-                  {list.movies.length} {list.movies.length === 1 ? t('list_film_singular') : t('home_films_word')}
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label={t('list_close_carousel')}
-                onClick={() => setCarouselOpen(false)}
-                className="w-10 h-10 flex items-center justify-center text-white cursor-pointer"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </header>
-
-            <div className="flex-1 flex items-center overflow-x-auto snap-x snap-mandatory px-8 gap-5">
-              {sortedMovies.map(({ movie: m, rank }) => {
-                const year = m.release_date?.slice(0, 4) || '';
-                const posterUrl = m.poster_path
-                  ? tmdb.getImageUrl(m.poster_path, 'w500')
-                  : null;
-                return (
-                  <Link
-                    key={m.id}
-                    to={`/film/${m.id}`}
-                    onClick={() => setCarouselOpen(false)}
-                    className="snap-center shrink-0 w-[76vw] max-w-[300px] flex flex-col items-center text-center"
-                  >
-                    <div className="relative w-full aspect-[2/3] rounded-lg overflow-hidden border border-white/15 bg-[#1c2228] shadow-2xl">
-                      {posterUrl ? (
-                        <img
-                          src={posterUrl}
-                          alt={m.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[#556677]">
-                          <Film className="w-10 h-10" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-4 space-y-1">
-                      {list.isRanked && (
-                        <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full bg-[#2c3440] border border-[#445566] text-[12px] font-bold text-[#99aabb] tabular-nums">
-                          #{rank}
-                        </span>
-                      )}
-                      <h4 className="text-[17px] font-bold text-white leading-snug">
-                        {m.title}
-                      </h4>
-                      {year && (
-                        <p className="text-[13px] text-[#778899] tabular-nums">{year}</p>
-                      )}
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        <PosterCarouselModal
+          open={carouselOpen}
+          items={sortedMovies.map(({ movie: m, rank }) => ({
+            id: m.id,
+            title: m.title,
+            poster_path: m.poster_path,
+            release_date: m.release_date,
+            rank: list.isRanked ? rank : undefined,
+          }))}
+          onClose={() => setCarouselOpen(false)}
+        />
 
         {/* Toast sutil de link copiado */}
         {shareCopied && (

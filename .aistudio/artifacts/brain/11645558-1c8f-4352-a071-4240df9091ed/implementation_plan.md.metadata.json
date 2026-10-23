@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de implementação para remover qualquer degradê ou escurecimento no topo do backdrop no celular e estender o backdrop por trás da barra de status (horas e notificações) no modo edge-to-edge mobile.",
-  "updatedAt":  "2026-10-23T20:40:48.012871183Z",
+  "summary":  "Plano de implementação do botão de Carrossel no cabeçalho mobile das páginas de catálogo/filtros e do novo modo Carrossel em tela cheia com fundo desfocado e barra de 4 ações (Watch, Like, Rate, Watchlist), aplicado também às Listas.",
+  "updatedAt":  "2026-10-23T21:09:02.745230381Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

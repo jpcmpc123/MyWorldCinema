@@ -15,6 +15,7 @@ import { tmdb, type TMDBMovie, type TMDBMovieDetails } from '../services/tmdb';
 import { PosterCard } from '../components/PosterCard';
 import { useApp } from '../context/AppContext';
 import { FiltersModal, type FiltersDraft } from '../components/mobile/FiltersModal';
+import { PosterCarouselModal } from '../components/mobile/PosterCarouselModal';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface GridItem {
@@ -148,8 +149,9 @@ export const BrowseResultsPage: React.FC = () => {
   const initialItemsRef = useRef<TMDBMovie[] | null>(locationState?.initialItems ?? null);
   const initialParamsKeyRef = useRef<string>(searchParams.toString());
 
-  const [viewMode, setViewMode] = useState<'grid' | 'cards'>('grid');
+  const [viewMode] = useState<'grid' | 'cards'>('grid');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [carouselOpen, setCarouselOpen] = useState(false);
   const [items, setItems] = useState<GridItem[]>(() => {
     if (locationState?.initialItems?.length) {
       const isTvInit = (searchParams.get('type') || 'movie') === 'tv';
@@ -610,6 +612,18 @@ export const BrowseResultsPage: React.FC = () => {
         return true;
       }),
     [items, watchedFilter, watchlistFilter, backdropFilter, isMovieWatched, isMovieInWatchlist],
+  );
+
+  const carouselItems = useMemo(
+    () =>
+      visible.map(({ movie, tv }) => ({
+        id: movie.id,
+        title: movie.title,
+        poster_path: movie.poster_path,
+        release_date: movie.release_date,
+        tv,
+      })),
+    [visible],
   );
 
   const filterMovieList = useCallback(
@@ -1200,24 +1214,44 @@ export const BrowseResultsPage: React.FC = () => {
             </button>
             <h1 className="text-lg font-bold text-white truncate">{title}</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 shrink-0">
             <button
-              onClick={() => setViewMode((m) => (m === 'grid' ? 'cards' : 'grid'))}
-              aria-label={t('common_toggle_view')}
-              className="text-white"
+              type="button"
+              onClick={() => setCarouselOpen(true)}
+              disabled={visible.length === 0}
+              aria-label={t('list_view_carousel')}
+              className="w-9 h-9 flex items-center justify-center text-[#d8e0e8] active:text-white disabled:opacity-40 cursor-pointer"
             >
-              {viewMode === 'grid' ? (
-                <ListIcon className="w-5 h-5" />
-              ) : (
-                <LayoutGrid className="w-5 h-5" />
-              )}
+              <svg
+                viewBox="0 0 24 24"
+                className="w-[22px] h-[22px]"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <rect x="7" y="4" width="10" height="16" rx="1.8" />
+                <rect x="2" y="6.5" width="3.5" height="11" rx="1.2" />
+                <rect x="18.5" y="6.5" width="3.5" height="11" rx="1.2" />
+              </svg>
             </button>
             <button
+              type="button"
               onClick={() => setFiltersOpen(true)}
               aria-label={t('common_open_filters')}
-              className="text-white"
+              className="w-9 h-9 flex items-center justify-center text-[#d8e0e8] active:text-white cursor-pointer"
             >
-              <SlidersHorizontal className="w-5 h-5" />
+              <svg
+                viewBox="0 0 24 24"
+                className="w-[22px] h-[22px]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <line x1="4" y1="7" x2="20" y2="7" />
+                <line x1="7" y1="12" x2="17" y2="12" />
+                <line x1="10" y1="17" x2="14" y2="17" />
+              </svg>
             </button>
           </div>
         </header>
@@ -1272,6 +1306,13 @@ export const BrowseResultsPage: React.FC = () => {
         initial={initialDraft}
         onClose={() => setFiltersOpen(false)}
         onApply={applyFilters}
+      />
+
+      <PosterCarouselModal
+        open={carouselOpen}
+        items={carouselItems}
+        onClose={() => setCarouselOpen(false)}
+        onReachEnd={loadMore}
       />
     </div>
   );
