@@ -154,9 +154,12 @@ body,
 }
 
 /* Reserva o espaço da barra de rolagem mesmo em páginas curtas, para que
-   Filmes/Séries (com scroll) e Críticas/Listas (sem scroll) tenham a mesma largura útil */
+   Filmes/Séries (com scroll) e Críticas/Listas (sem scroll) tenham a mesma largura útil.
+   overscroll-behavior: none impede que o efeito elástico do Android/iOS estique
+   a barra fixa de baixo (.bottom-nav) ou o cabeçalho ao puxar a tela com o dedo. */
 html {
   scrollbar-gutter: stable;
+  overscroll-behavior: none;
 }
 
 body {
@@ -170,6 +173,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
   position: relative;
+  overscroll-behavior: none;
 }
 
 
@@ -986,6 +990,9 @@ header:not(:hover):not(:focus-within) > .site-header-bg {
   background-color: var(--lb-bottom-bar) !important;
   border-top: none !important;
   height: 60px;
+  min-height: 60px;
+  max-height: 60px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-around;
@@ -993,6 +1000,16 @@ header:not(:hover):not(:focus-within) > .site-header-bg {
      content-box mantém os 60px de altura ÚTEIS para os ícones. */
   padding: 0 8px env(safe-area-inset-bottom, 0px);
   box-sizing: content-box;
+  /* Trava total contra puxão/esticamento (overscroll stretch) no celular */
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout style;
 }
 
 .bottom-nav-item {
@@ -1001,10 +1018,13 @@ header:not(:hover):not(:focus-within) > .site-header-bg {
   justify-content: center;
   width: 64px;
   height: 34px;
+  flex-shrink: 0;
   border-radius: 9999px;
   background-color: transparent;
   color: var(--lb-icon-inactive);
   transition: background-color 0.2s ease, color 0.2s ease;
+  touch-action: none;
+  -webkit-user-drag: none;
 }
 
 .bottom-nav-item.active {
@@ -1019,9 +1039,12 @@ header:not(:hover):not(:focus-within) > .site-header-bg {
   justify-content: center;
   width: 64px;
   height: 34px;
+  flex-shrink: 0;
   background-color: transparent;
   border: none;
   cursor: pointer;
+  touch-action: none;
+  -webkit-user-drag: none;
 }
 
 .bottom-nav-add-btn {

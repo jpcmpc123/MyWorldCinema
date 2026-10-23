@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Layers, Search, Plus, Zap, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -18,6 +18,21 @@ export const BottomNav: React.FC = () => {
   const { pathname } = useLocation();
   // Se a foto falhar (rede/URL inválida) ou não existir, cai no ícone de usuário
   const [avatarError, setAvatarError] = useState(false);
+  const navRef = useRef<HTMLElement | null>(null);
+
+  // Bloqueia arrasto/puxão vertical ou horizontal sobre a barra inferior no celular
+  // para que o navegador nunca aplique efeito de esticar (overscroll stretch) nela.
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      el.removeEventListener('touchmove', onTouchMove);
+    };
+  }, [pathname]);
 
   // Mesma lógica de exibição do Header
   const displayUsername = isAuthenticated && profile ? profile.username : user.username;
@@ -50,8 +65,9 @@ export const BottomNav: React.FC = () => {
 
   return (
     <nav
+      ref={navRef}
       aria-label={t('nav_main')}
-      className="bottom-nav fixed bottom-0 inset-x-0 z-50 md:hidden"
+      className="bottom-nav fixed bottom-0 inset-x-0 z-50 md:hidden select-none"
     >
       {/* 1. Home / Catálogo */}
       <Link to="/" aria-label={t('nav_home')} className={item(isHomeActive)}>
