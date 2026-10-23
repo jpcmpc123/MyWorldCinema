@@ -74,6 +74,7 @@ export function getRequiredFilmImageUrls(
   isMobile: boolean,
   override?: { poster?: string; backdrop?: string },
   fromPersonProfilePath?: string | null,
+  extraAvatarUrls?: (string | null | undefined)[],
 ): string[] {
   if (!movie) return [];
   const urls = new Set<string>();
@@ -86,9 +87,6 @@ export function getRequiredFilmImageUrls(
   if (rawBackdrop) {
     const hdBackdrop = getHdBackdropUrl(rawBackdrop);
     const fastBackdrop = getFastBackdropUrl(rawBackdrop);
-    // Se a versão Ultra-HD (original) já estiver no cache, usa ela direto;
-    // caso contrário, exige a versão HD w1280 (1280x720, ~110KB) para abertura instantânea
-    // enquanto o Backdrop decodifica a versão original 1080p/4K em segundo plano.
     const activeBackdrop = isImageUrlPreloaded(hdBackdrop) ? hdBackdrop : fastBackdrop;
     if (activeBackdrop) urls.add(activeBackdrop);
   }
@@ -103,16 +101,10 @@ export function getRequiredFilmImageUrls(
       urls.add(tmdb.getProfileUrl(fromPersonProfilePath, 'w185'));
     }
     if (movie.credits?.cast?.length) {
-      const initialCast = movie.credits.cast.slice(0, 4);
+      const initialCast = movie.credits.cast.slice(0, 10);
       for (const actor of initialCast) {
         if (actor.profile_path) {
           urls.add(tmdb.getProfileUrl(actor.profile_path, 'w185'));
-        }
-      }
-      // Demais fotos do elenco precarregam em segundo plano sem travar a tela
-      for (const actor of movie.credits.cast.slice(4, 10)) {
-        if (actor.profile_path) {
-          void preloadSingleImage(tmdb.getProfileUrl(actor.profile_path, 'w185'));
         }
       }
     }
@@ -121,7 +113,9 @@ export function getRequiredFilmImageUrls(
     const countryData =
       providers?.US || providers?.BR || (providers ? Object.values(providers)[0] : null);
     if (countryData) {
-      const allProviders = [...(countryData.flatrate || []), ...(countryData.rent || [])].slice(0, 5);
+      const allProviders = [...(countryData.flatrate || []), ...(countryData.rent || [])]
+        .filter((item, index, self) => index === self.findIndex((p) => p.provider_id === item.provider_id))
+        .slice(0, 5);
       for (const p of allProviders) {
         if (p.logo_path) {
           urls.add(tmdb.getImageUrl(p.logo_path, 'w92'));
@@ -130,34 +124,29 @@ export function getRequiredFilmImageUrls(
     }
   }
 
-  // Pôsteres iniciais de Filmes Relacionados (coleção) e Semelhantes:
-  // No celular, usa w185 (~15KB) e faz o aquecimento em segundo plano para não bloquear o pôster principal
+  // Pôsteres de Filmes Relacionados (coleção) e Semelhantes visíveis na tela
   const posterSize = isMobile ? 'w185' : 'w342';
   const related = (movie.collection_parts || [])
     .filter((item) => item.poster_path && item.id !== movie.id)
-    .slice(0, 6);
+    .slice(0, isMobile ? 10 : 6);
   for (const item of related) {
     if (item.poster_path) {
-      const u = tmdb.getImageUrl(item.poster_path, posterSize);
-      if (isMobile) {
-        void preloadSingleImage(u);
-      } else {
-        urls.add(u);
-      }
+      urls.add(tmdb.getImageUrl(item.poster_path, posterSize));
     }
   }
 
   const similar = (movie.similar?.results || [])
     .filter((item) => item.poster_path)
-    .slice(0, 6);
+    .slice(0, isMobile ? 10 : 6);
   for (const item of similar) {
     if (item.poster_path) {
-      const u = tmdb.getImageUrl(item.poster_path, posterSize);
-      if (isMobile) {
-        void preloadSingleImage(u);
-      } else {
-        urls.add(u);
-      }
+      urls.add(tmdb.getImageUrl(item.poster_path, posterSize));
+    }
+  }
+
+  if (extraAvatarUrls) {
+    for (const avatar of extraAvatarUrls) {
+      if (avatar) urls.add(avatar);
     }
   }
 
@@ -167,6 +156,8 @@ export function getRequiredFilmImageUrls(
 function areAllUrlsLoaded(urls: string[]): boolean {
   return urls.every((u) => isImageUrlPreloaded(u));
 }
+
+let hasCompletedFirstDetailVerification = false;
 
 export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: boolean }> = ({
   isTvRoute,
@@ -210,15 +201,23 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     return null;
   }, [movieId, isTv]);
 
+  const extraAvatarUrls = useMemo(() => {
+    const revAvatars = reviews
+      .filter((r) => r.movieId === movieId)
+      .map((r) => r.author.avatarUrl);
+    return [profile?.avatar_url, ...revAvatars];
+  }, [reviews, movieId, profile?.avatar_url]);
+
   const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => cachedDetails);
   const [loading, setLoading] = useState<boolean>(() => !cachedDetails);
   const [assetsReady, setAssetsReady] = useState<boolean>(() => {
-    if (!cachedDetails) return false;
+    if (!cachedDetails || !hasCompletedFirstDetailVerification) return false;
     const urls = getRequiredFilmImageUrls(
       cachedDetails,
       isMobile,
       movieOverrides[movieId],
       fromPersonProfilePath,
+      extraAvatarUrls,
     );
     return areAllUrlsLoaded(urls);
   });
@@ -232,8 +231,9 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
         isMobile,
         movieOverrides[movieId],
         fromPersonProfilePath,
+        extraAvatarUrls,
       );
-      const alreadyReady = areAllUrlsLoaded(urls);
+      const alreadyReady = hasCompletedFirstDetailVerification && areAllUrlsLoaded(urls);
       if (assetsReady !== alreadyReady) setAssetsReady(alreadyReady);
     } else {
       if (movie !== null) setMovie(null);
@@ -1162,7 +1162,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {rev.author.avatarUrl ? (
-                            <img loading="lazy" decoding="async"
+                            <img loading="eager" decoding="async"
                               src={rev.author.avatarUrl}
                               alt=""
                               className="w-6 h-6 rounded-full object-cover border border-lb-elevated"
@@ -1476,6 +1476,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                         showDetails={false}
                         tv={false}
                         disableHoverActions
+                        eager
                       />
                     ))}
                   </div>
@@ -1544,6 +1545,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                         showDetails={false}
                         tv={isTv}
                         disableHoverActions
+                        eager
                       />
                     ))}
                   </div>

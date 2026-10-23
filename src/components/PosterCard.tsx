@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, Heart, MoreHorizontal, Star } from 'lucide-react';
 import { tmdb } from '../services/tmdb';
-import { preloadSingleImage } from './Backdrop';
+import { preloadSingleImage, isImageUrlPreloaded } from './Backdrop';
 import { useMovieState, useOpenActionSheet, useMovieActions } from '../context/AppContext';
 import { useLongPress } from '../hooks/useLongPress';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -132,8 +132,9 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
     Boolean(
       primarySrc &&
         (loadedPosterUrls.has(primarySrc) ||
-          (urlW185 && loadedPosterUrls.has(urlW185)) ||
-          (urlW342 && loadedPosterUrls.has(urlW342))),
+          isImageUrlPreloaded(primarySrc) ||
+          (urlW185 && (loadedPosterUrls.has(urlW185) || isImageUrlPreloaded(urlW185))) ||
+          (urlW342 && (loadedPosterUrls.has(urlW342) || isImageUrlPreloaded(urlW342)))),
     ),
   );
   const [retryCount, setRetryCount] = useState(0);
@@ -148,10 +149,12 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
     }
     const alreadyCached =
       loadedPosterUrls.has(primarySrc) ||
-      (urlW185 && loadedPosterUrls.has(urlW185)) ||
-      (urlW342 && loadedPosterUrls.has(urlW342));
+      isImageUrlPreloaded(primarySrc) ||
+      (urlW185 && (loadedPosterUrls.has(urlW185) || isImageUrlPreloaded(urlW185))) ||
+      (urlW342 && (loadedPosterUrls.has(urlW342) || isImageUrlPreloaded(urlW342)));
 
     if (alreadyCached) {
+      markPosterUrlLoaded(primarySrc);
       setIsLoaded(true);
       setHasError(false);
       return;
