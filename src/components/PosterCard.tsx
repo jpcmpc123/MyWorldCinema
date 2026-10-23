@@ -197,7 +197,6 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const currentStars = hoverStar !== null ? hoverStar : (rating ?? 0);
 
   const handlePrefetch = () => {
-    void import('../pages/FilmPage');
     if (tv) {
       tmdb.getTVDetails(movie.id).catch(() => {});
     } else {

@@ -12,6 +12,15 @@ import { useIsMobile } from './hooks/useIsMobile';
 import { tabPanelIndex, parseProfileTabRoute } from './utils/tabRoutes';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { HomePage } from './pages/HomePage';
+import { FilmPage } from './pages/FilmPage';
+import { ActorPage } from './pages/ActorPage';
+import { SearchPage } from './pages/SearchPage';
+import { CollectionPage } from './pages/CollectionPage';
+import { SeriesHubPage } from './pages/SeriesHubPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { DiaryPage } from './pages/DiaryPage';
+import { WatchlistPage } from './pages/WatchlistPage';
+import { ListsPage } from './pages/ListsPage';
 import { PullToRefresh } from './components/PullToRefresh';
 
 function parseDetailRoute(pathname: string): { type: 'movie' | 'tv'; id: number } | null {
@@ -78,42 +87,16 @@ function GlobalModals() {
   );
 }
 
-// Páginas secundárias e de detalhes com code splitting resiliente
-const FilmPage = lazyWithRetry(() => import('./pages/FilmPage'), 'FilmPage');
-const ActorPage = lazyWithRetry(() => import('./pages/ActorPage'), 'ActorPage');
-const SearchPage = lazyWithRetry(() => import('./pages/SearchPage'), 'SearchPage');
-const CollectionPage = lazyWithRetry(() => import('./pages/CollectionPage'), 'CollectionPage');
+// Páginas secundárias de menor frequência com code splitting resiliente
 const FilmsHubPage = lazyWithRetry(() => import('./pages/FilmsHubPage'), 'FilmsHubPage');
 const FilmsPage = lazyWithRetry(() => import('./pages/FilmsPage'), 'FilmsPage');
-const SeriesHubPage = lazyWithRetry(() => import('./pages/SeriesHubPage'), 'SeriesHubPage');
 const SeriesPage = lazyWithRetry(() => import('./pages/SeriesPage'), 'SeriesPage');
-const ProfilePage = lazyWithRetry(() => import('./pages/ProfilePage'), 'ProfilePage');
-const DiaryPage = lazyWithRetry(() => import('./pages/DiaryPage'), 'DiaryPage');
-const WatchlistPage = lazyWithRetry(() => import('./pages/WatchlistPage'), 'WatchlistPage');
-const ListsPage = lazyWithRetry(() => import('./pages/ListsPage'), 'ListsPage');
 const ListDetailPage = lazyWithRetry(() => import('./pages/ListDetailPage'), 'ListDetailPage');
 const CreateListPage = lazyWithRetry(() => import('./pages/CreateListPage'), 'CreateListPage');
 const AuthPage = lazyWithRetry(() => import('./pages/AuthPage'), 'AuthPage');
 const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'), 'SettingsPage');
 const BrowseDrilldownPage = lazyWithRetry(() => import('./pages/BrowseDrilldownPage'), 'BrowseDrilldownPage');
 const BrowseResultsPage = lazyWithRetry(() => import('./pages/BrowseResultsPage'), 'BrowseResultsPage');
-
-// Pré-aquece os chunks de navegação mais comuns em background após o 1º paint
-if (typeof window !== 'undefined') {
-  const warmRoutes = () => {
-    void import('./pages/FilmPage');
-    void import('./pages/SearchPage');
-    void import('./pages/ActorPage');
-  };
-  const win = window as Window & {
-    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-  };
-  if (typeof win.requestIdleCallback === 'function') {
-    win.requestIdleCallback(warmRoutes, { timeout: 2000 });
-  } else {
-    window.setTimeout(warmRoutes, 1200);
-  }
-}
 
 function PageLoader() {
   return (

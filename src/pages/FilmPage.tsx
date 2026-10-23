@@ -37,15 +37,9 @@ import {
   type IndicatorPos,
 } from '../utils/tabIndicator';
 
-const ImagePickerModal = lazy(() =>
-  import('../components/ImagePickerModal').then((m) => ({ default: m.ImagePickerModal })),
-);
-const ActionBottomSheet = lazy(() =>
-  import('../components/ActionBottomSheet').then((m) => ({ default: m.ActionBottomSheet })),
-);
-const PosterLightbox = lazy(() =>
-  import('../components/PosterLightbox').then((m) => ({ default: m.PosterLightbox })),
-);
+import { ImagePickerModal } from '../components/ImagePickerModal';
+import { ActionBottomSheet } from '../components/ActionBottomSheet';
+import { PosterLightbox } from '../components/PosterLightbox';
 
 export type TabKey = 'cast' | 'crew' | 'details' | 'genres' | 'releases';
 

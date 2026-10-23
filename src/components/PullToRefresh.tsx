@@ -13,10 +13,13 @@ const DISC_SIZE = 40;
 const INITIAL_OFFSET_Y = -44; // Escondido logo acima da borda inferior da barra preta
 const RESTING_REFRESH_Y = 16; // Posição suspensa durante o carregamento (Screenshot 3)
 const MAX_TRANSLATE_Y = 28;   // Deslocamento máximo abaixo da barra ao puxar (Screenshot 2)
-const TRIGGER_PULL_PX = 68;   // Distância amortecida necessária para disparar o refresh
+const TRIGGER_PULL_PX = 48;   // Distância amortecida natural (~85px de puxada real do dedo)
 
-function isPullToRefreshEnabled(pathname: string, username: string): boolean {
-  // Bloqueio total na aba de pesquisa (lupinha), filtros/resultados e páginas de detalhe
+function isPullToRefreshEnabled(rawPathname: string, username: string): boolean {
+  const pathname =
+    rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
+
+  // Bloqueio total na aba de pesquisa (lupinha), filtros/resultados, páginas de detalhe e aba PERFIL
   if (
     pathname === '/search' ||
     pathname.startsWith('/search/') ||
@@ -24,17 +27,31 @@ function isPullToRefreshEnabled(pathname: string, username: string): boolean {
     pathname.startsWith('/films/') ||
     pathname.startsWith('/series/') ||
     /^\/(film|tv|actor|collection)\/\d+/.test(pathname) ||
+    pathname.startsWith('/list/') ||
+    pathname === '/profile' ||
     pathname === '/settings' ||
     pathname === '/signin' ||
     pathname === '/signup'
   ) {
     return false;
   }
-  return (
-    isMainTabRoute(pathname) ||
-    parseProfileTabRoute(pathname, username) !== null ||
-    pathname === '/activity'
-  );
+
+  // Todas as 4 abas do Menu Inicial (FILMES / SÉRIES / CRÍTICAS / LISTAS)
+  if (isMainTabRoute(pathname)) {
+    return true;
+  }
+
+  // Na parte do Perfil: NÃO tem na aba PERFIL (/:username), somente em DIÁRIO, LISTAS e QUERO VER
+  const profileRoute = parseProfileTabRoute(pathname, username);
+  if (profileRoute !== null) {
+    return (
+      profileRoute.tab === 'diary' ||
+      profileRoute.tab === 'lists' ||
+      profileRoute.tab === 'watchlist'
+    );
+  }
+
+  return false;
 }
 
 function computeDefaultHeaderOffset(): number {
@@ -64,7 +81,7 @@ function measureActiveHeaderBottom(fallback: number): number {
 function hasScrolledAncestor(target: EventTarget | null): boolean {
   let el = target instanceof HTMLElement ? target : null;
   while (el && el !== document.body && el !== document.documentElement) {
-    if (el.scrollTop > 1) {
+    if (el.scrollTop > 4) {
       const style = window.getComputedStyle(el);
       const overflowY = style.overflowY;
       if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
@@ -92,6 +109,8 @@ export const PullToRefresh: React.FC = () => {
   phaseRef.current = phase;
   const pullPxRef = useRef<number>(0);
   pullPxRef.current = pullPx;
+  const enabledRouteRef = useRef<boolean>(isEnabledRoute);
+  enabledRouteRef.current = isEnabledRoute;
 
   const startXRef = useRef<number>(0);
   const startYRef = useRef<number>(0);
@@ -165,7 +184,7 @@ export const PullToRefresh: React.FC = () => {
     };
 
     const onTouchStart = (e: TouchEvent) => {
-      if (!isPullToRefreshEnabled(window.location.pathname, displayUsername)) {
+      if (!enabledRouteRef.current) {
         trackingRef.current = false;
         return;
       }
@@ -182,7 +201,7 @@ export const PullToRefresh: React.FC = () => {
         return;
       }
 
-      if (window.scrollY > 1 || hasScrolledAncestor(e.target)) {
+      if (window.scrollY > 6 || hasScrolledAncestor(e.target)) {
         trackingRef.current = false;
         return;
       }
@@ -204,38 +223,48 @@ export const PullToRefresh: React.FC = () => {
       const touch = e.touches[0];
       const dx = touch.clientX - startXRef.current;
       const dy = touch.clientY - startYRef.current;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
 
       if (!gestureClaimedRef.current) {
-        // Se rolou a página para baixo ou puxou para cima/lados, aborta o pull-to-refresh
-        if (window.scrollY > 1 || dy < -4) {
+        // Se rolou a página para baixo ou puxou para cima, deixa o scroll nativo agir
+        if (window.scrollY > 6 || dy < -3) {
           gestureRejectedRef.current = true;
           trackingRef.current = false;
           return;
         }
-        const absDx = Math.abs(dx);
-        const absDy = Math.abs(dy);
-        if (absDx > 8 && absDx > absDy * 0.85) {
-          // Swipe horizontal de abas: não interfere
+        if (absDx > 7 && absDx > absDy * 0.85) {
+          // Swipe horizontal de abas ou carrossel: não interfere
           gestureRejectedRef.current = true;
           trackingRef.current = false;
           return;
         }
-        if (dy > 9 && dy > absDx * 1.35) {
+        // IMPORTANTE (Android Chrome / WebView): em containers com `touch-action: pan-y`
+        // (.tab-viewport), precisamos chamar preventDefault() já no 1º frame de descida
+        // vertical no topo (scrollY <= 6) para o compositor não cancelar o toque!
+        if (dy > 1.5 && dy > absDx * 1.15) {
+          if (e.cancelable) {
+            e.preventDefault();
+          }
+        }
+        if (dy > 5 && dy > absDx * 1.2) {
+          if (window.scrollY > 0) {
+            window.scrollTo(0, 0);
+          }
           gestureClaimedRef.current = true;
           startYRef.current = touch.clientY;
           setPhase('pulling');
-          setPullPx(0);
-        } else {
-          return;
+          setPullPx(2);
         }
+        return;
       }
 
       const rawPull = Math.max(0, touch.clientY - startYRef.current);
-      if (rawPull > 0 && e.cancelable) {
+      if (e.cancelable) {
         e.preventDefault();
       }
       // Amortecimento elástico estilo Android SwipeRefreshLayout
-      const damped = Math.min(96, rawPull * 0.5);
+      const damped = Math.min(82, rawPull * 0.55);
       setPullPx(damped);
     };
 

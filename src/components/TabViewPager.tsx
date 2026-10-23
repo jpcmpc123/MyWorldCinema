@@ -94,6 +94,11 @@ interface DragState {
 }
 
 import { HomePage } from '../pages/HomePage';
+import { SeriesHubPage } from '../pages/SeriesHubPage';
+import { DiaryPage } from '../pages/DiaryPage';
+import { ListsPage } from '../pages/ListsPage';
+import { ProfilePage } from '../pages/ProfilePage';
+import { WatchlistPage } from '../pages/WatchlistPage';
 
 const MAIN_PANELS: {
   key: string;
@@ -101,48 +106,20 @@ const MAIN_PANELS: {
   preload?: () => void;
 }[] = [
   { key: 'films', Component: HomePage },
-  {
-    key: 'series',
-    Component: lazyWithRetry(() => import('../pages/SeriesHubPage'), 'SeriesHubPage'),
-    preload: () => void import('../pages/SeriesHubPage'),
-  },
-  {
-    key: 'reviews',
-    Component: lazyWithRetry(() => import('../pages/DiaryPage'), 'DiaryPage'),
-    preload: () => void import('../pages/DiaryPage'),
-  },
-  {
-    key: 'lists',
-    Component: lazyWithRetry(() => import('../pages/ListsPage'), 'ListsPage'),
-    preload: () => void import('../pages/ListsPage'),
-  },
+  { key: 'series', Component: SeriesHubPage },
+  { key: 'reviews', Component: DiaryPage },
+  { key: 'lists', Component: ListsPage },
 ];
 
 const PROFILE_PANELS: {
   key: string;
-  Component: React.LazyExoticComponent<React.FC>;
-  preload: () => void;
+  Component: React.ComponentType;
+  preload?: () => void;
 }[] = [
-  {
-    key: 'profile',
-    Component: lazyWithRetry(() => import('../pages/ProfilePage'), 'ProfilePage'),
-    preload: () => void import('../pages/ProfilePage'),
-  },
-  {
-    key: 'diary',
-    Component: lazyWithRetry(() => import('../pages/DiaryPage'), 'DiaryPage'),
-    preload: () => void import('../pages/DiaryPage'),
-  },
-  {
-    key: 'lists',
-    Component: lazyWithRetry(() => import('../pages/ListsPage'), 'ListsPage'),
-    preload: () => void import('../pages/ListsPage'),
-  },
-  {
-    key: 'watchlist',
-    Component: lazyWithRetry(() => import('../pages/WatchlistPage'), 'WatchlistPage'),
-    preload: () => void import('../pages/WatchlistPage'),
-  },
+  { key: 'profile', Component: ProfilePage },
+  { key: 'diary', Component: DiaryPage },
+  { key: 'lists', Component: ListsPage },
+  { key: 'watchlist', Component: WatchlistPage },
 ];
 
 /** Enquanto o chunk da aba carrega (primeira visita de perfil) */
