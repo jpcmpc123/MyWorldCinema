@@ -15,17 +15,23 @@ const RESTING_REFRESH_Y = 16; // Posição suspensa durante o carregamento (Scre
 const MAX_TRANSLATE_Y = 28;   // Deslocamento máximo abaixo da barra ao puxar (Screenshot 2)
 const TRIGGER_PULL_PX = 68;   // Distância amortecida necessária para disparar o refresh
 
-function isMediaDetailRoute(pathname: string): boolean {
-  return /^\/(film|tv)\/\d+/.test(pathname);
+function isPullToRefreshEnabled(pathname: string, username: string): boolean {
+  if (
+    pathname.startsWith('/search') ||
+    pathname.startsWith('/browse') ||
+    /^\/(film|tv|actor|collection)\/\d+/.test(pathname)
+  ) {
+    return false;
+  }
+  return (
+    isMainTabRoute(pathname) ||
+    parseProfileTabRoute(pathname, username) !== null ||
+    pathname === '/activity'
+  );
 }
 
-function computeDefaultHeaderOffset(pathname: string, username: string): number {
-  if (pathname === '/settings') return 53;
-  if (pathname === '/search') return 68;
-  if (isMainTabRoute(pathname) || parseProfileTabRoute(pathname, username) !== null) {
-    return 110;
-  }
-  return 53;
+function computeDefaultHeaderOffset(): number {
+  return 110;
 }
 
 function measureActiveHeaderBottom(fallback: number): number {
@@ -69,13 +75,11 @@ export const PullToRefresh: React.FC = () => {
   const { user } = useApp();
   const { isAuthenticated, profile } = useAuth();
   const displayUsername = isAuthenticated && profile ? profile.username : user.username;
-  const isDetailPage = isMediaDetailRoute(location.pathname);
+  const isEnabledRoute = isPullToRefreshEnabled(location.pathname, displayUsername);
 
   const [phase, setPhase] = useState<PtrPhase>('idle');
   const [pullPx, setPullPx] = useState<number>(0);
-  const [topOffset, setTopOffset] = useState<number>(() =>
-    computeDefaultHeaderOffset(location.pathname, displayUsername),
-  );
+  const [topOffset, setTopOffset] = useState<number>(() => computeDefaultHeaderOffset());
 
   const phaseRef = useRef<PtrPhase>('idle');
   phaseRef.current = phase;
@@ -88,9 +92,9 @@ export const PullToRefresh: React.FC = () => {
   const gestureClaimedRef = useRef<boolean>(false);
   const gestureRejectedRef = useRef<boolean>(false);
 
-  // Atualiza a altura da barra preta do topo ao trocar de rota (e oculta em páginas de detalhe)
+  // Atualiza a altura da barra preta do topo ao trocar de rota (e oculta na busca/detalhes)
   useEffect(() => {
-    if (isDetailPage) {
+    if (!isEnabledRoute) {
       trackingRef.current = false;
       gestureClaimedRef.current = false;
       setPhase('idle');
@@ -98,12 +102,11 @@ export const PullToRefresh: React.FC = () => {
       return;
     }
     if (!isMobile) return;
-    const def = computeDefaultHeaderOffset(location.pathname, displayUsername);
-    setTopOffset(measureActiveHeaderBottom(def));
-  }, [isMobile, isDetailPage, location.pathname, location.search, displayUsername]);
+    setTopOffset(measureActiveHeaderBottom(computeDefaultHeaderOffset()));
+  }, [isMobile, isEnabledRoute, location.pathname, location.search]);
 
   useEffect(() => {
-    if (!isMobile || isDetailPage) return;
+    if (!isMobile || !isEnabledRoute) return;
 
     const triggerRefresh = async () => {
       setPhase('refreshing');
@@ -138,7 +141,7 @@ export const PullToRefresh: React.FC = () => {
     };
 
     const onTouchStart = (e: TouchEvent) => {
-      if (isMediaDetailRoute(window.location.pathname)) {
+      if (!isPullToRefreshEnabled(window.location.pathname, displayUsername)) {
         trackingRef.current = false;
         return;
       }
@@ -160,8 +163,7 @@ export const PullToRefresh: React.FC = () => {
         return;
       }
 
-      const def = computeDefaultHeaderOffset(window.location.pathname, displayUsername);
-      setTopOffset(measureActiveHeaderBottom(def));
+      setTopOffset(measureActiveHeaderBottom(computeDefaultHeaderOffset()));
 
       const touch = e.touches[0];
       startXRef.current = touch.clientX;
@@ -244,9 +246,9 @@ export const PullToRefresh: React.FC = () => {
       window.removeEventListener('touchend', finishGesture);
       window.removeEventListener('touchcancel', finishGesture);
     };
-  }, [isMobile, isDetailPage, displayUsername]);
+  }, [isMobile, isEnabledRoute, displayUsername]);
 
-  if (!isMobile || isDetailPage || phase === 'idle') return null;
+  if (!isMobile || !isEnabledRoute || phase === 'idle') return null;
 
   // Cálculo da posição vertical:
   // - Em 'pulling': sai de -44px (escondido atrás da barra preta) até +28px abaixo da barra.
