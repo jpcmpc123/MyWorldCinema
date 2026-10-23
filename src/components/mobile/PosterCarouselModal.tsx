@@ -29,6 +29,16 @@ function formatStarString(rating: number): string {
   return '★'.repeat(full) + (half ? '½' : '');
 }
 
+// Cache em memória de imagens já pré-carregadas
+const preloadedUrls = new Set<string>();
+
+function preloadUrl(url: string | null | undefined) {
+  if (!url || preloadedUrls.has(url) || typeof Image === 'undefined') return;
+  preloadedUrls.add(url);
+  const img = new Image();
+  img.src = url;
+}
+
 export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
   open,
   items,
@@ -51,70 +61,68 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
   } = useApp();
 
   const [activeIndex, setActiveIndex] = useState(initialIndex);
-  const [dragOffsetPx, setDragOffsetPx] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false);
   const [ratePopoverOpen, setRatePopoverOpen] = useState(false);
-
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const touchStartXRef = useRef<number | null>(null);
-  const touchStartYRef = useRef<number | null>(null);
-  const touchStartTimeRef = useRef<number>(0);
-  const isDraggingHorizontallyRef = useRef<boolean | null>(null);
-  const didMoveRef = useRef<boolean>(false);
-  const animTimeoutRef = useRef<number | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
   const endTriggeredForLengthRef = useRef<number>(0);
 
+  // Obtém URL do pôster em Alta Resolução (w780)
   const getPosterUrl = useCallback(
     (item: CarouselMovieItem | undefined) => {
       if (!item) return null;
       const override = movieOverrides[item.id];
       return (
         override?.poster ||
-        (item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w342') : null)
+        (item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w780') : null)
       );
     },
     [movieOverrides],
   );
 
+  // Obtém URL para o fundo desfocado (w500 equilibrado para performance e beleza)
   const getBgUrl = useCallback(
     (item: CarouselMovieItem | undefined) => {
       if (!item) return null;
       const override = movieOverrides[item.id];
       return (
         override?.poster ||
-        (item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w185') : null)
+        (item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w500') : null)
       );
     },
     [movieOverrides],
   );
 
-  // Sincroniza o índice inicial ao abrir
+  // Sincroniza posição inicial ao abrir o carrossel
   useEffect(() => {
     if (!open) {
       setRatePopoverOpen(false);
-      setDragOffsetPx(0);
-      setIsAnimating(false);
       endTriggeredForLengthRef.current = 0;
       return;
     }
     const safeIdx = Math.max(0, Math.min(initialIndex, Math.max(0, items.length - 1)));
     setActiveIndex(safeIdx);
-    setDragOffsetPx(0);
-    setIsAnimating(false);
+
+    // Rola instantaneamente para a posição do item ativo
+    requestAnimationFrame(() => {
+      const track = trackRef.current;
+      if (!track) return;
+      track.scrollTo({
+        left: safeIdx * track.clientWidth,
+        behavior: 'instant' as ScrollBehavior,
+      });
+    });
   }, [open, initialIndex]);
 
-  // Pré-carrega de forma leve apenas o próximo pôster imediato (activeIndex + 1)
+  // Pré-carrega de forma leve os próximos 2 pôsteres para navegação imediata sem travamento
   useEffect(() => {
-    if (!open || items.length === 0 || typeof Image === 'undefined') return;
-    const nextItem = items[activeIndex + 1];
-    const nextUrl = getPosterUrl(nextItem);
-    if (nextUrl) {
-      const img = new Image();
-      img.src = nextUrl;
-    }
+    if (!open || items.length === 0) return;
+    const next1 = items[activeIndex + 1];
+    const next2 = items[activeIndex + 2];
+    if (next1) preloadUrl(getPosterUrl(next1));
+    if (next2) preloadUrl(getPosterUrl(next2));
   }, [open, activeIndex, items, getPosterUrl]);
 
-  // Oculta a barra de navegação inferior (.bottom-nav) e bloqueia o scroll da página por trás
+  // Bloqueia o scroll da página por trás e oculta a barra de navegação inferior (.bottom-nav)
   useEffect(() => {
     if (!open || typeof document === 'undefined') return;
     const prevOverflow = document.body.style.overflow;
@@ -126,23 +134,29 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
     };
   }, [open]);
 
-  // Fecha no ESC e permite navegação por setas no teclado
+  // Tecla ESC para fechar
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
       if (e.key === 'ArrowRight' && activeIndex < items.length - 1) {
-        setActiveIndex((i) => i + 1);
+        const track = trackRef.current;
+        if (track) {
+          track.scrollTo({ left: (activeIndex + 1) * track.clientWidth, behavior: 'smooth' });
+        }
       }
       if (e.key === 'ArrowLeft' && activeIndex > 0) {
-        setActiveIndex((i) => i - 1);
+        const track = trackRef.current;
+        if (track) {
+          track.scrollTo({ left: (activeIndex - 1) * track.clientWidth, behavior: 'smooth' });
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose, activeIndex, items.length]);
 
-  // Dispara carregamento de mais itens apenas quando faltar pouco para o fim
+  // Carrega mais itens do catálogo quando o usuário chega perto do final da lista
   useEffect(() => {
     if (!open || !onReachEnd || items.length === 0) return;
     if (
@@ -154,119 +168,47 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
     }
   }, [open, activeIndex, items.length, onReachEnd]);
 
+  // Listener de rolagem nativa ultra-fluido (120fps desacoplado do React via requestAnimationFrame)
+  const handleScroll = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const track = trackRef.current;
+      if (!track || track.clientWidth === 0) return;
+
+      const currentIdx = Math.round(track.scrollLeft / track.clientWidth);
+      const safeIdx = Math.max(0, Math.min(items.length - 1, currentIdx));
+
+      setActiveIndex((prev) => {
+        if (prev !== safeIdx) {
+          setRatePopoverOpen(false);
+          return safeIdx;
+        }
+        return prev;
+      });
+    });
+  }, [items.length]);
+
   useEffect(() => {
     return () => {
-      if (animTimeoutRef.current !== null) {
-        window.clearTimeout(animTimeoutRef.current);
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
       }
     };
   }, []);
 
   if (!open || items.length === 0 || typeof document === 'undefined') return null;
 
-  const safeActiveIdx = Math.min(activeIndex, items.length - 1);
-  const currentItem = items[safeActiveIdx] || items[0];
-  const prevItem = safeActiveIdx > 0 ? items[safeActiveIdx - 1] : undefined;
-  const nextItem = safeActiveIdx < items.length - 1 ? items[safeActiveIdx + 1] : undefined;
-
+  const currentItem = items[Math.min(activeIndex, items.length - 1)] || items[0];
   const currentYear = currentItem.release_date ? currentItem.release_date.slice(0, 4) : '';
+  const currentBgUrl = getBgUrl(currentItem);
+
   const isWatched = isMovieWatched(currentItem.id);
   const isLiked = isMovieLiked(currentItem.id);
   const inWatchlist = isMovieInWatchlist(currentItem.id);
   const currentRating = ratingsMap[currentItem.id] || 0;
 
-  const viewportWidth =
-    containerRef.current?.clientWidth ||
-    (typeof window !== 'undefined' ? window.innerWidth : 360);
-
-  // Progresso normalizado do arrasto (-1 ao puxar para o próximo, +1 ao puxar para o anterior)
-  const dragRatio = Math.max(-1, Math.min(1, dragOffsetPx / Math.max(1, viewportWidth)));
-  const absDragRatio = Math.abs(dragRatio);
-
-  const neighborItem = dragRatio < 0 ? nextItem : dragRatio > 0 ? prevItem : undefined;
-  const currentBgUrl = getBgUrl(currentItem);
-  const neighborBgUrl = getBgUrl(neighborItem);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length !== 1) return;
-    if (animTimeoutRef.current !== null) {
-      window.clearTimeout(animTimeoutRef.current);
-      animTimeoutRef.current = null;
-    }
-    setIsAnimating(false);
-    touchStartXRef.current = e.touches[0].clientX;
-    touchStartYRef.current = e.touches[0].clientY;
-    touchStartTimeRef.current = performance.now();
-    isDraggingHorizontallyRef.current = null;
-    didMoveRef.current = false;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (touchStartXRef.current === null || touchStartYRef.current === null) return;
-    const dx = e.touches[0].clientX - touchStartXRef.current;
-    const dy = e.touches[0].clientY - touchStartYRef.current;
-
-    if (isDraggingHorizontallyRef.current === null) {
-      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-      isDraggingHorizontallyRef.current = Math.abs(dx) >= Math.abs(dy);
-    }
-
-    if (!isDraggingHorizontallyRef.current) return;
-    if (Math.abs(dx) > 8) {
-      didMoveRef.current = true;
-    }
-
-    // Resistência elástica nas extremidades (primeiro e último pôster)
-    let effectiveDx = dx;
-    if ((safeActiveIdx === 0 && dx > 0) || (safeActiveIdx === items.length - 1 && dx < 0)) {
-      effectiveDx = dx * 0.28;
-    }
-
-    setDragOffsetPx(effectiveDx);
-  };
-
-  const finishSwipe = () => {
-    if (touchStartXRef.current === null) return;
-    const dx = dragOffsetPx;
-    const elapsed = Math.max(1, performance.now() - touchStartTimeRef.current);
-    const velocity = dx / elapsed; // px/ms
-
-    touchStartXRef.current = null;
-    touchStartYRef.current = null;
-    isDraggingHorizontallyRef.current = null;
-
-    const threshold = viewportWidth * 0.22;
-    let direction: -1 | 0 | 1 = 0;
-
-    if ((dx < -threshold || velocity < -0.35) && safeActiveIdx < items.length - 1) {
-      direction = 1; // Próximo pôster
-    } else if ((dx > threshold || velocity > 0.35) && safeActiveIdx > 0) {
-      direction = -1; // Pôster anterior
-    }
-
-    setIsAnimating(true);
-    if (direction === 0) {
-      setDragOffsetPx(0);
-      animTimeoutRef.current = window.setTimeout(() => {
-        setIsAnimating(false);
-      }, 260);
-    } else {
-      // Anima até completar 100% da largura da página e então troca o índice ativo sem piscar
-      const targetPx = direction === 1 ? -viewportWidth : viewportWidth;
-      setDragOffsetPx(targetPx);
-      setRatePopoverOpen(false);
-      animTimeoutRef.current = window.setTimeout(() => {
-        setIsAnimating(false);
-        setDragOffsetPx(0);
-        setActiveIndex((prev) =>
-          Math.max(0, Math.min(items.length - 1, prev + direction)),
-        );
-      }, 250);
-    }
-  };
-
   const handlePosterClick = (item: CarouselMovieItem) => {
-    if (didMoveRef.current) return;
     onClose();
     navigate(`${item.tv ? '/tv' : '/film'}/${item.id}`);
   };
@@ -294,59 +236,25 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
     setRatePopoverOpen(false);
   };
 
-  // Renderiza APENAS 3 painéis (anterior, atual e próximo) — super leve, zero corte de GPU!
-  const slides: Array<{ item: CarouselMovieItem; offsetPercent: number; slotKey: string }> = [];
-  if (prevItem) {
-    slides.push({ item: prevItem, offsetPercent: -100, slotKey: `prev-${prevItem.id}` });
-  }
-  slides.push({ item: currentItem, offsetPercent: 0, slotKey: `curr-${currentItem.id}` });
-  if (nextItem) {
-    slides.push({ item: nextItem, offsetPercent: 100, slotKey: `next-${nextItem.id}` });
-  }
-
   const modalContent = (
     <div
-      ref={containerRef}
       className="fixed inset-0 z-[120] bg-[#14181c] flex flex-col overflow-hidden select-none"
       role="dialog"
       aria-modal="true"
       aria-label={currentItem.title}
     >
-      {/* Fundo desfocado leve (usa apenas w185 escalado em no máximo 2 imagens, sem estourar memória da GPU) */}
+      {/* Fundo dinâmico com desfoque elegante e transição suave por CSS */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden bg-[#101418]">
         {currentBgUrl && (
           <img
-            key={`bg-curr-${currentItem.id}`}
+            key={`bg-${currentItem.id}`}
             src={currentBgUrl}
             alt=""
             aria-hidden="true"
-            style={{
-              opacity: (1 - absDragRatio) * 0.62,
-              transform: `scale(${1.22 + absDragRatio * 0.08})`,
-              transition: isAnimating
-                ? 'opacity 250ms ease-out, transform 250ms ease-out'
-                : 'opacity 180ms ease-out',
-            }}
-            className="absolute inset-0 w-full h-full object-cover blur-xl"
+            className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-60 transition-opacity duration-300 ease-out"
           />
         )}
-        {neighborBgUrl && absDragRatio > 0.01 && (
-          <img
-            key={`bg-next-${neighborItem?.id}`}
-            src={neighborBgUrl}
-            alt=""
-            aria-hidden="true"
-            style={{
-              opacity: absDragRatio * 0.62,
-              transform: `scale(${1.3 - absDragRatio * 0.08})`,
-              transition: isAnimating
-                ? 'opacity 250ms ease-out, transform 250ms ease-out'
-                : 'none',
-            }}
-            className="absolute inset-0 w-full h-full object-cover blur-xl"
-          />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/25 to-black/65" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/25 to-black/65" />
       </div>
 
       {/* Cabeçalho com Título + Ano centralizados e botão X à direita */}
@@ -380,55 +288,53 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
         </button>
       </header>
 
-      {/* Pista virtualizada de 3 painéis (anterior, atual, próximo): leve, sem corte de tile e 60fps */}
+      {/* Pista de deslize nativo a 120fps no compositor de hardware (snap-x snap-mandatory) */}
       <div
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={finishSwipe}
-        onTouchCancel={finishSwipe}
-        className="relative z-10 flex-1 overflow-hidden touch-pan-y"
+        ref={trackRef}
+        onScroll={handleScroll}
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          scrollSnapType: 'x mandatory',
+          overscrollBehaviorX: 'contain',
+        }}
+        className="relative z-10 flex-1 flex items-center overflow-x-auto snap-x snap-mandatory no-scrollbar"
       >
-        <div
-          style={{
-            transform: `translate3d(${dragOffsetPx}px, 0, 0)`,
-            transition: isAnimating
-              ? 'transform 250ms cubic-bezier(0.22, 1, 0.36, 1)'
-              : 'none',
-          }}
-          className="relative w-full h-full"
-        >
-          {slides.map(({ item, offsetPercent, slotKey }) => {
-            const posterUrl = getPosterUrl(item);
-            return (
+        {items.map((item, idx) => {
+          const posterUrl = getPosterUrl(item);
+          // Renderiza imagens apenas no range ativo para não sobrecarregar a memória do navegador
+          const isNear = Math.abs(idx - activeIndex) <= 2;
+
+          return (
+            <div
+              key={`${item.tv ? 'tv' : 'm'}-${item.id}-${idx}`}
+              data-carousel-page
+              className="snap-center snap-always shrink-0 w-full h-full flex items-center justify-center px-[9vw]"
+            >
               <div
-                key={slotKey}
-                style={{ left: `${offsetPercent}%` }}
-                className="absolute inset-y-0 w-full h-full flex items-center justify-center px-[9vw]"
+                onClick={() => handlePosterClick(item)}
+                className="relative w-full max-w-[350px] aspect-[2/3] rounded-[8px] overflow-hidden border border-white/10 bg-[#1c2228] shadow-[0_20px_50px_rgba(0,0,0,0.65)] cursor-pointer"
               >
-                <div
-                  onClick={() => handlePosterClick(item)}
-                  className="relative w-full max-w-[350px] aspect-[2/3] rounded-[6px] overflow-hidden border border-white/10 bg-[#1c2228] shadow-2xl cursor-pointer"
-                >
-                  {posterUrl ? (
-                    <img
-                      src={posterUrl}
-                      alt={item.title}
-                      draggable={false}
-                      className="w-full h-full object-cover select-none block"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center text-[#667788]">
-                      <Film className="w-10 h-10 mb-2 opacity-60" />
-                      <span className="text-xs font-semibold text-[#99aabb] line-clamp-2">
-                        {item.title}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                {posterUrl && isNear ? (
+                  <img
+                    src={posterUrl}
+                    alt={item.title}
+                    draggable={false}
+                    loading={idx === activeIndex ? 'eager' : 'lazy'}
+                    decoding="async"
+                    className="w-full h-full object-cover select-none block"
+                  />
+                ) : !posterUrl ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center text-[#667788]">
+                    <Film className="w-10 h-10 mb-2 opacity-60" />
+                    <span className="text-xs font-semibold text-[#99aabb] line-clamp-2">
+                      {item.title}
+                    </span>
+                  </div>
+                ) : null}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Popover flutuante de avaliação por estrelas (0.5 a 5.0) */}

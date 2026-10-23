@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de implementação do botão de Carrossel no cabeçalho mobile das páginas de catálogo/filtros e do novo modo Carrossel em tela cheia com fundo desfocado e barra de 4 ações (Watch, Like, Rate, Watchlist), aplicado também às Listas.",
-  "updatedAt":  "2026-10-23T21:09:02.745230381Z",
+  "summary":  "Plano de implementação para corrigir a lentidão e a baixa resolução do carrossel, restaurando o deslize nativo a 120fps no compositor da GPU e imagens de alta nitidez TMDB w780.",
+  "updatedAt":  "2026-10-23T23:36:03.898109997Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
