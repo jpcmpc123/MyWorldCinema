@@ -697,7 +697,7 @@ const pt: Record<TranslationKey, string> = {
   find_a_series: 'Buscar uma série',
   directed_by: 'Dirigido por',
   created_by: 'Criado por',
-  action_watch: 'Assistir',
+  action_watch: 'Assistido',
   action_watched: 'Assistido',
   action_like: 'Curtir',
   action_liked: 'Curtido',

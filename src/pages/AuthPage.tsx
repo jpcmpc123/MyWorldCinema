@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LogIn, UserPlus, AlertCircle, Loader2, UserCheck } from 'lucide-react';
+import { LogIn, UserPlus, AlertCircle, Loader2 } from 'lucide-react';
 
 const GoogleIcon: React.FC = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
@@ -16,7 +16,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 export const AuthPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signIn, signUp, signInWithGoogle, signInAsTestUser, isAuthenticated } = useAuth();
+  const { signIn, signUp, signInWithGoogle, isAuthenticated } = useAuth();
   const { t } = useLanguage();
 
   const isSignUpRoute = location.pathname === '/signup';
@@ -98,24 +98,6 @@ export const AuthPage: React.FC = () => {
           <GoogleIcon />
           <span>{t('auth_google')}</span>
         </button>
-
-        {/* Conta de Teste Local (Sem importar pro GitHub nem precisar de Supabase) */}
-        <div className="pt-1">
-          <button
-            type="button"
-            onClick={() => {
-              signInAsTestUser();
-              navigate('/');
-            }}
-            className="w-full flex items-center justify-center gap-2 bg-[#1c2228] hover:bg-[#252d36] border border-lb-green/60 hover:border-lb-green text-lb-green hover:text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm transition-all cursor-pointer shadow-[0_0_15px_rgba(0,224,84,0.15)]"
-          >
-            <UserCheck className="w-4 h-4 stroke-[2.5]" />
-            <span>Entrar com Conta de Teste (Local)</span>
-          </button>
-          <p className="text-[10px] text-center text-lb-muted mt-1.5">
-            Conta teste com perfil pronto (@teste) — 100% no navegador sem afetar o GitHub
-          </p>
-        </div>
 
         {/* Divider */}
         <div className="flex items-center gap-3 text-[11px] uppercase font-bold text-lb-muted">

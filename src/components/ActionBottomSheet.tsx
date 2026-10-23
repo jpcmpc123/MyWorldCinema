@@ -241,7 +241,9 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
             }`}
           >
             <Eye key={`w${bump}`} className={`w-7 h-7 ${watched && bump > 0 ? 'mw-icon-pop' : ''}`} />
-            <span className="text-[10px] uppercase tracking-wide text-lb-text">{t('action_watch')}</span>
+            <span className="text-[10px] uppercase tracking-wide text-lb-text">
+              {watched ? t('action_watched') : t('action_watch')}
+            </span>
           </button>
           <button
             onClick={() => {
