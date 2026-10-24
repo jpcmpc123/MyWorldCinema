@@ -685,8 +685,6 @@ button, a, [role="button"] {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background-color: #1c2228;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 90px 135px;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   transform: translateZ(0);
@@ -698,10 +696,8 @@ button, a, [role="button"] {
   display: block;
 }
 
-/* Native CSS Virtualization & GPU Layer Promotion for 120Hz grids & lists */
+/* Correção da classe de otimização do PosterCard sem inflar altura de flex/grid */
 .poster-card-optimized {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 160px 240px;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   transform: translateZ(0);
@@ -709,13 +705,15 @@ button, a, [role="button"] {
 
 .diary-row-optimized {
   content-visibility: auto;
-  contain-intrinsic-size: auto 320px 88px;
+  contain-intrinsic-size: auto 72px;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   transform: translateZ(0);
 }
 
+/* Garantia nos trilhos horizontais */
 [data-h-scroll="true"] {
+  align-items: flex-start;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
 }
@@ -980,6 +978,7 @@ header:not(:hover):not(:focus-within) > .site-header-bg {
 
 .similar-carousel {
   display: flex;
+  align-items: flex-start;
   gap: 8px;
   overflow-x: auto;
   padding: 0 16px 8px;

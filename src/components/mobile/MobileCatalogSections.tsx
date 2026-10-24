@@ -62,7 +62,7 @@ const PosterShell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 const ITEM_W = 'w-[calc((100vw-32px-24px)/4)] shrink-0';
 
 const SkeletonRow: React.FC = () => (
-  <div data-h-scroll="true" className="flex gap-2 overflow-x-hidden -mx-4 px-4">
+  <div data-h-scroll="true" className="flex items-start gap-2 overflow-x-hidden -mx-4 px-4">
     {[...Array(4)].map((_, i) => (
       <div key={i} className={`${ITEM_W} aspect-[2/3] bg-lb-surface animate-pulse rounded-[4px] ring-1 ring-white/15`} />
     ))}
@@ -82,7 +82,7 @@ const PosterRail: React.FC<{
 }> = ({ movies, isSeries, sectionIndex = 0, children }) => (
   <div
     data-h-scroll="true"
-    className="flex gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory -mx-4 px-4 scroll-px-4"
+    className="flex items-start gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory -mx-4 px-4 scroll-px-4"
   >
     {movies.slice(0, 18).map((m, idx) => (
       <div key={m.id} className={`${ITEM_W} snap-start`}>
