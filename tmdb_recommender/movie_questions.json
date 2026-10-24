@@ -1,0 +1,91 @@
+{
+  "genre": {
+    "type": "choice",
+    "instructions": "Qual \u00e9 o g\u00eanero principal do filme ou estilo solicitado?",
+    "criteria": {
+      "action": "A\u00e7\u00e3o, tiroteio, persegui\u00e7\u00e3o de carros, lutas marciais, explos\u00f5es e adrenalina",
+      "adventure": "Aventura, jornadas \u00e9picas, explora\u00e7\u00e3o de florestas, templos e expedi\u00e7\u00f5es",
+      "animation": "Anima\u00e7\u00e3o, desenhos animados, anima\u00e7\u00f5es 3D da Pixar, DreamWorks, anime infantil e juvenil",
+      "comedy": "Com\u00e9dia, humor, risadas, piadas, besteiras engra\u00e7adas e divers\u00e3o leve",
+      "crime": "Crime, m\u00e1fia, assaltos a banco, gangues de rua, corrup\u00e7\u00e3o e policiais",
+      "documentary": "Document\u00e1rio, fatos reais ver\u00eddicos, investiga\u00e7\u00f5es da natureza e hist\u00f3ria",
+      "drama": "Drama, conflitos humanos profundos, l\u00e1grimas, supera\u00e7\u00e3o de traumas e fam\u00edlia",
+      "family": "Fam\u00edlia, filmes infantis educativos para ver com crian\u00e7as pequenas e fam\u00edlia reunida",
+      "fantasy": "Fantasia, magia, feiticeiros, drag\u00f5es, elfos e reinos medievais encantados",
+      "history": "Hist\u00f3ria de \u00e9poca, eventos hist\u00f3ricos passados e monarquias antigas",
+      "horror": "Terror, sustos, possess\u00e3o espiritual, fantasmas e monstros assustadores",
+      "music": "M\u00fasica, musicais, bandas de rock, cantores e concertos",
+      "mystery": "Mist\u00e9rio, detetives estilo Sherlock, enigmas n\u00e3o resolvidos e reviravoltas",
+      "romance": "Romance, casais apaixonados, com\u00e9dias rom\u00e2nticas e hist\u00f3rias de amor",
+      "scifi": "Fic\u00e7\u00e3o cient\u00edfica, naves no espa\u00e7o, tecnologia do futuro, rob\u00f4s e multiverso",
+      "thriller": "Thriller, suspense psicol\u00f3gico tenso, tens\u00e3o sufocante e persegui\u00e7\u00f5es",
+      "war": "Guerra militar, batalhas no campo de batalha, soldados no front e tanques",
+      "western": "Faroeste, velho oeste bang-bang, caub\u00f3is, duelos de rev\u00f3lver ao meio-dia"
+    }
+  },
+  "mood": {
+    "type": "choice",
+    "instructions": "Qual a vibe ou clima emocional do filme?",
+    "criteria": {
+      "lighthearted": "Leve, divertido, alto-astral, relaxante, sem estresse para rir",
+      "intense": "Intenso, eletrizante, adrenalina pura, tens\u00e3o acelerada e ritmo implac\u00e1vel",
+      "emotional": "Emocionante, tocante, de chorar, sens\u00edvel e reflexivo",
+      "dark": "Sombrio, macabro, perturbador, assustador, melanc\u00f3lico e pesado",
+      "mindbending": "Mente explodindo, confuso, reflexivo, paradoxos, reviravoltas na cabe\u00e7a",
+      "cozy": "Aconchegante, confort\u00e1vel, doce, quentinho para assistir a dois ou no cobertor"
+    }
+  },
+  "content_rating": {
+    "type": "choice",
+    "instructions": "Qual a classifica\u00e7\u00e3o indicativa apropriada?",
+    "criteria": {
+      "L": "Livre para todos os p\u00fablicos, fam\u00edlia e crian\u00e7as pequenas",
+      "10": "Recomendado para maiores de 10 anos",
+      "12": "Recomendado para maiores de 12 anos, aventura moderada e adolescentes",
+      "14": "Recomendado para maiores de 14 anos",
+      "16": "Recomendado para maiores de 16 anos, conte\u00fado maduro e viol\u00eancia gr\u00e1fica",
+      "18": "Recomendado para maiores de 18 anos, terror extremo ou viol\u00eancia expl\u00edcita"
+    }
+  },
+  "decade": {
+    "type": "choice",
+    "instructions": "Qual a d\u00e9cada ou \u00e9poca do filme desejado?",
+    "criteria": {
+      "classic": "Cl\u00e1ssicos Antigos (antes de 1980), anos 50, 60, 70, cinema de ouro",
+      "80s": "Anos 80 (1980 a 1989), cl\u00e1ssicos oitentistas retr\u00f4, nostalgia dos anos 80",
+      "90s": "Anos 90 (1990 a 1999), cl\u00e1ssicos noventistas em VHS, d\u00e9cada de 90",
+      "2000s": "Anos 2000 (2000 a 2009), filmes dos anos 2000",
+      "modern": "Atual / Moderno (2010 at\u00e9 hoje), lan\u00e7amentos recentes e contempor\u00e2neos"
+    }
+  },
+  "origin": {
+    "type": "choice",
+    "instructions": "Qual a origem ou polo cinematogr\u00e1fico?",
+    "criteria": {
+      "japanese": "Japon\u00eas / Anime / Cinema e anima\u00e7\u00f5es do Jap\u00e3o (Studio Ghibli, Shonen, etc.)",
+      "korean": "Coreano / Dorama / Cinema da Coreia do Sul (K-Drama, K-Movies)",
+      "national": "Nacional / Cinema Brasileiro / Filmes do Brasil em portugu\u00eas",
+      "european": "Cinema Europeu / Franc\u00eas, Italiano, Espanhol, Brit\u00e2nico, Alem\u00e3o",
+      "hollywood": "Hollywood / Americano / Cinema internacional ocidental tradicional em ingl\u00eas",
+      "asian": "Outros Asi\u00e1ticos / Cinema Chin\u00eas, Tailand\u00eas, Indiano (Bollywood), etc."
+    }
+  },
+  "pacing": {
+    "type": "choice",
+    "instructions": "Qual o ritmo do filme desejado?",
+    "criteria": {
+      "fast": "R\u00e1pido, fren\u00e9tico, din\u00e2mico, a\u00e7\u00e3o sem parar, direto ao ponto",
+      "slow": "Lento, contemplativo, atmosfera paciente, desenvolvimento profundo"
+    }
+  },
+  "viewing_context": {
+    "type": "choice",
+    "instructions": "Com quem ou em qual contexto o usu\u00e1rio vai assistir?",
+    "criteria": {
+      "solo": "Sozinho, introspectivo, para refletir ou maratonar concentrado",
+      "couple": "A dois, namorados, casal, romance aconchegante",
+      "family": "Fam\u00edlia reunida com crian\u00e7as pequenas ou pais",
+      "friends": "Com amigos, galera, zoeira, cerveja e divers\u00e3o"
+    }
+  }
+}

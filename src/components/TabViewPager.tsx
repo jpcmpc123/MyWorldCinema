@@ -97,6 +97,7 @@ import { HomePage } from '../pages/HomePage';
 import { SeriesHubPage } from '../pages/SeriesHubPage';
 import { DiaryPage } from '../pages/DiaryPage';
 import { ListsPage } from '../pages/ListsPage';
+import { CineIaPage } from '../pages/CineIaPage';
 import { ProfilePage } from '../pages/ProfilePage';
 import { WatchlistPage } from '../pages/WatchlistPage';
 
@@ -108,7 +109,7 @@ const MAIN_PANELS: {
   { key: 'films', Component: HomePage },
   { key: 'series', Component: SeriesHubPage },
   { key: 'reviews', Component: DiaryPage },
-  { key: 'lists', Component: ListsPage },
+  { key: 'cine-ia', Component: CineIaPage },
 ];
 
 const PROFILE_PANELS: {

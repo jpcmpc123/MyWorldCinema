@@ -6,7 +6,7 @@
  * pelo App (que escolhe a animação de entrada do conteúdo da aba), para que os
  * dois nunca saiam de sincronia.
  */
-const MAIN_TAB_ROUTE = /^\/(films|series|tv|lists?|reviews)?\/?$/;
+const MAIN_TAB_ROUTE = /^\/(films|series|tv|cine-ia|reviews)?\/?$/;
 
 export function isMainTabRoute(pathname: string): boolean {
   return MAIN_TAB_ROUTE.test(pathname);
@@ -16,17 +16,16 @@ export function isMainTabRoute(pathname: string): boolean {
  * Ordem canônica das abas na ESTEIRA horizontal (ViewPager) do app mobile.
  * O índice é a posição do painel no trilho: translateX(-índice * 100%).
  * Precisa estar na MESMA ordem da faixa de abas do Header
- * (FILMES → SÉRIES → CRÍTICAS → LISTAS), senão o conteúdo desliza para o lado
+ * (FILMES → SÉRIES → CRÍTICAS → CINE IA), senão o conteúdo desliza para o lado
  * errado em relação ao dedo/clique.
  */
-export const TAB_PANEL_PATHS = ['/', '/series', '/reviews', '/lists'] as const;
+export const TAB_PANEL_PATHS = ['/', '/series', '/reviews', '/cine-ia'] as const;
 
 /** Índice da aba na esteira (-1 = a rota atual não é uma aba do ViewPager). */
 export function tabPanelIndex(pathname: string): number {
   const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   if (normalized === '/films') return 0;
   if (normalized === '/tv') return 1;
-  if (normalized === '/list') return 3;
   return TAB_PANEL_PATHS.indexOf(normalized as (typeof TAB_PANEL_PATHS)[number]);
 }
 
@@ -34,7 +33,7 @@ export function tabPanelIndex(pathname: string): number {
  * Rotas da área de PERFIL DO USUÁRIO no mobile:
  *   PERFIL (/:username ou /profile)
  *   DIÁRIO (/:username/diary ou /diary)
- *   LISTAS (/:username/lists)
+ *   LISTAS (/:username/lists ou /lists)
  *   WATCHLIST (/:username/watchlist ou /watchlist)
  */
 export type ProfileTabKey = 'profile' | 'diary' | 'lists' | 'watchlist';
@@ -50,7 +49,7 @@ const RESERVED_SINGLE_SEGMENTS = new Set([
   'films',
   'series',
   'tv',
-  'lists',
+  'cine-ia',
   'list',
   'reviews',
   'activity',
@@ -99,7 +98,7 @@ export function parseProfileTabRoute(
   if (segs.length === 1) {
     const seg = segs[0];
     if (RESERVED_SINGLE_SEGMENTS.has(seg)) return null;
-    if (seg === 'profile' || seg === 'diary' || seg === 'watchlist') {
+    if (seg === 'profile' || seg === 'diary' || seg === 'lists' || seg === 'watchlist') {
       const tab: ProfileTabKey = seg;
       const paths = getProfileTabPaths(fallbackUsername);
       return {

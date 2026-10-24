@@ -21,6 +21,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { DiaryPage } from './pages/DiaryPage';
 import { WatchlistPage } from './pages/WatchlistPage';
 import { ListsPage } from './pages/ListsPage';
+import { CineIaPage } from './pages/CineIaPage';
 import { PullToRefresh } from './components/PullToRefresh';
 
 function parseDetailRoute(pathname: string): { type: 'movie' | 'tv'; id: number } | null {
@@ -134,6 +135,7 @@ const MemoizedRouteTree = React.memo(
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/diary" element={<DiaryPage />} />
             <Route path="/watchlist" element={<WatchlistPage />} />
+            <Route path="/cine-ia" element={<CineIaPage />} />
             <Route path="/lists" element={<ListsPage />} />
             <Route path="/list/new" element={<CreateListPage />} />
             <Route path="/list/:id/edit" element={<CreateListPage />} />
@@ -426,8 +428,8 @@ function AppShell() {
       {/* Bottom Navigation (somente mobile) */}
       <BottomNav />
 
-      {/* Main Footer */}
-      <Footer />
+      {/* Main Footer (oculto no chat CINE IA para manter a barra de digitação colada embaixo) */}
+      {committedLocation.pathname !== '/cine-ia' && <Footer />}
     </div>
   );
 }

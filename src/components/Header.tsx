@@ -112,19 +112,19 @@ export const Header: React.FC<HeaderProps> = ({
 
   const [searchParams] = useSearchParams();
   const searchParam = searchParams.get('q') ?? '';
-  const activeTab: 'films' | 'series' | 'reviews' | 'lists' =
+  const activeTab: 'films' | 'series' | 'reviews' | 'cine-ia' =
     path === '/' || path.startsWith('/films')
       ? 'films'
       : path.startsWith('/series') || path.startsWith('/tv')
         ? 'series'
         : path === '/reviews' || path.startsWith('/reviews')
           ? 'reviews'
-          : 'lists';
+          : 'cine-ia';
   const tabs: { key: typeof activeTab; label: string; to: string }[] = [
     { key: 'films', label: t('nav_films'), to: '/' },
     { key: 'series', label: t('nav_series'), to: '/series' },
     { key: 'reviews', label: t('nav_reviews'), to: '/reviews' },
-    { key: 'lists', label: t('nav_lists'), to: '/lists' },
+    { key: 'cine-ia', label: t('nav_cine_ia'), to: '/cine-ia' },
   ];
   const profileTabs: { key: typeof profileTab; label: string; to: string }[] = [
     { key: 'profile', label: t('nav_profile'), to: `/${encodeURIComponent(profileAreaUser)}` },
@@ -829,14 +829,14 @@ export const Header: React.FC<HeaderProps> = ({
               {t('nav_reviews')}
             </Link>
             <Link
-              to="/lists"
+              to="/cine-ia"
               className={`whitespace-nowrap shrink-0 transition-colors ${
-                location.pathname === '/lists' || location.pathname.startsWith('/list/')
+                location.pathname === '/cine-ia' || location.pathname.startsWith('/cine-ia/')
                   ? 'text-white'
                   : 'text-[#99aabb] hover:text-white'
               }`}
             >
-              {t('nav_lists')}
+              {t('nav_cine_ia')}
             </Link>
           </nav>
 

@@ -1,87 +1,82 @@
-# Polimento de Suavidade Visual e Tátil (Experiência Nativa a 120Hz)
+# Organização e Otimização de Performance do Módulo Cine IA (Motor Laya 7D)
 
-Elevação da experiência visual e física do aplicativo para alcançar suavidade de nível nativo a 120Hz em mobile e desktop, combinando fade-in inteligente em imagens (zero pop-in na rede e exibição instantânea em 0ms quando em cache), resposta física imediata ao toque, curvas de inércia nativa em abas/modais e rolagem bidirecional sem atrito nos carrosséis horizontais.
+Reestruturação completa da inteligência artificial de recomendação de filmes (**Cine IA / Laya**) em um módulo unificado, desacoplado e de alta performance que roda nativamente tanto no aplicativo (Web e APK Android) quanto no servidor, eliminando latências desnecessárias e facilitando futuras expansões.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> **Guardrails de Layout e Performance**: Nenhuma propriedade `content-visibility: auto` ou `contain-intrinsic-size` será readicionada aos cards de pôsteres, preservando a altura compacta exata dos carrosséis horizontais. Todas as otimizações de nitidez Retina (`srcSet` `w500`/`w780`, `decoding="async"`, `React.memo`) e a identidade visual Letterboxd permanecem intactas.
+> As decisões abaixo refletem suas escolhas confirmadas e definem como o motor de IA será organizado e otimizado.
 
-- **Decisão Confirmada 1 — Alcance do Fade-in Inteligente (300ms ease-out + Cache 0ms)**: Aplicar o carregamento suave de opacidade (`opacity-0` -> `opacity-100` em `300ms ease-out`) em todos os pôsteres, backdrops e avatares do aplicativo, verificando `img.complete && img.naturalWidth > 0` (e o cache em memória da sessão) na montagem para renderizar instantaneamente sem piscar caso a imagem já esteja no cache.
-- **Decisão Confirmada 2 — Curvas de Inércia Nativa e Micro-interações Táteis**: Padronizar modais, gavetas inferiores (bottom sheets), popovers, barra de abas (`FILMES`, `SÉRIES`, `CRÍTICAS`, `LISTAS` e abas de perfil/pessoa) e navegação inferior com a curva de desaceleração nativa `cubic-bezier(0.32, 0.72, 0, 1)`, além de feedback físico ao toque (`active:scale-[0.96]` no mobile e `hover:scale-[1.02]` em `@media (hover: hover)` no desktop com `cubic-bezier(0.22, 1, 0.36, 1)`).
+- **Arquitetura Unificada (`src/ai/`)**: Toda a inteligência do recomendador (tipagens, dicionários bilíngues, regras semânticas, inferência neural linear 5D/7D e cascata de busca TMDB) ficará centralizada em módulos independentes e coesos, removendo quase 500 linhas de código hoje espalhadas entre a página de interface e a configuração do servidor.
+- **Execução Direta com Cache em Memória**: O motor Laya + TMDB rodará diretamente no cliente com cache inteligente de resultados e deduplicação de chamadas em andamento, garantindo funcionamento idêntico e instantâneo na Web, em builds estáticos e no APK Android (sem cair em listas genéricas de filmes populares quando offline do servidor Node/Python).
+- **Otimizações Pontuais de Desempenho**:
+  - Remoção do atraso artificial de 900ms causado pela tentativa de conexão ao microserviço local na porta 8000 a cada pergunta quando o servidor Python não está ativo.
+  - Pré-compilação única das expressões regulares de fronteira de palavra (hoje recriadas centenas de vezes a cada pergunta).
+  - Carregamento sob demanda (*lazy chunk*) dos pesos do modelo (`weights_5d.json`, ~900 KB) apenas quando o usuário acessa a aba Cine IA, sem impactar o tempo de abertura inicial do app.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **O Que Entrega**: Uma camada de polimento sensorial de 120Hz onde imagens surgem suavemente sem saltos visuais, botões e pôsteres respondem fisicamente no primeiro frame do toque (sem atraso de 300ms), modais e abas desaceleram com inércia natural de sistema operacional móvel e carrosséis permitem rolar a página verticalmente sem prender o gesto.
-- **Público e Contexto**: Usuários navegando rapidamente por catálogos densos de filmes e séries em telas OLED/ProMotion de 120Hz no celular e monitores de alta taxa de atualização no desktop.
-- **Valor Principal**: Eliminação de cortes secos, flashes de imagem e atrito de toque, mantendo 100% da fidelidade visual e estrutural do layout atual.
+- **O que faz**: Recebe pedidos em linguagem natural (ex: *"Suspense psicológico coreano tenso dos anos 90"* ou *"Adorei Interestelar, quero algo parecido no espaço"*), classifica instantaneamente em 7 dimensões (**Gênero, Humor/Clima, Classificação Indicativa, Década, Origem/País, Ritmo e Contexto de Sessão**), detecta filmes de referência citados pelo usuário e executa uma busca em cascata no TMDB para retornar os 4 melhores filmes com pôster e metadados traduzidos.
+- **Público e Contexto**: Usuários buscando recomendações rápidas e certeiras na aba **Cine IA**, tanto pelo navegador quanto pelo aplicativo Android (Capacitor).
+- **Valor Principal**: Código limpo e modular para adicionar novos filtros, dimensões ou regras em segundos, combinado com resposta quase instantânea e zero dependência de servidor externo para funcionar em produção.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-- **Fluxos de Experiência do Usuário**:
-  1. **Carregamento de Imagens (Zero Pop-in Brusco)**: Ao abrir a Home ou rolar por grades de filmes, pôsteres inéditos fazem uma transição suave de `opacity-0` para `opacity-100` (`300ms ease-out`) sobre o fundo ardósia `#232a31`. Ao voltar para uma aba já visitada, a checagem imediata de cache (`imgRef.current?.complete && naturalWidth > 0`) exibe a imagem em `opacity-100` no primeiro frame, sem piscar.
-  2. **Toque e Micro-interações Físicas**: Tocar em qualquer pôster ou botão principal comprime sutilmente o elemento (`scale3d(0.96, 0.96, 1)`) sem atraso (`touch-action: manipulation`, `-webkit-tap-highlight-color: transparent`). No desktop (`@media (hover: hover)`), passar o mouse aplica um leve realce (`scale3d(1.02, 1.02, 1)`) com curva elástica `cubic-bezier(0.22, 1, 0.36, 1)`.
-  3. **Transições de Abas, Páginas e Modais**: A abertura de gavetas, modais, popovers e o deslize das abas utilizam a desaceleração nativa `cubic-bezier(0.32, 0.72, 0, 1)`, enquanto o conteúdo de páginas e abas realiza uma entrada suave (`opacity: 0 -> 1` e `translateY(4px) -> translateY(0)` em `180ms`) que libera o `transform` ao final para não afetar elementos `position: fixed`.
-  4. **Rolagem Híbrida nos Carrosséis**: O usuário pode iniciar um movimento vertical de rolagem mesmo com o polegar sobre um carrossel horizontal (`pan-x pan-y`, `-webkit-overflow-scrolling: touch`, `overscroll-behavior-x: contain`), sem barras de rolagem aparentes.
-- **Identidade Visual & Tema**:
-  - *Direção Estética*: Preservação integral da estética escura cinematográfica inspirada no Letterboxd (`#14181c`, `#1c2228`, `#2c3440`, verde `#00e054`, azul `#40bcf4`, laranja `#ff8000`).
-  - *Tipografia e Geometria*: Mantidas sem qualquer alteração de fontes, tamanhos, bordas ou proporções `2:3`.
+- **Fluxo do Usuário**:
+  1. Ao abrir a aba **Cine IA**, os pesos do modelo são pré-aquecidos em segundo plano sem travar a interface.
+  2. O usuário digita um pedido livre ou toca em uma das sugestões rápidas.
+  3. O classificador Laya 7D processa o texto em menos de 1ms, exibe as tags das decisões detectadas (ex: `Estilo Interestelar · Ficção Científica · Misterioso · Recente · 12+`) e apresenta os 4 pôsteres recomendados.
+  4. Pedidos repetidos ou similares retornam instantaneamente do cache em memória, e um botão permite pedir novas variações para a mesma consulta.
+- **Identidade Visual**:
+  - Mantém fielmente a estética escura inspirada no Letterboxd (`#14181c`, superfícies `#1b2228`, destaque verde `#00e054` e tipografia limpa), preservando o comportamento responsivo do teclado virtual no celular.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decisão 1: Detecção Híbrida de Cache (`Set` em Memória + `img.complete`)**
-  - *Abordagem Escolhida*: Combinar a verificação síncrona de `imgRef.current?.complete && imgRef.current?.naturalWidth > 0` com o registro em memória de URLs já decodificadas na sessão.
-  - *Por Quê*: Garante que imagens vindas da rede tenham um fade-in elegante de `300ms ease-out`, enquanto imagens já em cache apareçam instantaneamente sem repetir a animação ao alternar abas.
-- **Decisão 2: Liberação de `transform` Pós-Animação em Páginas (`mwFadeInUp`)**
-  - *Abordagem Escolhida*: Animar `opacity: 0 -> 1` e `translateY(4px) -> translateY(0)` em `180ms` sem `animation-fill-mode: forwards`.
-  - *Por Quê*: Uma vez concluída a animação de 180ms, o elemento volta ao estado natural (`transform: none`), impedindo a criação de um containing block que deslocaria modais ou gavetas `position: fixed`.
+- **Decisão 1: Motor Isomórfico Unificado vs. Lógica Duplicada no Servidor**
+  - *Abordagem Escolhida*: Centralizar o classificador Laya 7D e a cascata de descoberta do TMDB em módulos TypeScript puros reutilizados pela interface e pelo middleware de desenvolvimento.
+  - *Por quê*: Elimina a duplicação de regras entre front-end e servidor e garante que o APK Android e o deploy estático tenham exatamente a mesma inteligência real do ambiente de desenvolvimento.
+- **Decisão 2: Pré-compilação Léxica e Lazy Loading do Modelo Neural**
+  - *Abordagem Escolhida*: Compilar os padrões de palavras-chave uma única vez na inicialização do módulo e importar o arquivo de pesos neurais (`weights_5d.json`) via chunk assíncrono separado.
+  - *Por quê*: Reduz o custo de CPU por consulta em mais de 90% e mantém o bundle principal leve na tela inicial do aplicativo.
+- **Decisão 3: Cache LRU de Recomendações e Filmes de Referência**
+  - *Abordagem Escolhida*: Implementar cache em memória com tempo de expiração (TTL) para consultas completas e para buscas de filmes de referência no TMDB.
+  - *Por quê*: Evita requisições repetidas à API do TMDB e torna a navegação entre sugestões instantânea.
 
 ---
 
 ## 4. Technical Architecture & Data Strategy
 
-### Arquitetura de Polimento e Fluidez 120Hz
+### Diagrama de Arquitetura e Componentes
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    CAMADA GLOBAL DE INTERAÇÃO (CSS)                     │
-│  • touch-action: manipulation & -webkit-tap-highlight-color: transparent│
-│  • Curva nativa iOS: --mw-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1)    │
-│  • Curva elástica:   --mw-ease:       cubic-bezier(0.22, 1, 0.36, 1)    │
-└───────────────────┬───────────────────────────────┬─────────────────────┘
-                    │                               │
-                    ▼                               ▼
-┌───────────────────────────────────────┐ ┌───────────────────────────────┐
-│   PIPELINE DE IMAGENS (ZERO POP-IN)   │ │ NAVEGAÇÃO, ABAS E MODAIS      │
-│  • PosterCard / Backdrops / Avatares  │ │ • TabViewPager & tabIndicator │
-│  • Cache hit (complete): opacity-100  │ │ • ActionBottomSheet & Modals  │
-│  • Rede (onLoad): fade-in 300ms       │ │ • Transição de página 180ms   │
-│  • Press: scale(0.96) / Hover: (1.02) │ │   (opacity + translateY 4px)  │
-└───────────────────┬───────────────────┘ └───────────────┬───────────────┘
-                    │                                     │
-                    └─────────────────┬───────────────────┘
-                                      ▼
+│                        Interface: CineIaPage                            │
+│  (Histórico de Conversa, Sugestões Rápidas, Barra Fixa Mobile/Desktop)  │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │
+                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│             CARROSSÉIS HORIZONTAIS ([data-h-scroll="true"])             │
-│  • align-items: flex-start (sem content-visibility nos cards)           │
-│  • -webkit-overflow-scrolling: touch & overscroll-behavior-x: contain   │
-│  • touch-action: pan-x pan-y & scrollbar-width: none                    │
-└─────────────────────────────────────────────────────────────────────────┘
+│                   Orquestrador: CineIA Service Engine                   │
+│       (Cache LRU em Memória, Deduplicação de Chamadas, Fallback)        │
+└───────────────┬─────────────────────────────────────────┬───────────────┘
+                │                                         │
+                ▼                                         ▼
+┌───────────────────────────────┐         ┌───────────────────────────────┐
+│   Classificador Laya 7D       │         │   Motor de Descoberta TMDB    │
+│ ───────────────────────────── │         │ ───────────────────────────── │
+│ • Inferência Linear 5D (Lazy) │         │ • Detector de Filme Referência│
+│ • Regras Semânticas Pré-Comp. │         │ • Cascata Inteligente (4 Tiers│
+│ • Dicionários e Labels PT/EN  │         │   preservando País + Gênero)  │
+└───────────────────────────────┘         └───────────────────────────────┘
 ```
 
-### Mapeamento Interativo de Componentes e Estados
-
-- **Pôsteres, Backdrops e Avatares**:
-  - `PosterCard`: Transição da imagem ajustada para `transition-opacity duration-300 ease-out` com detecção instantânea via `imgRef.current?.complete && imgRef.current?.naturalWidth > 0`. Feedback tátil `.poster-card-optimized` com `active:scale-[0.96]` no toque e `hover:scale-[1.02]` restrito a `@media (hover: hover) and (min-width: 768px)` (desativado quando o popover de menu do card está aberto para não deslocar o menu).
-  - `Backdrop` e imagens secundárias (miniaturas de Diário, Busca, Perfil, Carrossel Similar e Filmografia de Pessoa): recebem fade-in suave de `300ms ease-out` com verificação imediata de cache (`complete`).
-- **Abas, Navegação Inferior e Modais**:
-  - `TabViewPager`, `ActorTabPanel`, `tabIndicator`, `ActionBottomSheet`, `LogModal`, `PosterLightbox` e barra `.bottom-nav`: padronizados com `cubic-bezier(0.32, 0.72, 0, 1)` para desaceleração contínua e natural.
-  - Entrada de conteúdo (`.mw-page-in` / `.mw-fade`): anima `opacity: 0 -> 1` e `transform: translateY(4px) -> translateY(0)` em `180ms cubic-bezier(0.32, 0.72, 0, 1)` sem reter `transform` após o término.
-- **Carrosséis Horizontais (`[data-h-scroll="true"]`, `.similar-carousel`)**:
-  - Configurados com `scrollbar-width: none`, `::-webkit-scrollbar { display: none; }`, `-webkit-overflow-scrolling: touch`, `overscroll-behavior-x: contain` e `touch-action: pan-x pan-y`, permitindo rolagem vertical fluida mesmo quando o toque começa sobre um trilho horizontal.
+### Modelo de Dados e Estado
+- **Decisões Tipadas (`LayaDecisions`)**: Estrutura padronizada contendo `genre`, `mood`, `content_rating`, `decade`, `origin`, `pacing` e `viewing_context`, além de `confidence` e `referenceMovie`.
+- **Dicionários e Regras Isolados**: Tabelas de tradução (`pt-BR` e `en-US`), mapeamentos de IDs de gênero/país/década do TMDB e regras léxicas ficam isolados em um módulo de constantes e regras, permitindo adicionar novas categorias ou palavras-chave sem tocar na lógica do algoritmo.
+- **Integração com Estado da Página**: A página `CineIaPage` consome apenas o serviço de alto nível e utilitários de formatação, mantendo o componente React enxuto e focado exclusivamente na experiência de chat e exibição dos pôsteres.

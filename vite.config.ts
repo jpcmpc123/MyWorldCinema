@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -218,6 +220,75 @@ function imdbApiPlugin() {
   }
 }
 
+import {
+  recommendMovies,
+  setLoadedLayaWeights,
+  type Weights5DModel,
+} from './src/ai'
+
+const TMDB_KEY_DEFAULT =
+  process.env.TMDB_API_KEY ||
+  process.env.VITE_TMDB_API_KEY ||
+  process.env.TMDB_READ_TOKEN ||
+  process.env.VITE_TMDB_ACCESS_TOKEN ||
+  '756b66f23e97ca70dba67363ba4e3b21'
+
+let nodeWeightsLoaded = false
+
+function ensureNodeCheckpointWeights(): Weights5DModel | null {
+  if (nodeWeightsLoaded) return null
+  nodeWeightsLoaded = true
+  try {
+    const weightsPath = path.resolve(
+      process.cwd(),
+      'tmdb_recommender/model_checkpoint/checkpoint_latest/weights_5d.json'
+    )
+    if (fs.existsSync(weightsPath)) {
+      const model = JSON.parse(fs.readFileSync(weightsPath, 'utf-8')) as Weights5DModel
+      setLoadedLayaWeights(model)
+      return model
+    }
+  } catch {
+    // fallback to semantic rules if file read fails
+  }
+  return null
+}
+
+function recommendApiPlugin() {
+  return {
+    name: 'laya-recommend-api-middleware',
+    configureServer(server: any) {
+      ensureNodeCheckpointWeights()
+      server.middlewares.use('/api/recommend', async (req: any, res: any) => {
+        try {
+          const url = new URL(req.url ?? '', 'http://localhost')
+          const q = (url.searchParams.get('q') ?? '').trim()
+          const lang = url.searchParams.get('lang') ?? 'pt-BR'
+          if (!q) {
+            res.statusCode = 400
+            res.setHeader('Content-Type', 'application/json; charset=utf-8')
+            res.end(JSON.stringify({ error: 'Parâmetro q obrigatório' }))
+            return
+          }
+
+          const payload = await recommendMovies(q, {
+            language: lang,
+            apiKeyOrToken: TMDB_KEY_DEFAULT,
+          })
+
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify(payload))
+        } catch (err: any) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: err?.message || 'Erro interno na recomendação' }))
+        }
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   base: process.env.CAPACITOR === 'true'
@@ -232,12 +303,14 @@ export default defineConfig({
     react(),
     tailwindcss(),
     imdbApiPlugin(),
+    recommendApiPlugin(),
   ],
   build: {
     rollupOptions: {
       output: {
         // Divide dependências pesadas em chunks próprios para cache independente e menor parse inicial
         manualChunks(id) {
+          if (id.includes('weights_5d.json')) return 'ai-weights';
           if (id.includes('@supabase')) return 'supabase';
           if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router')) {
             return 'react-vendor';

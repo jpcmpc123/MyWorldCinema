@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de implementação para elevar a fluidez visual e tátil (120Hz) com fade-in inteligente em imagens (pôsteres, backdrops e avatares), micro-interações de toque sem atraso, curvas de inércia nativa cubic-bezier(0.32, 0.72, 0, 1) em modais/abas/navegação e rolagem sem atrito entre carrosséis horizontais e o feed vertical.",
-  "updatedAt":  "2026-10-24T01:03:21.554983781Z",
+  "summary":  "Plano de arquitetura e otimização de performance do módulo de IA (Cine IA / Motor Laya 7D + TMDB), unificando a inteligência em um módulo isomórfico com pré-compilação de regras, carregamento sob demanda dos pesos neurais, cache em memória e execução direta no cliente e servidor.",
+  "updatedAt":  "2026-10-24T17:10:08.910559817Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
