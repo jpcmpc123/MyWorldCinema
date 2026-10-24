@@ -85,16 +85,16 @@ export const SeriesHubPage: React.FC = () => {
     ) => {
       const task = () => {
         if (cancelled) return;
-        for (const m of pop.slice(0, 8)) preloadPoster(m.poster_path);
-        for (const m of rated.slice(0, 8)) preloadPoster(m.poster_path);
-        for (const m of watched.slice(0, 6)) preloadPoster(m.poster_path);
-        for (const m of reviewed.slice(0, 6)) preloadPoster(m.poster_path);
+        for (const m of pop.slice(0, 20)) preloadPoster(m.poster_path);
+        for (const m of rated.slice(0, 18)) preloadPoster(m.poster_path);
+        for (const m of watched.slice(0, 18)) preloadPoster(m.poster_path);
+        for (const m of reviewed.slice(0, 18)) preloadPoster(m.poster_path);
       };
       const win = window as Window & {
         requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       };
       if (typeof win.requestIdleCallback === 'function') {
-        win.requestIdleCallback(task, { timeout: 250 });
+        win.requestIdleCallback(task, { timeout: 200 });
       } else {
         window.setTimeout(task, 50);
       }

@@ -113,14 +113,17 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
     });
   }, [open, initialIndex]);
 
-  // Pré-carrega de forma leve os próximos 2 pôsteres para navegação imediata sem travamento
+  // Pré-carrega os pôsteres vizinhos e seguintes para navegação imediata sem travamento
   useEffect(() => {
     if (!open || items.length === 0) return;
-    const next1 = items[activeIndex + 1];
-    const next2 = items[activeIndex + 2];
-    if (next1) preloadUrl(getPosterUrl(next1));
-    if (next2) preloadUrl(getPosterUrl(next2));
-  }, [open, activeIndex, items, getPosterUrl]);
+    for (let offset = -2; offset <= 6; offset++) {
+      const target = items[activeIndex + offset];
+      if (target) {
+        preloadUrl(getPosterUrl(target));
+        preloadUrl(getBgUrl(target));
+      }
+    }
+  }, [open, activeIndex, items, getPosterUrl, getBgUrl]);
 
   // Bloqueia o scroll da página por trás e oculta a barra de navegação inferior (.bottom-nav)
   useEffect(() => {
@@ -301,8 +304,8 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
       >
         {items.map((item, idx) => {
           const posterUrl = getPosterUrl(item);
-          // Renderiza imagens apenas no range ativo para não sobrecarregar a memória do navegador
-          const isNear = Math.abs(idx - activeIndex) <= 2;
+          // Renderiza imagens em uma janela ampla com loading="eager" para que já estejam pintadas ao arrastar
+          const isNear = Math.abs(idx - activeIndex) <= 5;
 
           return (
             <div
@@ -319,7 +322,8 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
                     src={posterUrl}
                     alt={item.title}
                     draggable={false}
-                    loading={idx === activeIndex ? 'eager' : 'lazy'}
+                    loading="eager"
+                    fetchPriority={Math.abs(idx - activeIndex) <= 1 ? 'high' : 'auto'}
                     decoding="async"
                     className="w-full h-full object-cover select-none block"
                   />

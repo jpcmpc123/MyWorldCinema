@@ -267,25 +267,15 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
         }
       });
       void tabDataCache.preloadAll();
-      // Aguarda os pôsteres da aba ativa carregarem antes de montar as abas ocultas
-      // em background (evita disputa de conexões HTTP por imagens no celular)
       mountTimer = window.setTimeout(() => {
         setPager((prev) =>
           prev.mounted.every(Boolean)
             ? prev
             : { ...prev, mounted: PANELS.map(() => true) },
         );
-      }, 1800);
+      }, 120);
     };
-    const idle = window.requestIdleCallback;
-    if (typeof idle === 'function') {
-      const id = idle(run, { timeout: 1200 });
-      return () => {
-        window.cancelIdleCallback?.(id);
-        if (mountTimer) window.clearTimeout(mountTimer);
-      };
-    }
-    const id = window.setTimeout(run, 1200);
+    const id = window.setTimeout(run, 60);
     return () => {
       window.clearTimeout(id);
       if (mountTimer) window.clearTimeout(mountTimer);

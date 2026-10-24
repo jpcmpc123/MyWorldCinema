@@ -35,13 +35,23 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>, limitPerSection = 8): void {
+export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>, limitPerSection = 18): void {
   if (typeof window === 'undefined' || typeof Image === 'undefined') return;
-  const runWarmup = () => {
-    const lists = [data.popular, data.highestRated, data.mostWatched, data.mostAnticipated];
+  const lists = [data.popular, data.highestRated, data.mostWatched, data.mostAnticipated];
+  // Aquece os primeiros 6 de cada seção sincronamente no próximo microtask/50ms e o restante do carrossel (18) logo em seguida
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list.slice(0, 6)) {
+      if (item?.poster_path) {
+        preloadPoster(item.poster_path);
+      }
+    }
+  }
+
+  const runRest = () => {
     for (const list of lists) {
       if (!Array.isArray(list)) continue;
-      for (const item of list.slice(0, limitPerSection)) {
+      for (const item of list.slice(6, limitPerSection)) {
         if (item?.poster_path) {
           preloadPoster(item.poster_path);
         }
@@ -53,9 +63,9 @@ export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>, limi
     requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
   };
   if (typeof win.requestIdleCallback === 'function') {
-    win.requestIdleCallback(runWarmup, { timeout: 300 });
+    win.requestIdleCallback(runRest, { timeout: 200 });
   } else {
-    window.setTimeout(runWarmup, 50);
+    window.setTimeout(runRest, 50);
   }
 }
 
@@ -118,7 +128,7 @@ export const tabDataCache = {
     const fromStorage = readStorage(FILMS_KEY);
     if (fromStorage) {
       memoryFilmsHub = fromStorage;
-      prewarmHubPosters(fromStorage, 6);
+      prewarmHubPosters(fromStorage, 18);
       return fromStorage;
     }
     return null;
@@ -132,7 +142,7 @@ export const tabDataCache = {
     };
     memoryFilmsHub = entry;
     writeStorage(FILMS_KEY, entry);
-    prewarmHubPosters(entry, 8);
+    prewarmHubPosters(entry, 18);
   },
 
   getSeriesHub(): HubSectionsData | null {
@@ -147,6 +157,7 @@ export const tabDataCache = {
     const fromStorage = readStorage(SERIES_KEY);
     if (fromStorage) {
       memorySeriesHub = fromStorage;
+      prewarmHubPosters(fromStorage, 18);
       return fromStorage;
     }
     return null;
@@ -160,7 +171,7 @@ export const tabDataCache = {
     };
     memorySeriesHub = entry;
     writeStorage(SERIES_KEY, entry);
-    prewarmHubPosters(entry, 6);
+    prewarmHubPosters(entry, 18);
   },
 
   invalidateAll(): void {

@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de implementação atualizado com os 2 refinamentos técnicos: (1) Cache Hit 100% no preloadPoster usando a mesma regra de largura física (26vw * dpr <= 342 ? 'w342' : 'w500') e espelhando img.sizes + img.srcset na instância new Image(), e (2) desconexão/unobserve imediato do IntersectionObserver assim que o card entra na margem de 400px 200px para custo zero de CPU/memória no scroll a 120Hz.",
-  "updatedAt":  "2026-10-24T17:51:06.050043605Z",
+  "summary":  "Plano de correção para garantir que todos os pôsteres dos carrosséis e das abas (Filmes e Séries) já nasçam 100% carregados ao deslizar o carrossel ou trocar de aba, mantendo loading=\"eager\" nos carrosséis, aquecendo todos os itens das seções em background e sincronizando o estado isLoaded do PosterCard assim que o preload em memória terminar.",
+  "updatedAt":  "2026-10-24T22:13:36.861784048Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
