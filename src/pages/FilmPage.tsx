@@ -26,7 +26,7 @@ import { useLanguage, formatMoneyUSD, formatDatePt, regionNames, languageNames, 
 import { StarRating } from '../components/StarRating';
 import { RatingHistogram } from '../components/RatingHistogram';
 import { WhereToWatch } from '../components/WhereToWatch';
-import { PosterCard } from '../components/PosterCard';
+import { PosterCard, smartImgRef, smartImgOnLoad } from '../components/PosterCard';
 import {
   Backdrop,
   preloadSingleImage,
@@ -730,6 +730,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                 className="letterboxd-poster-frame overflow-hidden flex-shrink-0 cursor-pointer group relative"
               >
                 <img
+                  ref={smartImgRef}
+                  onLoad={smartImgOnLoad}
                   loading="eager"
                   fetchPriority="high"
                   decoding="async"
@@ -737,7 +739,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                   srcSet={posterSrcSet}
                   sizes="460px"
                   alt={movie.title}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover mw-img-fade"
                 />
                 <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded-[4px] transition-opacity pointer-events-none" />
               </button>
@@ -892,6 +894,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             >
               <div className="w-full aspect-[2/3] rounded-[4px] overflow-hidden ring-1 ring-white/15 shadow-xl bg-lb-surface">
                 <img
+                  ref={smartImgRef}
+                  onLoad={smartImgOnLoad}
                   loading="eager"
                   fetchPriority="high"
                   decoding="async"
@@ -899,7 +903,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                   srcSet={posterSrcSet}
                   sizes="380px"
                   alt={movie.title}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover mw-img-fade"
                 />
               </div>
             </button>
@@ -984,9 +988,12 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                   <div className="flex items-center min-w-0">
                     {isAuthenticated && profile?.avatar_url ? (
                       <img
+                        ref={smartImgRef}
+                        onLoad={smartImgOnLoad}
                         src={profile.avatar_url}
                         alt={profile.username}
-                        className="w-6 h-6 rounded-full object-cover shrink-0"
+                        decoding="async"
+                        className="w-6 h-6 rounded-full object-cover shrink-0 mw-img-fade"
                       />
                     ) : (
                       <span className="w-6 h-6 rounded-full bg-[#3a4550] shrink-0" aria-hidden="true" />
@@ -1172,10 +1179,14 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {rev.author.avatarUrl ? (
-                            <img loading="eager" decoding="async"
+                            <img
+                              ref={smartImgRef}
+                              onLoad={smartImgOnLoad}
+                              loading="eager"
+                              decoding="async"
                               src={rev.author.avatarUrl}
                               alt=""
-                              className="w-6 h-6 rounded-full object-cover border border-lb-elevated"
+                              className="w-6 h-6 rounded-full object-cover border border-lb-elevated mw-img-fade"
                             />
                           ) : (
                             <div className="w-6 h-6 rounded-full bg-lb-elevated flex items-center justify-center text-lb-muted">
@@ -1454,12 +1465,15 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                           aria-label={item.title}
                         >
                           <img
+                            ref={smartImgRef}
+                            onLoad={smartImgOnLoad}
                             src={p500}
                             srcSet={`${p500} 500w, ${p780} 780w`}
                             sizes="(max-width: 640px) 380px, 500px"
                             alt={item.title}
                             loading="lazy"
                             decoding="async"
+                            className="mw-img-fade"
                           />
                         </Link>
                       );
@@ -1526,12 +1540,15 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                           aria-label={item.title}
                         >
                           <img
+                            ref={smartImgRef}
+                            onLoad={smartImgOnLoad}
                             src={p500}
                             srcSet={`${p500} 500w, ${p780} 780w`}
                             sizes="(max-width: 640px) 380px, 500px"
                             alt={item.title}
                             loading="lazy"
                             decoding="async"
+                            className="mw-img-fade"
                           />
                         </Link>
                       );
@@ -1620,8 +1637,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
       {/* 3. Trailer Modal */}
       {showTrailerModal && trailerVideo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-3xl bg-lb-bg border border-lb-elevated rounded-lg shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm mw-overlay-fade">
+          <div className="relative w-full max-w-3xl bg-lb-bg border border-lb-elevated rounded-lg shadow-2xl overflow-hidden mw-pop-in">
             <div className="flex items-center justify-between px-4 py-3 border-b border-lb-elevated bg-lb-surface">
               <h3 className="text-sm font-semibold text-white">
                 {movie.title} — {t('film_official_trailer')}
@@ -1802,11 +1819,13 @@ const CastTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ movi
             >
               {actor.profile_path ? (
                 <img
+                  ref={smartImgRef}
+                  onLoad={smartImgOnLoad}
                   loading={showAll ? 'lazy' : 'eager'}
                   decoding="async"
                   src={tmdb.getProfileUrl(actor.profile_path, 'w185')}
                   alt=""
-                  className="w-[53px] h-[53px] rounded-[4px] object-cover shrink-0 bg-lb-elevated"
+                  className="w-[53px] h-[53px] rounded-[4px] object-cover shrink-0 bg-lb-elevated mw-img-fade"
                 />
               ) : (
                 <div className="w-[53px] h-[53px] rounded-[4px] shrink-0 bg-lb-elevated flex items-center justify-center text-lb-muted">
@@ -1953,11 +1972,13 @@ const CrewTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ movi
             >
               {p.profile_path ? (
                 <img
+                  ref={smartImgRef}
+                  onLoad={smartImgOnLoad}
                   loading="lazy"
                   decoding="async"
                   src={tmdb.getProfileUrl(p.profile_path, 'w185')}
                   alt=""
-                  className="w-[53px] h-[53px] rounded-[4px] object-cover shrink-0 bg-lb-elevated"
+                  className="w-[53px] h-[53px] rounded-[4px] object-cover shrink-0 bg-lb-elevated mw-img-fade"
                 />
               ) : (
                 <div className="w-[53px] h-[53px] rounded-[4px] shrink-0 bg-lb-elevated flex items-center justify-center text-lb-muted">

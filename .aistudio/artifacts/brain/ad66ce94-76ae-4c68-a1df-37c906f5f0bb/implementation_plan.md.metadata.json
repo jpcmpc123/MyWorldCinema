@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de otimização de performance 120Hz (mobile e desktop) com pipeline de imagens Retina/HD (w500 e w780), virtualização CSS (content-visibility), aceleração de GPU e eliminação de re-renderizações em cascata.",
-  "updatedAt":  "2026-10-24T00:26:08.109456575Z",
+  "summary":  "Plano de implementação para elevar a fluidez visual e tátil (120Hz) com fade-in inteligente em imagens (pôsteres, backdrops e avatares), micro-interações de toque sem atraso, curvas de inércia nativa cubic-bezier(0.32, 0.72, 0, 1) em modais/abas/navegação e rolagem sem atrito entre carrosséis horizontais e o feed vertical.",
+  "updatedAt":  "2026-10-24T01:03:21.554983781Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

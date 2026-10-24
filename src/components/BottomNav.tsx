@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { isMainTabRoute, parseProfileTabRoute } from '../utils/tabRoutes';
+import { smartImgRef, smartImgOnLoad } from './PosterCard';
 
 /**
  * Bottom Navigation — visível apenas no mobile (< 768px, md:hidden).
@@ -170,10 +171,13 @@ export const BottomNav: React.FC = () => {
       >
         {displayAvatar && !avatarError ? (
           <img
+            ref={smartImgRef}
+            onLoad={smartImgOnLoad}
+            decoding="async"
             src={displayAvatar}
             alt={displayUsername}
             onError={() => setAvatarError(true)}
-            className="w-6 h-6 rounded-full object-cover border border-white/20"
+            className="w-6 h-6 rounded-full object-cover border border-white/20 mw-img-fade"
           />
         ) : (
           <User className={iconCls} />

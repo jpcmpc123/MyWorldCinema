@@ -6,7 +6,7 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useProfileByUsername } from '../lib/useProfileByUsername';
 import { tmdb, type TMDBMovie } from '../services/tmdb';
-import { PosterCard } from '../components/PosterCard';
+import { PosterCard, smartImgRef, smartImgOnLoad } from '../components/PosterCard';
 import { useLanguage } from '../i18n/LanguageContext';
 import { parseProfileTabRoute } from '../utils/tabRoutes';
 
@@ -222,13 +222,15 @@ export const ProfilePage: React.FC = () => {
                         {movie ? (
                           <Link to={`/film/${movie.id}`} title={movie.title}>
                             <img
+                              ref={smartImgRef}
+                              onLoad={smartImgOnLoad}
                               loading="lazy"
                               decoding="async"
                               src={tmdb.getImageUrl(movie.poster_path, 'w500')}
                               srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 780w`}
                               sizes="(max-width: 1024px) 380px, 500px"
                               alt={movie.title}
-                              className="w-full h-full object-cover hover:opacity-90 transition-opacity"
+                              className="w-full h-full object-cover hover:opacity-90 mw-img-fade"
                             />
                           </Link>
                         ) : (
@@ -269,13 +271,15 @@ export const ProfilePage: React.FC = () => {
                       <div className="aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 hover:border-white transition-colors shadow-md">
                         <Link to={`/film/${log.movieId}`}>
                           <img
+                            ref={smartImgRef}
+                            onLoad={smartImgOnLoad}
                             loading="lazy"
                             decoding="async"
                             src={tmdb.getImageUrl(log.moviePoster, 'w500')}
                             srcSet={`${tmdb.getImageUrl(log.moviePoster, 'w500')} 500w, ${tmdb.getImageUrl(log.moviePoster, 'w780')} 780w`}
                             sizes="(max-width: 1024px) 380px, 500px"
                             alt={log.movieTitle}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover mw-img-fade"
                           />
                         </Link>
                       </div>
@@ -312,6 +316,8 @@ export const ProfilePage: React.FC = () => {
                     >
                       {m.poster_path ? (
                         <img
+                          ref={smartImgRef}
+                          onLoad={smartImgOnLoad}
                           loading="lazy"
                           decoding="async"
                           src={m.poster_path.startsWith('http') ? m.poster_path : tmdb.getImageUrl(m.poster_path, 'w500')}
@@ -322,7 +328,7 @@ export const ProfilePage: React.FC = () => {
                           }
                           alt={m.title}
                           title={m.title}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover mw-img-fade"
                         />
                       ) : (
                         <div className="w-full h-full bg-lb-surface flex items-center justify-center text-[8px] text-lb-muted px-0.5 text-center">
@@ -607,12 +613,14 @@ export const ProfilePage: React.FC = () => {
                               >
                                 {posterUrl ? (
                                   <img
+                                    ref={smartImgRef}
+                                    onLoad={smartImgOnLoad}
                                     loading="lazy"
                                     decoding="async"
                                     src={posterUrl}
                                     srcSet={`${posterUrl} 1x, ${posterW780} 2x`}
                                     alt={m.title}
-                                    className="w-full h-full object-cover block"
+                                    className="w-full h-full object-cover block mw-img-fade"
                                   />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-[#556677]">
@@ -716,10 +724,14 @@ export const ProfilePage: React.FC = () => {
         {/* Avatar & User Details */}
         <div className="flex items-center gap-5">
           {viewAvatar ? (
-            <img loading="lazy" decoding="async"
+            <img
+              ref={smartImgRef}
+              onLoad={smartImgOnLoad}
+              loading="lazy"
+              decoding="async"
               src={viewAvatar}
               alt={viewUsername}
-              className="w-24 h-24 rounded-full object-cover border border-lb-border-light shadow-xl"
+              className="w-24 h-24 rounded-full object-cover border border-lb-border-light shadow-xl mw-img-fade"
             />
           ) : (
             <div className="w-24 h-24 rounded-full bg-lb-surface border border-lb-border-light shadow-xl flex items-center justify-center text-lb-muted">
@@ -826,10 +838,14 @@ export const ProfilePage: React.FC = () => {
             {/* Big centered avatar */}
             <div className="flex flex-col items-center gap-2 pt-0 pb-5 border-b border-white/10 -mx-4 px-4 -mt-4">
               {viewAvatar ? (
-                <img loading="lazy" decoding="async"
+                <img
+                  ref={smartImgRef}
+                  onLoad={smartImgOnLoad}
+                  loading="lazy"
+                  decoding="async"
                   src={viewAvatar}
                   alt={viewUsername}
-                  className="w-16 h-16 rounded-full object-cover border border-lb-border-light shadow-xl"
+                  className="w-16 h-16 rounded-full object-cover border border-lb-border-light shadow-xl mw-img-fade"
                 />
               ) : (
                 <div className="w-16 h-16 rounded-full bg-lb-surface border border-lb-border-light shadow-xl flex items-center justify-center text-lb-muted">
@@ -856,13 +872,15 @@ export const ProfilePage: React.FC = () => {
                       {movie ? (
                         <Link to={`/film/${movie.id}`} title={movie.title}>
                           <img
+                            ref={smartImgRef}
+                            onLoad={smartImgOnLoad}
                             loading="lazy"
                             decoding="async"
                             src={tmdb.getImageUrl(movie.poster_path, 'w500')}
                             srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 780w`}
                             sizes="380px"
                             alt={movie.title}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover mw-img-fade"
                           />
                         </Link>
                       ) : (
@@ -892,13 +910,15 @@ export const ProfilePage: React.FC = () => {
                       <div className="aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 shadow-md">
                         <Link to={`/film/${log.movieId}`}>
                           <img
+                            ref={smartImgRef}
+                            onLoad={smartImgOnLoad}
                             loading="lazy"
                             decoding="async"
                             src={tmdb.getImageUrl(log.moviePoster, 'w500')}
                             srcSet={`${tmdb.getImageUrl(log.moviePoster, 'w500')} 500w, ${tmdb.getImageUrl(log.moviePoster, 'w780')} 780w`}
                             sizes="380px"
                             alt={log.movieTitle}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover mw-img-fade"
                           />
                         </Link>
                       </div>
@@ -950,8 +970,8 @@ export const ProfilePage: React.FC = () => {
 
       {/* Edit Profile Modal */}
       {isEditingBio && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
-          <div className="bg-lb-surface border border-lb-elevated w-full max-w-md rounded p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs mw-overlay-fade">
+          <div className="bg-lb-surface border border-lb-elevated w-full max-w-md rounded p-6 shadow-2xl mw-pop-in">
             <h3 className="text-sm font-bold uppercase tracking-wider text-white mb-4">
               {t('pp_edit_profile_title')}
             </h3>

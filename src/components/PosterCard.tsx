@@ -24,6 +24,29 @@ export function isPosterUrlLoaded(url: string | null | undefined): boolean {
   return Boolean(url && loadedPosterUrls.has(url));
 }
 
+/**
+ * Helpers sem re-render para aplicar fade-in suave (300ms ease-out) em imagens
+ * secundárias (avatares, miniaturas, carrosséis similares) quando vêm da rede,
+ * ou exibir imediatamente com opacity-100 se já estiverem no cache do navegador.
+ */
+export function smartImgRef(el: HTMLImageElement | null): void {
+  if (!el) return;
+  if ((el.complete && el.naturalWidth > 0) || loadedPosterUrls.has(el.currentSrc || el.src)) {
+    if (el.src) markPosterUrlLoaded(el.src);
+    el.style.transition = 'none';
+    el.classList.add('mw-loaded');
+    void el.offsetWidth;
+    el.style.transition = '';
+  }
+}
+
+export function smartImgOnLoad(e: React.SyntheticEvent<HTMLImageElement>): void {
+  const el = e.currentTarget;
+  if (el.src) markPosterUrlLoaded(el.src);
+  if (el.currentSrc) markPosterUrlLoaded(el.currentSrc);
+  el.classList.add('mw-loaded');
+}
+
 interface PosterCardProps {
   movie: {
     id: number;
@@ -289,6 +312,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
                 imgRef.current = el;
                 if (el && el.complete && el.naturalWidth > 0 && !isLoaded) {
                   markPosterUrlLoaded(primarySrc);
+                  if (urlW500) markPosterUrlLoaded(urlW500);
                   setIsLoaded(true);
                 }
               }}
@@ -318,7 +342,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
                   setHasError(true);
                 }
               }}
-              className={`relative z-10 w-full h-full object-cover transition-opacity duration-150 ${
+              className={`relative z-10 w-full h-full object-cover aspect-[2/3] transition-opacity duration-300 ease-out ${
                 isLoaded ? 'opacity-100' : 'opacity-0'
               }`}
               loading={priority || eager ? 'eager' : 'lazy'}
@@ -400,7 +424,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
               e.preventDefault();
               e.stopPropagation();
             }}
-            className={`hidden md:block absolute bottom-1 z-50 w-[184px] bg-[#8899aa] text-[#232a32] rounded-[4px] shadow-[0_10px_30px_rgba(0,0,0,0.65)] divide-y divide-[#718292] text-[12.5px] font-normal select-none ${
+            className={`hidden md:block absolute bottom-1 z-50 w-[184px] bg-[#8899aa] text-[#232a32] rounded-[4px] shadow-[0_10px_30px_rgba(0,0,0,0.65)] divide-y divide-[#718292] text-[12.5px] font-normal select-none mw-pop-in ${
               openLeft
                 ? 'right-[calc(min(50%+52px,100%-3px)+6px)]'
                 : 'left-[calc(min(50%+52px,100%-3px)+6px)]'

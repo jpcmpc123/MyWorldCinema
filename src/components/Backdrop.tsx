@@ -152,6 +152,23 @@ export const Backdrop: React.FC<BackdropProps> = ({ src, alt = '' }) => {
     };
   }, [src, hdSrc, hasDistinctHd, isMobile]);
 
+  const baseTargetUrl = hasDistinctHd ? fastSrc : hdSrc;
+  const [baseLoaded, setBaseLoaded] = useState<boolean>(() =>
+    Boolean(baseTargetUrl && isImageUrlPreloaded(baseTargetUrl)),
+  );
+
+  useEffect(() => {
+    if (!baseTargetUrl) {
+      setBaseLoaded(false);
+      return;
+    }
+    if (isImageUrlPreloaded(baseTargetUrl)) {
+      setBaseLoaded(true);
+      return;
+    }
+    setBaseLoaded(false);
+  }, [baseTargetUrl]);
+
   if (!src) return null;
 
   const showBaseLayer = !hdPainted || !hasDistinctHd;
@@ -170,21 +187,40 @@ export const Backdrop: React.FC<BackdropProps> = ({ src, alt = '' }) => {
         >
           {showBaseLayer && (
             <img
-              src={hasDistinctHd ? fastSrc : hdSrc}
+              ref={(el) => {
+                if (el && el.complete && el.naturalWidth > 0 && !baseLoaded) {
+                  loadedImageUrls.add(baseTargetUrl);
+                  setBaseLoaded(true);
+                }
+              }}
+              src={baseTargetUrl}
               alt={alt}
               fetchPriority="high"
               decoding="async"
-              className="w-full h-full object-cover object-top select-none pointer-events-none block"
+              onLoad={() => {
+                if (baseTargetUrl) loadedImageUrls.add(baseTargetUrl);
+                setBaseLoaded(true);
+              }}
+              className={`w-full h-full object-cover object-top select-none pointer-events-none block transition-opacity duration-300 ease-out ${
+                baseLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
             />
           )}
           {showHdLayer && (
             <img
+              ref={(el) => {
+                if (el && el.complete && el.naturalWidth > 0 && !hdPainted) {
+                  setHdPainted(true);
+                }
+              }}
               src={hdSrc}
               alt={alt}
               fetchPriority="low"
               decoding="async"
               onLoad={() => setHdPainted(true)}
-              className="absolute inset-0 w-full h-full object-cover object-top select-none pointer-events-none block"
+              className={`absolute inset-0 w-full h-full object-cover object-top select-none pointer-events-none block transition-opacity duration-300 ease-out ${
+                hdPainted ? 'opacity-100' : 'opacity-0'
+              }`}
             />
           )}
         </div>

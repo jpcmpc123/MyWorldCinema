@@ -4,6 +4,7 @@ import { Heart, Trash2, Calendar, MessageSquare, Plus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useProfileByUsername } from '../lib/useProfileByUsername';
 import { tmdb } from '../services/tmdb';
+import { smartImgRef, smartImgOnLoad } from '../components/PosterCard';
 import { useLanguage } from '../i18n/LanguageContext';
 import { parseProfileTabRoute } from '../utils/tabRoutes';
 
@@ -25,14 +26,16 @@ const DiaryMobileRow = React.memo<DiaryRowProps>(
     const p780 = tmdb.getImageUrl(entry.moviePoster, 'w780');
     return (
       <div className="py-3 flex gap-3 items-start diary-row-optimized">
-        <Link to={`/film/${entry.movieId}`} className="shrink-0">
+        <Link to={`/film/${entry.movieId}`} className="shrink-0 rounded-[4px] bg-lb-surface ring-1 ring-white/15 overflow-hidden">
           <img
+            ref={smartImgRef}
+            onLoad={smartImgOnLoad}
             loading="lazy"
             decoding="async"
             src={p500}
             srcSet={entry.moviePoster ? `${p500} 1x, ${p780} 2x` : undefined}
             alt={entry.movieTitle}
-            className="w-14 aspect-[2/3] object-cover rounded-[4px] bg-lb-surface ring-1 ring-white/15"
+            className="w-14 aspect-[2/3] object-cover mw-img-fade"
           />
         </Link>
 
@@ -97,14 +100,16 @@ const DiaryDesktopRow = React.memo<DiaryRowProps>(
 
         {/* Poster */}
         <td className="py-3 px-3">
-          <Link to={`/film/${entry.movieId}`}>
+          <Link to={`/film/${entry.movieId}`} className="block w-9 aspect-[2/3] rounded shadow border border-white/10 group-hover:border-lb-green transition-colors bg-lb-surface overflow-hidden">
             <img
+              ref={smartImgRef}
+              onLoad={smartImgOnLoad}
               loading="lazy"
               decoding="async"
               src={p500}
               srcSet={entry.moviePoster ? `${p500} 1x, ${p780} 2x` : undefined}
               alt={entry.movieTitle}
-              className="w-9 aspect-[2/3] object-cover rounded shadow border border-white/10 group-hover:border-lb-green transition-colors"
+              className="w-full h-full object-cover mw-img-fade"
             />
           </Link>
         </td>

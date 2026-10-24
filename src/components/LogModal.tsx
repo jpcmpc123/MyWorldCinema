@@ -3,6 +3,7 @@ import { X, Search, Calendar, Heart, AlertTriangle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useApp } from '../context/AppContext';
 import { tmdb, type TMDBMovie } from '../services/tmdb';
+import { smartImgRef, smartImgOnLoad } from './PosterCard';
 import { StarRating } from './StarRating';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -168,12 +169,14 @@ export const LogModal: React.FC = () => {
                         className="p-2 flex items-center gap-3 hover:bg-lb-elevated cursor-pointer w-full text-left"
                       >
                         <img
+                          ref={smartImgRef}
+                          onLoad={smartImgOnLoad}
                           loading="lazy"
                           decoding="async"
                           src={tmdb.getImageUrl(res.poster_path, 'w500')}
                           srcSet={`${tmdb.getImageUrl(res.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(res.poster_path, 'w780')} 2x`}
                           alt={res.title}
-                          className="w-8 h-12 object-cover rounded bg-lb-elevated"
+                          className="w-8 h-12 object-cover rounded bg-lb-elevated mw-img-fade"
                         />
                         <div>
                           <p className="text-xs font-bold text-white">{res.title}</p>
@@ -188,12 +191,14 @@ export const LogModal: React.FC = () => {
           ) : (
             <div className="flex items-center gap-4 bg-lb-bg p-3 rounded border border-lb-elevated">
               <img
+                ref={smartImgRef}
+                onLoad={smartImgOnLoad}
                 loading="eager"
                 decoding="async"
                 src={tmdb.getImageUrl(movie.poster_path, 'w500')}
                 srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 2x`}
                 alt={movie.title}
-                className="w-12 h-18 object-cover rounded shadow border border-white/10"
+                className="w-12 h-18 object-cover rounded shadow border border-white/10 mw-img-fade"
               />
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold text-white text-base truncate">{movie.title}</h3>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Eye } from 'lucide-react';
 import { tmdb, type TMDBPersonMovieCredit } from '../services/tmdb';
 import { preloadSingleImage } from './Backdrop';
+import { smartImgRef, smartImgOnLoad } from './PosterCard';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { matchesPersonGenreFilter, type PersonRole } from '../utils/personNav';
@@ -135,6 +136,8 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
       >
         {film.poster_path ? (
           <img
+            ref={smartImgRef}
+            onLoad={smartImgOnLoad}
             src={p500}
             srcSet={`${p500} 500w, ${p780} 780w`}
             sizes="(max-width: 640px) 380px, 500px"
@@ -142,6 +145,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
             loading={idx < 8 ? 'eager' : 'lazy'}
             fetchPriority={idx < 4 ? 'high' : 'auto'}
             decoding="async"
+            className="mw-img-fade"
           />
         ) : (
           <span className="w-full h-full flex items-center justify-center p-1 text-center text-[10px] leading-tight text-[#9ab]">
@@ -178,12 +182,14 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
             className="w-[92px] h-[138px] shrink-0 rounded-md overflow-hidden border border-white/12 bg-[#232a31] cursor-pointer active:scale-[0.97] transition-transform p-0 block"
           >
             <img
+              ref={smartImgRef}
+              onLoad={smartImgOnLoad}
               src={profileImg}
               alt={personName}
               loading="eager"
               fetchPriority="high"
               decoding="async"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover mw-img-fade"
             />
           </button>
         )}

@@ -46,8 +46,8 @@ const DIRECT_SETTLE_MS = 210;
 
 /** Curva da fase de estiramento — saída rápida e contínua sem parar no pico */
 const EASE_STRETCH_KEYFRAME = 'cubic-bezier(0.12, 0.82, 0.32, 1)';
-/** Curva da fase de recolhimento da cauda — desaceleração suave até o encaixe final */
-const EASE_TAIL_KEYFRAME = 'cubic-bezier(0.22, 1, 0.36, 1)';
+/** Curva da fase de recolhimento da cauda — desaceleração nativa do iOS até o encaixe final */
+const EASE_TAIL_KEYFRAME = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
 /** Limite máximo de estiramento (fração da largura da aba) para cliques rápidos/saltos longos */
 const MAX_STRETCH_FACTOR = 1.85;
