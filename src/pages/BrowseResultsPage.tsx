@@ -956,6 +956,8 @@ export const BrowseResultsPage: React.FC = () => {
                                 tv={tv}
                                 faded={faded}
                                 showDetails={false}
+                                priority={index < 4}
+                                eager={index < 8}
                               />
                             </div>
                           );
@@ -1287,8 +1289,8 @@ export const BrowseResultsPage: React.FC = () => {
                     tv={tv}
                     faded={faded}
                     showDetails={viewMode === 'cards'}
-                    priority={index < 12}
-                    eager={index < 24}
+                    priority={index < 4}
+                    eager={index < 8}
                   />
                 </div>
               );

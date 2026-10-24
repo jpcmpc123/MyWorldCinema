@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Eye, Star, Heart, ChevronDown } from 'lucide-react';
 import { tmdb, type TMDBMovie } from '../services/tmdb';
 import { tabDataCache } from '../services/tabDataCache';
-import { PosterCard } from '../components/PosterCard';
+import { PosterCard, preloadPoster } from '../components/PosterCard';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export const FilmsHubPage: React.FC = () => {
@@ -65,6 +65,27 @@ export const FilmsHubPage: React.FC = () => {
   }, [findQuery]);
 
   useEffect(() => {
+    let cancelled = false;
+    const warmUpFilmsPosters = (pop: TMDBMovie[], reviewed: TMDBMovie[]) => {
+      const task = () => {
+        if (cancelled) return;
+        for (const m of pop.slice(0, 8)) preloadPoster(m.poster_path);
+        for (const m of reviewed.slice(0, 8)) preloadPoster(m.poster_path);
+      };
+      const win = window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      };
+      if (typeof win.requestIdleCallback === 'function') {
+        win.requestIdleCallback(task, { timeout: 250 });
+      } else {
+        window.setTimeout(task, 50);
+      }
+    };
+
+    if (cachedHub) {
+      warmUpFilmsPosters(cachedHub.popular, cachedHub.mostAnticipated);
+    }
+
     async function loadData() {
       setLoading(true);
       window.scrollTo(0, 0);
@@ -72,16 +93,21 @@ export const FilmsHubPage: React.FC = () => {
         // "Just reviewed" do hub desktop passa a ser também curado por data:
         // nada de lançados na fileira de inéditos
         const hub = await tmdb.getFilmsHubSections();
+        if (cancelled) return;
         tabDataCache.setFilmsHub(hub);
         setPopularFilms(hub.popular.slice(0, 16));
         setJustReviewedFilms(hub.mostAnticipated.slice(0, 12));
+        warmUpFilmsPosters(hub.popular, hub.mostAnticipated);
       } catch (err) {
         console.error('Failed to load films hub:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     loadData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const decades = [
@@ -482,7 +508,7 @@ export const FilmsHubPage: React.FC = () => {
 
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2">
           {justReviewedFilms.map((m, idx) => (
-            <PosterCard key={m.id} movie={m} size="fluid" priority={idx < 6} />
+            <PosterCard key={m.id} movie={m} size="fluid" priority={idx < 4} eager={idx < 8} />
           ))}
         </div>
       </section>

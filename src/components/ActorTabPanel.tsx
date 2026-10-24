@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye } from 'lucide-react';
 import { tmdb, type TMDBPersonMovieCredit } from '../services/tmdb';
 import { preloadSingleImage } from './Backdrop';
-import { smartImgRef, smartImgOnLoad } from './PosterCard';
+import { smartImgRef, smartImgOnLoad, preloadImageUrl } from './PosterCard';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { matchesPersonGenreFilter, type PersonRole } from '../utils/personNav';
@@ -63,6 +63,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
 }) => {
   const { isMovieWatched } = useApp();
   const { t } = useLanguage();
+  const prefetchedIdsRef = useRef<Set<number>>(new Set());
 
   // ---- Filtros + ordenação da filmografia desta aba ------------------------
   const visibleFilms = useMemo(() => {
@@ -102,6 +103,16 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
   });
 
   const handlePrefetch = (film: TMDBPersonMovieCredit) => {
+    if (prefetchedIdsRef.current.has(film.id)) return;
+    prefetchedIdsRef.current.add(film.id);
+
+    const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
+    const detailPosterSize = isMob ? 'w342' : 'w500';
+    if (film.poster_path) {
+      const dpUrl = tmdb.getImageUrl(film.poster_path, detailPosterSize);
+      preloadImageUrl(dpUrl);
+      void preloadSingleImage(dpUrl);
+    }
     if (film.backdrop_path) {
       void preloadSingleImage(tmdb.getBackdropUrl(film.backdrop_path, 'w1280'));
     }
@@ -115,6 +126,11 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
         if (bp) {
           void preloadSingleImage(tmdb.getBackdropUrl(bp, 'w1280'));
         }
+        if (details.poster_path) {
+          const dpUrl = tmdb.getImageUrl(details.poster_path, detailPosterSize);
+          preloadImageUrl(dpUrl);
+          void preloadSingleImage(dpUrl);
+        }
       })
       .catch(() => {});
   };
@@ -122,6 +138,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
   // Card de pôster (grade de 4 colunas e lista compacta).
   // Série (media_type 'tv') abre /tv/{id}; filme abre /film/{id}.
   const posterCard = (film: TMDBPersonMovieCredit, idx: number, className = '') => {
+    const p342 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w342') : '';
     const p500 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w500') : '';
     const p780 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w780') : '';
     return (
@@ -130,7 +147,6 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
         to={`${film.media_type === 'tv' ? '/tv' : '/film'}/${film.id}`}
         state={buildLinkState(film)}
         onPointerDown={() => handlePrefetch(film)}
-        onTouchStart={() => handlePrefetch(film)}
         onMouseEnter={() => handlePrefetch(film)}
         className={`person-film-card relative block ${className}`}
       >
@@ -139,8 +155,8 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
             ref={smartImgRef}
             onLoad={smartImgOnLoad}
             src={p500}
-            srcSet={`${p500} 500w, ${p780} 780w`}
-            sizes="(max-width: 640px) 380px, 500px"
+            srcSet={`${p342} 342w, ${p500} 500w, ${p780} 780w`}
+            sizes="(max-width: 640px) 26vw, (max-width: 1024px) 18vw, 185px"
             alt={film.title}
             loading={idx < 8 ? 'eager' : 'lazy'}
             fetchPriority={idx < 4 ? 'high' : 'auto'}

@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de arquitetura e otimização de performance do módulo de IA (Cine IA / Motor Laya 7D + TMDB), unificando a inteligência em um módulo isomórfico com pré-compilação de regras, carregamento sob demanda dos pesos neurais, cache em memória e execução direta no cliente e servidor.",
-  "updatedAt":  "2026-10-24T17:10:08.910559817Z",
+  "summary":  "Plano de implementação atualizado com os 2 refinamentos técnicos: (1) Cache Hit 100% no preloadPoster usando a mesma regra de largura física (26vw * dpr <= 342 ? 'w342' : 'w500') e espelhando img.sizes + img.srcset na instância new Image(), e (2) desconexão/unobserve imediato do IntersectionObserver assim que o card entra na margem de 400px 200px para custo zero de CPU/memória no scroll a 120Hz.",
+  "updatedAt":  "2026-10-24T17:51:06.050043605Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

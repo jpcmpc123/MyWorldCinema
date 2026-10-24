@@ -9,7 +9,8 @@ import { useLanguage } from '../i18n/LanguageContext';
 
 // Cache em memória de URLs de pôsteres já carregados na sessão para renderização instantânea (0ms, sem flash)
 const loadedPosterUrls = new Set<string>();
-const MAX_LOADED_POSTER_URLS = 500;
+const preloadedUrls = new Set<string>();
+const MAX_LOADED_POSTER_URLS = 600;
 
 export function markPosterUrlLoaded(url: string | null | undefined): void {
   if (!url) return;
@@ -25,6 +26,115 @@ export function isPosterUrlLoaded(url: string | null | undefined): boolean {
 }
 
 /**
+ * Calcula o degrau exato do srcSet (w342, w500 ou w780) que o navegador
+ * selecionará com base na largura CSS do card e no devicePixelRatio atual.
+ * Em telas de 390px com DPR 3x, 26vw = ~101.4px CSS (~304px físicos <= 342w) -> 'w342'.
+ */
+export function getOptimalPosterSize(isLarge = false): 'w342' | 'w500' | 'w780' {
+  if (typeof window === 'undefined') return 'w500';
+  const vw = window.innerWidth || 390;
+  const dpr = window.devicePixelRatio || 1;
+  const cssWidth = isLarge
+    ? vw <= 768
+      ? vw * 0.45
+      : 300
+    : vw <= 640
+      ? vw * 0.26
+      : vw <= 1024
+        ? vw * 0.18
+        : 185;
+  const physicalWidth = cssWidth * dpr;
+  if (physicalWidth <= 342) return 'w342';
+  if (physicalWidth <= 500) return 'w500';
+  return 'w780';
+}
+
+/**
+ * Utilitário global de Preload de URL única sem duplicidade de rede.
+ */
+export function preloadImageUrl(url?: string | null): void {
+  if (!url || typeof Image === 'undefined') return;
+  if (preloadedUrls.has(url) || loadedPosterUrls.has(url)) return;
+  preloadedUrls.add(url);
+  const img = new Image();
+  img.decoding = 'async';
+  img.onload = () => {
+    img.onload = null;
+    img.onerror = null;
+    if (img.currentSrc) markPosterUrlLoaded(img.currentSrc);
+    markPosterUrlLoaded(url);
+  };
+  img.onerror = () => {
+    img.onload = null;
+    img.onerror = null;
+  };
+  img.src = url;
+  if (img.complete && img.naturalWidth > 0) {
+    img.onload = null;
+    img.onerror = null;
+    if (img.currentSrc) markPosterUrlLoaded(img.currentSrc);
+    markPosterUrlLoaded(url);
+  }
+}
+
+/**
+ * Pré-carrega um pôster do TMDB com 100% de Cache Hit em relação ao <img srcSet>.
+ * Quando `size` não é forçado, usa a mesma regra de largura física (26vw * dpr <= 342 ? 'w342' : 'w500')
+ * e espelha `sizes` + `srcset` na instância `new Image()`.
+ */
+export function preloadPoster(
+  posterPath?: string | null,
+  size?: 'w342' | 'w500' | 'w780',
+  isLarge = false,
+): void {
+  if (!posterPath || typeof Image === 'undefined') return;
+  if (posterPath.startsWith('http')) {
+    preloadImageUrl(posterPath);
+    return;
+  }
+
+  if (size) {
+    preloadImageUrl(tmdb.getImageUrl(posterPath, size));
+    return;
+  }
+
+  const optimalSize = getOptimalPosterSize(isLarge);
+  const targetUrl = tmdb.getImageUrl(posterPath, optimalSize);
+  if (!targetUrl || preloadedUrls.has(targetUrl) || loadedPosterUrls.has(targetUrl)) return;
+  preloadedUrls.add(targetUrl);
+
+  const url342 = tmdb.getImageUrl(posterPath, 'w342');
+  const url500 = tmdb.getImageUrl(posterPath, 'w500');
+  const url780 = tmdb.getImageUrl(posterPath, 'w780');
+
+  const img = new Image();
+  img.decoding = 'async';
+  img.sizes = isLarge
+    ? '(max-width: 768px) 45vw, 300px'
+    : '(max-width: 640px) 26vw, (max-width: 1024px) 18vw, 185px';
+  img.srcset = `${url342} 342w, ${url500} 500w, ${url780} 780w`;
+  img.onload = () => {
+    img.onload = null;
+    img.onerror = null;
+    if (img.currentSrc) markPosterUrlLoaded(img.currentSrc);
+    markPosterUrlLoaded(targetUrl);
+    markPosterUrlLoaded(url500);
+  };
+  img.onerror = () => {
+    img.onload = null;
+    img.onerror = null;
+  };
+  img.src = targetUrl;
+  if (img.complete && img.naturalWidth > 0) {
+    img.onload = null;
+    img.onerror = null;
+    if (img.currentSrc) markPosterUrlLoaded(img.currentSrc);
+    markPosterUrlLoaded(targetUrl);
+    markPosterUrlLoaded(url500);
+  }
+}
+
+/**
  * Helpers sem re-render para aplicar fade-in suave (300ms ease-out) em imagens
  * secundárias (avatares, miniaturas, carrosséis similares) quando vêm da rede,
  * ou exibir imediatamente com opacity-100 se já estiverem no cache do navegador.
@@ -33,6 +143,7 @@ export function smartImgRef(el: HTMLImageElement | null): void {
   if (!el) return;
   if ((el.complete && el.naturalWidth > 0) || loadedPosterUrls.has(el.currentSrc || el.src)) {
     if (el.src) markPosterUrlLoaded(el.src);
+    if (el.currentSrc) markPosterUrlLoaded(el.currentSrc);
     el.style.transition = 'none';
     el.classList.add('mw-loaded');
     void el.offsetWidth;
@@ -95,6 +206,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const [hoverStar, setHoverStar] = useState<number | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const prefetchedIdRef = useRef<number | null>(null);
 
   // Fecha a abinha (popover) ao clicar fora ou apertar Escape
   useEffect(() => {
@@ -117,16 +229,27 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
 
   // Custom poster override (Set film poster) applies site-wide
   const displayPosterPath = overridePoster || movie.poster_path;
+  const isCustomUrl = Boolean(displayPosterPath && displayPosterPath.startsWith('http'));
+  const isLarge = size === 'lg';
 
-  // Retina HD resolution pipeline (w500 & w780) for sharp 2x/3x OLED & Retina displays
-  const urlW500 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w500') : '';
-  const urlW780 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w780') : '';
+  // Pipeline de 3 degraus de alta densidade (w342, w500, w780) com src base em w500
+  const urlW342 = displayPosterPath
+    ? isCustomUrl
+      ? displayPosterPath
+      : tmdb.getImageUrl(displayPosterPath, 'w342')
+    : '';
+  const urlW500 = displayPosterPath
+    ? isCustomUrl
+      ? displayPosterPath
+      : tmdb.getImageUrl(displayPosterPath, 'w500')
+    : '';
+  const urlW780 = displayPosterPath
+    ? isCustomUrl
+      ? displayPosterPath
+      : tmdb.getImageUrl(displayPosterPath, 'w780')
+    : '';
 
-  const primarySrc = !displayPosterPath
-    ? ''
-    : size === 'lg'
-      ? urlW780
-      : urlW500;
+  const primarySrc = urlW500;
 
   const posterSizes = {
     fluid: 'w-full min-w-0',
@@ -141,15 +264,19 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const year = rawDate ? rawDate.slice(0, 4) : '';
   const tooltipLabel = year ? `${displayTitle} (${year})` : displayTitle;
 
+  const isAnyVariantCached = (u342: string, u500: string, u780: string): boolean =>
+    Boolean(
+      (u342 && (loadedPosterUrls.has(u342) || isImageUrlPreloaded(u342))) ||
+        (u500 && (loadedPosterUrls.has(u500) || isImageUrlPreloaded(u500))) ||
+        (u780 && (loadedPosterUrls.has(u780) || isImageUrlPreloaded(u780))),
+    );
+
   // Estado de carregamento do pôster: se já estiver no cache em memória, nasce carregado (sem piscar)
   const [isLoaded, setIsLoaded] = useState<boolean>(() =>
-    Boolean(
-      primarySrc &&
-        (loadedPosterUrls.has(primarySrc) ||
-          isImageUrlPreloaded(primarySrc) ||
-          (urlW500 && (loadedPosterUrls.has(urlW500) || isImageUrlPreloaded(urlW500))) ||
-          (urlW780 && (loadedPosterUrls.has(urlW780) || isImageUrlPreloaded(urlW780)))),
-    ),
+    isAnyVariantCached(urlW342, urlW500, urlW780),
+  );
+  const [nearViewport, setNearViewport] = useState<boolean>(() =>
+    Boolean(priority || eager || isAnyVariantCached(urlW342, urlW500, urlW780)),
   );
   const [retryCount, setRetryCount] = useState(0);
   const [hasError, setHasError] = useState(false);
@@ -161,37 +288,57 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
       setRetryCount(0);
       return;
     }
-    const alreadyCached =
-      loadedPosterUrls.has(primarySrc) ||
-      isImageUrlPreloaded(primarySrc) ||
-      (urlW500 && (loadedPosterUrls.has(urlW500) || isImageUrlPreloaded(urlW500))) ||
-      (urlW780 && (loadedPosterUrls.has(urlW780) || isImageUrlPreloaded(urlW780)));
-
-    if (alreadyCached) {
+    if (isAnyVariantCached(urlW342, urlW500, urlW780)) {
       markPosterUrlLoaded(primarySrc);
       setIsLoaded(true);
+      setNearViewport(true);
       setHasError(false);
       return;
     }
 
     const el = imgRef.current;
     if (el && el.complete && el.naturalWidth > 0) {
+      if (el.currentSrc) markPosterUrlLoaded(el.currentSrc);
       markPosterUrlLoaded(primarySrc);
       setIsLoaded(true);
+      setNearViewport(true);
       setHasError(false);
       return;
     }
 
     setIsLoaded(false);
+    setNearViewport(Boolean(priority || eager));
     setHasError(false);
     setRetryCount(0);
-  }, [displayPosterPath, primarySrc, urlW500, urlW780]);
+  }, [displayPosterPath, primarySrc, urlW342, urlW500, urlW780, priority, eager]);
+
+  // Gatilho de pré-carregamento abaixo da dobra / fora do scroll horizontal (400px vertical, 200px horizontal)
+  // Desconecta imediatamente (one-shot) assim que entra na margem para custo zero em scroll a 120Hz.
+  useEffect(() => {
+    if (priority || eager || isLoaded || nearViewport || !displayPosterPath) return;
+    const el = cardRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setNearViewport(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          observer.disconnect();
+          setNearViewport(true);
+        }
+      },
+      { rootMargin: '400px 200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [priority, eager, isLoaded, nearViewport, displayPosterPath]);
 
   const activeSrc =
     retryCount === 0
       ? primarySrc
       : retryCount === 1
-        ? urlW500 || primarySrc
+        ? urlW342 || primarySrc
         : `${primarySrc}${primarySrc.includes('?') ? '&' : '?'}r=${retryCount}`;
 
   const longPressHandlers = useLongPress(
@@ -215,16 +362,40 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
 
   const currentStars = hoverStar !== null ? hoverStar : (rating ?? 0);
 
+  // Preload preditivo ao tocar/passar o mouse (protegido para rodar apenas 1x por filme)
   const handlePrefetch = () => {
+    if (prefetchedIdRef.current === movie.id) return;
+    prefetchedIdRef.current = movie.id;
+
+    const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
+    const detailPosterSize = isMob ? 'w342' : 'w500';
+
+    if (displayPosterPath) {
+      const detailPosterUrl = isCustomUrl
+        ? displayPosterPath
+        : tmdb.getImageUrl(displayPosterPath, detailPosterSize);
+      preloadImageUrl(detailPosterUrl);
+      void preloadSingleImage(detailPosterUrl);
+      if (!isMob && !isCustomUrl) {
+        preloadPoster(displayPosterPath, 'w780');
+      }
+    }
+
     if (movie.backdrop_path) {
       void preloadSingleImage(tmdb.getBackdropUrl(movie.backdrop_path, 'w1280'));
     }
+
     const req = tv ? tmdb.getTVDetails(movie.id) : tmdb.getMovieDetails(movie.id);
     req
       .then((details) => {
         const bp = details.backdrop_path || details.poster_path;
         if (bp) {
           void preloadSingleImage(tmdb.getBackdropUrl(bp, 'w1280'));
+        }
+        if (details.poster_path) {
+          const dpUrl = tmdb.getImageUrl(details.poster_path, detailPosterSize);
+          preloadImageUrl(dpUrl);
+          void preloadSingleImage(dpUrl);
         }
       })
       .catch(() => {});
@@ -281,7 +452,6 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
           state={{ initialMovie: movie, fromPoster: true, ...linkState }}
           onPointerDown={handlePrefetch}
           onMouseEnter={handlePrefetch}
-          onTouchStart={handlePrefetch}
           className={`relative block w-full h-full rounded-[4px] overflow-hidden transition-opacity duration-150 ${
             faded
               ? menuOpen
@@ -311,27 +481,32 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
               ref={(el) => {
                 imgRef.current = el;
                 if (el && el.complete && el.naturalWidth > 0 && !isLoaded) {
+                  if (el.currentSrc) markPosterUrlLoaded(el.currentSrc);
                   markPosterUrlLoaded(primarySrc);
+                  if (urlW342) markPosterUrlLoaded(urlW342);
                   if (urlW500) markPosterUrlLoaded(urlW500);
                   setIsLoaded(true);
                 }
               }}
               src={activeSrc}
               srcSet={
-                retryCount === 0
-                  ? `${urlW500} 500w, ${urlW780} 780w`
+                retryCount === 0 && !isCustomUrl
+                  ? `${urlW342} 342w, ${urlW500} 500w, ${urlW780} 780w`
                   : undefined
               }
               sizes={
-                size === 'sm'
-                  ? '250px'
-                  : size === 'lg'
-                    ? '(max-width: 640px) 500px, 780px'
-                    : '(max-width: 640px) 380px, 500px'
+                isLarge
+                  ? '(max-width: 768px) 45vw, 300px'
+                  : size === 'sm'
+                    ? '120px'
+                    : '(max-width: 640px) 26vw, (max-width: 1024px) 18vw, 185px'
               }
               alt={displayTitle}
-              onLoad={() => {
+              onLoad={(e) => {
+                const current = e.currentTarget.currentSrc;
+                if (current) markPosterUrlLoaded(current);
                 markPosterUrlLoaded(primarySrc);
+                if (urlW342) markPosterUrlLoaded(urlW342);
                 if (urlW500) markPosterUrlLoaded(urlW500);
                 setIsLoaded(true);
               }}
@@ -345,7 +520,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
               className={`relative z-10 w-full h-full object-cover aspect-[2/3] transition-opacity duration-300 ease-out ${
                 isLoaded ? 'opacity-100' : 'opacity-0'
               }`}
-              loading={priority || eager ? 'eager' : 'lazy'}
+              loading={priority || eager || nearViewport ? 'eager' : 'lazy'}
               fetchPriority={priority ? 'high' : 'auto'}
               decoding="async"
             />

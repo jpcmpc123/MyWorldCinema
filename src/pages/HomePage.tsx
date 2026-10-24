@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { tmdb, type TMDBMovie } from '../services/tmdb';
 import { tabDataCache } from '../services/tabDataCache';
-import { PosterCard } from '../components/PosterCard';
+import { PosterCard, preloadPoster } from '../components/PosterCard';
 import { useApp } from '../context/AppContext';
 import { MobileCatalogSections } from '../components/mobile/MobileCatalogSections';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -35,6 +35,38 @@ export const HomePage: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    const warmUpVisiblePosters = (
+      pop: TMDBMovie[],
+      rated: TMDBMovie[],
+      watched: TMDBMovie[],
+      anticipated: TMDBMovie[],
+    ) => {
+      const task = () => {
+        if (cancelled) return;
+        for (const m of pop.slice(0, 8)) preloadPoster(m.poster_path);
+        for (const m of rated.slice(0, 8)) preloadPoster(m.poster_path);
+        for (const m of watched.slice(0, 6)) preloadPoster(m.poster_path);
+        for (const m of anticipated.slice(0, 6)) preloadPoster(m.poster_path);
+      };
+      const win = window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      };
+      if (typeof win.requestIdleCallback === 'function') {
+        win.requestIdleCallback(task, { timeout: 250 });
+      } else {
+        window.setTimeout(task, 50);
+      }
+    };
+
+    if (cachedHub) {
+      warmUpVisiblePosters(
+        cachedHub.popular,
+        cachedHub.highestRated,
+        cachedHub.mostWatched,
+        cachedHub.mostAnticipated,
+      );
+    }
+
     async function loadData() {
       try {
         const hub = await tmdb.getFilmsHubSections();
@@ -45,6 +77,12 @@ export const HomePage: React.FC = () => {
         setNowPlayingFilms(hub.mostAnticipated.slice(0, 18));
         setMostWatchedFilms(hub.mostWatched.slice(0, 18));
         setFeaturedFilm(hub.popular[0] || null);
+        warmUpVisiblePosters(
+          hub.popular,
+          hub.highestRated,
+          hub.mostWatched,
+          hub.mostAnticipated,
+        );
       } catch (err) {
         console.error('Failed to load homepage movies:', err);
       } finally {
@@ -198,8 +236,9 @@ export const HomePage: React.FC = () => {
                         key={idx}
                         loading="lazy"
                         decoding="async"
-                        src={tmdb.getImageUrl(m.poster_path, 'w500')}
-                        srcSet={`${tmdb.getImageUrl(m.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(m.poster_path, 'w780')} 2x`}
+                        src={tmdb.getImageUrl(m.poster_path, 'w342')}
+                        srcSet={`${tmdb.getImageUrl(m.poster_path, 'w342')} 342w, ${tmdb.getImageUrl(m.poster_path, 'w500')} 500w`}
+                        sizes="48px"
                         alt={m.title}
                         className="w-12 aspect-[2/3] object-cover rounded shadow border border-white/10 group-hover:translate-y-[-2px] transition-transform"
                         style={{ zIndex: 10 - idx }}
@@ -238,8 +277,15 @@ export const HomePage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-2">
-              {topRatedFilms.map((movie) => (
-                <PosterCard key={movie.id} movie={movie} size="fluid" enableLongPressActions />
+              {topRatedFilms.map((movie, idx) => (
+                <PosterCard
+                  key={movie.id}
+                  movie={movie}
+                  size="fluid"
+                  enableLongPressActions
+                  priority={idx < 4}
+                  eager={idx < 8}
+                />
               ))}
             </div>
           </section>

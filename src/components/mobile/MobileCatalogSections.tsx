@@ -94,7 +94,7 @@ const PosterRail: React.FC<{
             tv={isSeries}
             enableLongPressActions
             priority={sectionIndex < 2 && idx < 4}
-            eager
+            eager={sectionIndex < 2 && idx < 8}
           />
         </PosterShell>
         {children?.(m)}

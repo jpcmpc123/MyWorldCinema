@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Eye, Star, Heart, ChevronDown } from 'lucide-react';
 import { tmdb, type TMDBMovie } from '../services/tmdb';
 import { tabDataCache } from '../services/tabDataCache';
-import { PosterCard } from '../components/PosterCard';
+import { PosterCard, preloadPoster } from '../components/PosterCard';
 import { MobileCatalogSections } from '../components/mobile/MobileCatalogSections';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -77,6 +77,38 @@ export const SeriesHubPage: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    const warmUpSeriesPosters = (
+      pop: TMDBMovie[],
+      rated: TMDBMovie[],
+      watched: TMDBMovie[],
+      reviewed: TMDBMovie[],
+    ) => {
+      const task = () => {
+        if (cancelled) return;
+        for (const m of pop.slice(0, 8)) preloadPoster(m.poster_path);
+        for (const m of rated.slice(0, 8)) preloadPoster(m.poster_path);
+        for (const m of watched.slice(0, 6)) preloadPoster(m.poster_path);
+        for (const m of reviewed.slice(0, 6)) preloadPoster(m.poster_path);
+      };
+      const win = window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      };
+      if (typeof win.requestIdleCallback === 'function') {
+        win.requestIdleCallback(task, { timeout: 250 });
+      } else {
+        window.setTimeout(task, 50);
+      }
+    };
+
+    if (cachedHub) {
+      warmUpSeriesPosters(
+        cachedHub.popular,
+        cachedHub.highestRated,
+        cachedHub.mostWatched,
+        cachedHub.mostAnticipated,
+      );
+    }
+
     async function loadData() {
       if (!isMobile) window.scrollTo(0, 0);
       try {
@@ -87,6 +119,12 @@ export const SeriesHubPage: React.FC = () => {
         setMostWatchedSeries(hub.mostWatched.slice(0, 18));
         setJustReviewedSeries(hub.mostAnticipated.slice(0, 12));
         setTopRatedSeries(hub.highestRated.slice(0, 18));
+        warmUpSeriesPosters(
+          hub.popular,
+          hub.highestRated,
+          hub.mostWatched,
+          hub.mostAnticipated,
+        );
       } catch (err) {
         console.error('Failed to load series hub:', err);
       } finally {
@@ -514,7 +552,7 @@ export const SeriesHubPage: React.FC = () => {
 
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2">
           {justReviewedSeries.map((m, idx) => (
-            <PosterCard key={m.id} movie={m} size="fluid" tv priority={idx < 6} />
+            <PosterCard key={m.id} movie={m} size="fluid" tv priority={idx < 4} eager={idx < 8} />
           ))}
         </div>
       </section>

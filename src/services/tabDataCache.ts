@@ -1,5 +1,5 @@
 import { tmdb, getTmdbLanguage, type TMDBMovie } from './tmdb';
-import { markPosterUrlLoaded } from '../components/PosterCard';
+import { preloadPoster } from '../components/PosterCard';
 
 export interface HubSectionsData {
   popular: TMDBMovie[];
@@ -35,38 +35,27 @@ if (typeof window !== 'undefined') {
   }
 }
 
-function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>, limitPerSection = 6): void {
+export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>, limitPerSection = 8): void {
   if (typeof window === 'undefined' || typeof Image === 'undefined') return;
-  const isMobile = window.innerWidth < 640;
-  const size = isMobile ? 'w185' : 'w342';
-  const lists = [data.popular, data.highestRated, data.mostWatched, data.mostAnticipated];
-  const seen = new Set<string>();
-
-  for (const list of lists) {
-    if (!Array.isArray(list)) continue;
-    for (const item of list.slice(0, limitPerSection)) {
-      if (!item?.poster_path) continue;
-      const url = tmdb.getImageUrl(item.poster_path, size);
-      if (!url || seen.has(url)) continue;
-      seen.add(url);
-      const img = new Image();
-      img.decoding = 'async';
-      img.onload = () => {
-        img.onload = null;
-        img.onerror = null;
-        markPosterUrlLoaded(url);
-      };
-      img.onerror = () => {
-        img.onload = null;
-        img.onerror = null;
-      };
-      img.src = url;
-      if (img.complete && img.naturalWidth > 0) {
-        img.onload = null;
-        img.onerror = null;
-        markPosterUrlLoaded(url);
+  const runWarmup = () => {
+    const lists = [data.popular, data.highestRated, data.mostWatched, data.mostAnticipated];
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+      for (const item of list.slice(0, limitPerSection)) {
+        if (item?.poster_path) {
+          preloadPoster(item.poster_path);
+        }
       }
     }
+  };
+
+  const win = window as Window & {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  };
+  if (typeof win.requestIdleCallback === 'function') {
+    win.requestIdleCallback(runWarmup, { timeout: 300 });
+  } else {
+    window.setTimeout(runWarmup, 50);
   }
 }
 
