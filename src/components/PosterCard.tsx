@@ -95,24 +95,15 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   // Custom poster override (Set film poster) applies site-wide
   const displayPosterPath = overridePoster || movie.poster_path;
 
-  const isMobileViewport =
-    typeof window !== 'undefined' && window.innerWidth < 640;
-
-  // Em celulares (4 colunas ~85px CSS), w185 tem 185px reais (~15KB vs ~95KB do w342/w500),
-  // carregando até 6x mais rápido em redes móveis sem perda visual.
-  const urlW185 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w185') : '';
-  const urlW342 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w342') : '';
+  // Retina HD resolution pipeline (w500 & w780) for sharp 2x/3x OLED & Retina displays
   const urlW500 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w500') : '';
+  const urlW780 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w780') : '';
 
   const primarySrc = !displayPosterPath
     ? ''
     : size === 'lg'
-      ? isMobileViewport
-        ? urlW342
-        : urlW500
-      : isMobileViewport
-        ? urlW185
-        : urlW342;
+      ? urlW780
+      : urlW500;
 
   const posterSizes = {
     fluid: 'w-full min-w-0',
@@ -133,8 +124,8 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
       primarySrc &&
         (loadedPosterUrls.has(primarySrc) ||
           isImageUrlPreloaded(primarySrc) ||
-          (urlW185 && (loadedPosterUrls.has(urlW185) || isImageUrlPreloaded(urlW185))) ||
-          (urlW342 && (loadedPosterUrls.has(urlW342) || isImageUrlPreloaded(urlW342)))),
+          (urlW500 && (loadedPosterUrls.has(urlW500) || isImageUrlPreloaded(urlW500))) ||
+          (urlW780 && (loadedPosterUrls.has(urlW780) || isImageUrlPreloaded(urlW780)))),
     ),
   );
   const [retryCount, setRetryCount] = useState(0);
@@ -150,8 +141,8 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
     const alreadyCached =
       loadedPosterUrls.has(primarySrc) ||
       isImageUrlPreloaded(primarySrc) ||
-      (urlW185 && (loadedPosterUrls.has(urlW185) || isImageUrlPreloaded(urlW185))) ||
-      (urlW342 && (loadedPosterUrls.has(urlW342) || isImageUrlPreloaded(urlW342)));
+      (urlW500 && (loadedPosterUrls.has(urlW500) || isImageUrlPreloaded(urlW500))) ||
+      (urlW780 && (loadedPosterUrls.has(urlW780) || isImageUrlPreloaded(urlW780)));
 
     if (alreadyCached) {
       markPosterUrlLoaded(primarySrc);
@@ -171,13 +162,13 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
     setIsLoaded(false);
     setHasError(false);
     setRetryCount(0);
-  }, [displayPosterPath, primarySrc, urlW185, urlW342]);
+  }, [displayPosterPath, primarySrc, urlW500, urlW780]);
 
   const activeSrc =
     retryCount === 0
       ? primarySrc
       : retryCount === 1
-        ? urlW342 || primarySrc
+        ? urlW500 || primarySrc
         : `${primarySrc}${primarySrc.includes('?') ? '&' : '?'}r=${retryCount}`;
 
   const longPressHandlers = useLongPress(
@@ -224,7 +215,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
         setHoverStar(null);
       }}
       className={`group relative flex flex-col ${posterSizes[size]} ${
-        menuOpen ? 'z-50' : 'hover:z-30'
+        menuOpen ? 'z-50' : 'hover:z-30 poster-card-optimized'
       }`}
     >
       {/* Balão superior no hover (Desktop): "Title (Year)" */}
@@ -304,20 +295,20 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
               src={activeSrc}
               srcSet={
                 retryCount === 0
-                  ? `${urlW185} 185w, ${urlW342} 342w, ${urlW500} 500w`
+                  ? `${urlW500} 500w, ${urlW780} 780w`
                   : undefined
               }
               sizes={
                 size === 'sm'
-                  ? '60px'
+                  ? '250px'
                   : size === 'lg'
-                    ? '(max-width: 640px) 110px, 280px'
-                    : '(max-width: 640px) 60px, (max-width: 1024px) 150px, 200px'
+                    ? '(max-width: 640px) 500px, 780px'
+                    : '(max-width: 640px) 380px, 500px'
               }
               alt={displayTitle}
               onLoad={() => {
                 markPosterUrlLoaded(primarySrc);
-                if (urlW185) markPosterUrlLoaded(urlW185);
+                if (urlW500) markPosterUrlLoaded(urlW500);
                 setIsLoaded(true);
               }}
               onError={() => {
@@ -546,6 +537,26 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   );
 };
 
-// Memoizado: só re-renderiza se as props mudarem (pôster por pôster),
-// em vez do grid inteiro a cada mudança de estado global.
-export const PosterCard = React.memo(PosterCardBase);
+// Memoizado com comparador customizado para ignorar novas referências de objetos inline `movie={{ ... }}`
+function arePosterCardPropsEqual(prev: PosterCardProps, next: PosterCardProps): boolean {
+  return (
+    prev.movie.id === next.movie.id &&
+    prev.movie.poster_path === next.movie.poster_path &&
+    prev.movie.title === next.movie.title &&
+    prev.movie.name === next.movie.name &&
+    prev.movie.release_date === next.movie.release_date &&
+    prev.movie.first_air_date === next.movie.first_air_date &&
+    prev.size === next.size &&
+    prev.showDetails === next.showDetails &&
+    prev.rank === next.rank &&
+    prev.tv === next.tv &&
+    prev.enableLongPressActions === next.enableLongPressActions &&
+    prev.disableHoverActions === next.disableHoverActions &&
+    prev.faded === next.faded &&
+    prev.priority === next.priority &&
+    prev.eager === next.eager
+  );
+}
+
+export const PosterCard = React.memo(PosterCardBase, arePosterCardPropsEqual);
+

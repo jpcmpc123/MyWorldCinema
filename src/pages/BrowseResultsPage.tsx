@@ -412,8 +412,13 @@ export const BrowseResultsPage: React.FC = () => {
     };
   }, [isSimilarMode, sourceDetails, type, similarTo, decade, service, language]);
 
+  const loadReqIdRef = useRef(0);
+  const inFlightRef = useRef(false);
+
   const load = useCallback(
     async (pageNum: number) => {
+      const reqId = ++loadReqIdRef.current;
+      inFlightRef.current = true;
       setLoading(true);
       try {
         const today = new Date().toISOString().slice(0, 10);
@@ -447,11 +452,11 @@ export const BrowseResultsPage: React.FC = () => {
               providerId: service,
               page: pageNum,
             });
-            rawList = srvRes.results.map(normTitle);
+            rawList = (srvRes.results ?? []).map(normTitle);
             totalPages = 3;
           } else {
             const res = await tmdb.getSimilarMedia(mediaType, similarTo, pageNum);
-            rawList = res.results.map(normTitle);
+            rawList = (res.results ?? []).map(normTitle);
             totalPages = res.total_pages || 5;
 
             if (
@@ -482,6 +487,7 @@ export const BrowseResultsPage: React.FC = () => {
 
           next = rawList.map((m) => ({ movie: m, tv: mediaType === 'tv' }));
 
+          if (reqId !== loadReqIdRef.current) return;
           setItems((prev) => {
             const merged = pageNum === 1 ? next : [...prev, ...next];
             const seen = new Set<number>();
@@ -501,7 +507,7 @@ export const BrowseResultsPage: React.FC = () => {
             providerId: service,
             country,
           });
-          next = res.results.map((m) => ({ movie: normTitle(m), tv: mediaType === 'tv' }));
+          next = (res.results ?? []).map((m) => ({ movie: normTitle(m), tv: mediaType === 'tv' }));
 
           if (
             pageNum === 1 &&
@@ -516,6 +522,7 @@ export const BrowseResultsPage: React.FC = () => {
             next = [...seeded, ...next.filter((i) => !seededIds.has(i.movie.id))];
           }
 
+          if (reqId !== loadReqIdRef.current) return;
           setItems((prev) => {
             const merged = pageNum === 1 ? next : [...prev, ...next];
             const seen = new Set<number>();
@@ -528,17 +535,17 @@ export const BrowseResultsPage: React.FC = () => {
         // ---- Resultados genéricos com filtros da URL
         if (type === 'tv') {
           const res = await tmdb.discoverTVBatch({ ...base, page: pageNum, pagesToFetch: 2 });
-          next = res.results.map((m) => ({ movie: normTitle(m), tv: true }));
+          next = (res.results ?? []).map((m) => ({ movie: normTitle(m), tv: true }));
         } else if (type === 'movie') {
           const res = await tmdb.discoverMoviesBatch({ ...base, page: pageNum, pagesToFetch: 2 });
-          next = res.results.map((m) => ({ movie: normTitle(m), tv: false }));
+          next = (res.results ?? []).map((m) => ({ movie: normTitle(m), tv: false }));
         } else {
           const [moviesRes, tvRes] = await Promise.all([
             tmdb.discoverMoviesBatch({ ...base, page: pageNum, pagesToFetch: 1 }),
             tmdb.discoverTVBatch({ ...base, page: pageNum, pagesToFetch: 1 }),
           ]);
-          const movies = moviesRes.results.map(normalizeMovieOrSeries());
-          const tvs = tvRes.results.map(normalizeMovieOrSeries());
+          const movies = (moviesRes.results ?? []).map(normalizeMovieOrSeries());
+          const tvs = (tvRes.results ?? []).map(normalizeMovieOrSeries());
           const max = Math.max(movies.length, tvs.length);
           for (let i = 0; i < max && next.length < 40; i++) {
             if (movies[i]) next.push({ movie: movies[i], tv: false });
@@ -546,12 +553,16 @@ export const BrowseResultsPage: React.FC = () => {
           }
         }
 
+        if (reqId !== loadReqIdRef.current) return;
         setItems((prev) => (pageNum === 1 ? next : [...prev, ...next]));
         setHasMore(next.length > 0);
       } catch {
-        setHasMore(false);
+        if (reqId === loadReqIdRef.current) setHasMore(false);
       } finally {
-        setLoading(false);
+        if (reqId === loadReqIdRef.current) {
+          inFlightRef.current = false;
+          setLoading(false);
+        }
       }
     },
     [
@@ -575,14 +586,14 @@ export const BrowseResultsPage: React.FC = () => {
   useEffect(() => {
     setPage(1);
     window.scrollTo(0, 0);
-    load(1);
+    void load(1);
   }, [load]);
 
   const loadMore = () => {
-    if (loading || !hasMore) return;
+    if (loading || inFlightRef.current || !hasMore) return;
     const next = page + 1;
     setPage(next);
-    load(next);
+    void load(next);
   };
 
   // Scroll infinito: quando o sentinela entra na tela, carrega a próxima página

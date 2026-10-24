@@ -685,12 +685,39 @@ button, a, [role="button"] {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background-color: #1c2228;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 90px 135px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
 }
 .person-film-card img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Native CSS Virtualization & GPU Layer Promotion for 120Hz grids & lists */
+.poster-card-optimized {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px 240px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.diary-row-optimized {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px 88px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+[data-h-scroll="true"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 /* ---------------------------------------------------------------------------
@@ -958,6 +985,7 @@ header:not(:hover):not(:focus-within) > .site-header-bg {
   padding: 0 16px 8px;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 .similar-carousel::-webkit-scrollbar {
   display: none;

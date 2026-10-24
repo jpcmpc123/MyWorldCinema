@@ -225,8 +225,8 @@ export const ProfilePage: React.FC = () => {
                               loading="lazy"
                               decoding="async"
                               src={tmdb.getImageUrl(movie.poster_path, 'w500')}
-                              srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w342')} 342w, ${tmdb.getImageUrl(movie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 780w`}
-                              sizes="(max-width: 1024px) 22vw, 180px"
+                              srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 780w`}
+                              sizes="(max-width: 1024px) 380px, 500px"
                               alt={movie.title}
                               className="w-full h-full object-cover hover:opacity-90 transition-opacity"
                             />
@@ -266,14 +266,14 @@ export const ProfilePage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                   {recentLogs.map((log, idx) => (
                     <div key={`recent-${log.id}-${idx}`} className="group">
-                      <div className="aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 hover:border-white transition-all shadow-md">
+                      <div className="aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 hover:border-white transition-colors shadow-md">
                         <Link to={`/film/${log.movieId}`}>
                           <img
                             loading="lazy"
                             decoding="async"
                             src={tmdb.getImageUrl(log.moviePoster, 'w500')}
-                            srcSet={`${tmdb.getImageUrl(log.moviePoster, 'w342')} 342w, ${tmdb.getImageUrl(log.moviePoster, 'w500')} 500w, ${tmdb.getImageUrl(log.moviePoster, 'w780')} 780w`}
-                            sizes="(max-width: 1024px) 22vw, 180px"
+                            srcSet={`${tmdb.getImageUrl(log.moviePoster, 'w500')} 500w, ${tmdb.getImageUrl(log.moviePoster, 'w780')} 780w`}
+                            sizes="(max-width: 1024px) 380px, 500px"
                             alt={log.movieTitle}
                             className="w-full h-full object-cover"
                           />
@@ -314,7 +314,12 @@ export const ProfilePage: React.FC = () => {
                         <img
                           loading="lazy"
                           decoding="async"
-                          src={m.poster_path.startsWith('http') ? m.poster_path : tmdb.getImageUrl(m.poster_path, 'w185')}
+                          src={m.poster_path.startsWith('http') ? m.poster_path : tmdb.getImageUrl(m.poster_path, 'w500')}
+                          srcSet={
+                            m.poster_path.startsWith('http')
+                              ? undefined
+                              : `${tmdb.getImageUrl(m.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(m.poster_path, 'w780')} 2x`
+                          }
                           alt={m.title}
                           title={m.title}
                           className="w-full h-full object-cover"
@@ -346,7 +351,7 @@ export const ProfilePage: React.FC = () => {
                   viewLogs.slice(0, 3).map((l, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <span className="text-[10px] font-mono text-lb-muted">
-                        {l.watchedDate.slice(8, 10)}
+                        {(l.watchedDate || l.createdAt || '').slice(8, 10)}
                       </span>
                       <Link
                         to={`/film/${l.movieId}`}
@@ -368,12 +373,12 @@ export const ProfilePage: React.FC = () => {
       return (
         <div className="space-y-4">
           <h2 className="text-xs uppercase tracking-widest font-bold text-lb-text border-b border-lb-elevated pb-2">
-            {t('pp_all_watched')} ({logs.length})
+            {t('pp_all_watched')} ({viewLogs.length})
           </h2>
           {/* Mobile: strict 4-col grid with rating stars under each poster */}
           <div className="md:hidden grid grid-cols-4 gap-1.5 px-2">
-            {logs.map((log, idx) => {
-              const r = ratingsMap[log.movieId] ?? log.rating;
+            {viewLogs.map((log, idx) => {
+              const r = remote.isRemote ? log.rating : (ratingsMap[log.movieId] ?? log.rating);
               return (
                 <div key={`all-mob-${log.id}-${idx}`}>
                   <PosterCard
@@ -395,7 +400,7 @@ export const ProfilePage: React.FC = () => {
             })}
           </div>
           <div className="max-md:hidden grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
-            {logs.map((log, idx) => (
+            {viewLogs.map((log, idx) => (
               <PosterCard
                 key={`all-${log.id}-${idx}`}
                 size="fluid"
@@ -418,7 +423,7 @@ export const ProfilePage: React.FC = () => {
         <div className="space-y-4">
           <div className="flex items-center justify-between border-b border-lb-elevated pb-2">
             <h2 className="text-xs uppercase tracking-widest font-bold text-lb-text">
-              {t('pp_film_diary')} ({logs.length} {t('pp_entries')})
+              {t('pp_film_diary')} ({viewLogs.length} {t('pp_entries')})
             </h2>
           </div>
 
@@ -434,8 +439,8 @@ export const ProfilePage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-lb-elevated/60">
-                {logs.map((log, idx) => (
-                  <tr key={`diary-tab-${log.id}-${idx}`} className="hover:bg-lb-elevated/50 transition-colors">
+                {viewLogs.map((log, idx) => (
+                  <tr key={`diary-tab-${log.id}-${idx}`} className="hover:bg-lb-elevated/50 transition-colors diary-row-optimized">
                     <td className="py-2.5 px-4 font-mono text-lb-text tabular-nums">{log.watchedDate}</td>
                     <td className="py-2.5 px-4 font-bold text-white">
                       <Link to={`/film/${log.movieId}`} className="hover:text-lb-green">
@@ -465,7 +470,7 @@ export const ProfilePage: React.FC = () => {
             {t('reviews_label')}
           </h2>
           <div className="space-y-4">
-            {logs
+            {viewLogs
               .filter((l) => l.reviewText)
               .map((l, idx) => (
                 <div key={`rev-${l.id}-${idx}`} className="bg-lb-surface border border-lb-elevated p-4 rounded text-xs space-y-2">
@@ -493,14 +498,14 @@ export const ProfilePage: React.FC = () => {
           <h2 className="text-xs uppercase tracking-widest font-bold text-lb-text border-b border-lb-elevated pb-2">
             {t('nav_activity')}
           </h2>
-          {logs.length === 0 ? (
+          {viewLogs.length === 0 ? (
             <div className="py-12 text-center space-y-2">
               <p className="text-sm text-white font-semibold">{t('person_nothing')}</p>
               <p className="text-xs text-lb-muted">{t('pp_activity_empty')}</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
-              {logs.map((log, idx) => (
+              {viewLogs.map((log, idx) => (
                 <PosterCard
                   key={`act-${log.id}-${idx}`}
                   size="fluid"
@@ -590,7 +595,10 @@ export const ProfilePage: React.FC = () => {
                         <div className="flex items-center w-full">
                           {previewMovies.map((m, idx) => {
                             const posterUrl = m.poster_path
-                              ? tmdb.getImageUrl(m.poster_path, 'w185')
+                              ? tmdb.getImageUrl(m.poster_path, 'w500')
+                              : null;
+                            const posterW780 = m.poster_path
+                              ? tmdb.getImageUrl(m.poster_path, 'w780')
                               : null;
                             return (
                               <div
@@ -602,6 +610,7 @@ export const ProfilePage: React.FC = () => {
                                     loading="lazy"
                                     decoding="async"
                                     src={posterUrl}
+                                    srcSet={`${posterUrl} 1x, ${posterW780} 2x`}
                                     alt={m.title}
                                     className="w-full h-full object-cover block"
                                   />
@@ -846,8 +855,12 @@ export const ProfilePage: React.FC = () => {
                     >
                       {movie ? (
                         <Link to={`/film/${movie.id}`} title={movie.title}>
-                          <img loading="lazy" decoding="async"
-                            src={tmdb.getImageUrl(movie.poster_path, 'w342')}
+                          <img
+                            loading="lazy"
+                            decoding="async"
+                            src={tmdb.getImageUrl(movie.poster_path, 'w500')}
+                            srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 780w`}
+                            sizes="380px"
                             alt={movie.title}
                             className="w-full h-full object-cover"
                           />
@@ -878,8 +891,12 @@ export const ProfilePage: React.FC = () => {
                     <div key={`mob-recent-${log.id}-${idx}`}>
                       <div className="aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 shadow-md">
                         <Link to={`/film/${log.movieId}`}>
-                          <img loading="lazy" decoding="async"
-                            src={tmdb.getImageUrl(log.moviePoster, 'w342')}
+                          <img
+                            loading="lazy"
+                            decoding="async"
+                            src={tmdb.getImageUrl(log.moviePoster, 'w500')}
+                            srcSet={`${tmdb.getImageUrl(log.moviePoster, 'w500')} 500w, ${tmdb.getImageUrl(log.moviePoster, 'w780')} 780w`}
+                            sizes="380px"
                             alt={log.movieTitle}
                             className="w-full h-full object-cover"
                           />

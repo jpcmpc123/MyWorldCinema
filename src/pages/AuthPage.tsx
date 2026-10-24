@@ -71,9 +71,17 @@ export const AuthPage: React.FC = () => {
   };
 
   const handleGoogle = async () => {
+    if (isSubmitting) return;
     setError(null);
-    const { error } = await signInWithGoogle();
-    if (error) setError(error);
+    setIsSubmitting(true);
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) setError(error);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google sign-in failed.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -93,7 +101,8 @@ export const AuthPage: React.FC = () => {
         <button
           type="button"
           onClick={handleGoogle}
-          className="w-full flex items-center justify-center gap-2 bg-lb-elevated hover:bg-lb-border-light border border-lb-elevated text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm transition-colors cursor-pointer"
+          disabled={isSubmitting}
+          className="w-full flex items-center justify-center gap-2 bg-lb-elevated hover:bg-lb-border-light border border-lb-elevated text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <GoogleIcon />
           <span>{t('auth_google')}</span>

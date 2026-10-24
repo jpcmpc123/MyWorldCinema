@@ -84,7 +84,7 @@ const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 /** Máximo de títulos alternativos exibidos antes do "…more". */
 const ALT_TITLES_VISIBLE = 10;
 
-const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => string }> = ({
+const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => string }> = React.memo(({
   item,
   t,
 }) => {
@@ -118,19 +118,23 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
     }
   };
 
+  const p500 = item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w500') : '';
+  const p780 = item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w780') : '';
+
   return (
     <Link
       to={href}
       onPointerDown={handlePrefetch}
       onTouchStart={handlePrefetch}
       onMouseEnter={handlePrefetch}
-      className="flex gap-[18px] py-[18px] border-b border-[#2c3440] items-start group"
+      className="flex gap-[18px] py-[18px] border-b border-[#2c3440] items-start group diary-row-optimized"
     >
       {/* Pôster 76x114 (placeholder escuro quando não há arte) */}
       <div className="w-[76px] h-[114px] shrink-0 rounded-[4px] overflow-hidden border border-white/15 bg-[#232a31]">
         {item.poster_path ? (
           <img
-            src={tmdb.getImageUrl(item.poster_path, 'w185')}
+            src={p500}
+            srcSet={`${p500} 1x, ${p780} 2x`}
             alt={item.title}
             className="w-full h-full object-cover"
             loading="lazy"
@@ -210,24 +214,28 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
       </div>
     </Link>
   );
-};
+});
 
-const PersonRow: React.FC<{ person: TMDBSearchPerson }> = ({ person }) => {
+const PersonRow: React.FC<{ person: TMDBSearchPerson }> = React.memo(({ person }) => {
   const known = (person.known_for ?? [])
     .map((k) => k.title || k.name)
     .filter(Boolean)
     .slice(0, 4)
     .join(', ');
 
+  const p500 = person.profile_path ? tmdb.getImageUrl(person.profile_path, 'w500') : '';
+  const p780 = person.profile_path ? tmdb.getImageUrl(person.profile_path, 'w780') : '';
+
   return (
     <Link
       to={openPersonProfile(person.id, personRoleFromDepartment(person.known_for_department))}
-      className="flex gap-[18px] py-[18px] border-b border-[#2c3440] items-start group"
+      className="flex gap-[18px] py-[18px] border-b border-[#2c3440] items-start group diary-row-optimized"
     >
       <div className="w-[76px] h-[114px] shrink-0 rounded-[4px] overflow-hidden border border-white/15 bg-[#232a31]">
         {person.profile_path ? (
           <img
-            src={tmdb.getImageUrl(person.profile_path, 'w185')}
+            src={p500}
+            srcSet={`${p500} 1x, ${p780} 2x`}
             alt={person.name}
             className="w-full h-full object-cover"
             loading="lazy"
@@ -259,14 +267,14 @@ const PersonRow: React.FC<{ person: TMDBSearchPerson }> = ({ person }) => {
       </div>
     </Link>
   );
-};
+});
 
 /* ---------------------------------------------------------------------------
  * Linhas do MOBILE (réplica do app Letterboxd): pôster maior 52x78 (2:3),
  * título em negrito + ano + título original (se diferente) + "dirigido por"
  * em texto corrido, sem badges.
  * ------------------------------------------------------------------------- */
-const MobilePoster: React.FC<{ path?: string | null; alt: string }> = ({ path, alt }) => {
+const MobilePoster: React.FC<{ path?: string | null; alt: string }> = React.memo(({ path, alt }) => {
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
 
@@ -274,6 +282,9 @@ const MobilePoster: React.FC<{ path?: string | null; alt: string }> = ({ path, a
     setLoaded(false);
     setErrored(false);
   }, [path]);
+
+  const p500 = path ? tmdb.getImageUrl(path, 'w500') : '';
+  const p780 = path ? tmdb.getImageUrl(path, 'w780') : '';
 
   return (
     <div className="relative w-[52px] h-[78px] rounded-[4px] overflow-hidden border border-white/15 bg-[#232a31] flex-shrink-0">
@@ -289,7 +300,8 @@ const MobilePoster: React.FC<{ path?: string | null; alt: string }> = ({ path, a
       )}
       {path && !errored && (
         <img
-          src={tmdb.getImageUrl(path, 'w185')}
+          src={p500}
+          srcSet={`${p500} 1x, ${p780} 2x`}
           alt={alt}
           onLoad={() => setLoaded(true)}
           onError={() => setErrored(true)}
@@ -302,9 +314,9 @@ const MobilePoster: React.FC<{ path?: string | null; alt: string }> = ({ path, a
       )}
     </div>
   );
-};
+});
 
-const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => string }> = ({
+const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => string }> = React.memo(({
   item,
   t,
 }) => {
@@ -327,7 +339,7 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
       onPointerDown={handlePrefetch}
       onTouchStart={handlePrefetch}
       onMouseEnter={handlePrefetch}
-      className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5"
+      className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5 diary-row-optimized"
     >
       <MobilePoster path={item.poster_path} alt={item.title} />
       <div className="flex flex-col justify-center min-w-0">
@@ -345,12 +357,12 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
       </div>
     </Link>
   );
-};
+});
 
-const MobilePersonRow: React.FC<{ person: TMDBSearchPerson }> = ({ person }) => (
+const MobilePersonRow: React.FC<{ person: TMDBSearchPerson }> = React.memo(({ person }) => (
   <Link
     to={openPersonProfile(person.id, personRoleFromDepartment(person.known_for_department))}
-    className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5"
+    className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5 diary-row-optimized"
   >
     <MobilePoster path={person.profile_path} alt={person.name} />
     <div className="flex flex-col justify-center min-w-0">
@@ -360,7 +372,7 @@ const MobilePersonRow: React.FC<{ person: TMDBSearchPerson }> = ({ person }) => 
       </p>
     </div>
   </Link>
-);
+));
 
 const MobileLocalRow: React.FC<{
   to: string;
@@ -368,8 +380,8 @@ const MobileLocalRow: React.FC<{
   year?: string | number | null;
   subtitle?: string | null;
   poster?: string | null;
-}> = ({ to, title, year, subtitle, poster }) => (
-  <Link to={to} className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5">
+}> = React.memo(({ to, title, year, subtitle, poster }) => (
+  <Link to={to} className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5 diary-row-optimized">
     <MobilePoster path={poster} alt={title} />
     <div className="flex flex-col justify-center min-w-0">
       <p className="text-[14px] text-[#9ab] leading-[1.35]">
@@ -379,7 +391,7 @@ const MobileLocalRow: React.FC<{
       </p>
     </div>
   </Link>
-);
+));
 
 export const SearchPage: React.FC = () => {
   const { t } = useLanguage();
@@ -1324,12 +1336,13 @@ export const SearchPage: React.FC = () => {
                   <Link
                     key={row.key}
                     to={row.to}
-                    className="flex gap-[18px] py-[18px] border-b border-[#2c3440] items-start group"
+                    className="flex gap-[18px] py-[18px] border-b border-[#2c3440] items-start group diary-row-optimized"
                   >
                     <div className="w-[70px] h-[105px] shrink-0 rounded-[4px] overflow-hidden border border-white/12 bg-[#1c2228]">
                       {row.poster ? (
                         <img
-                          src={tmdb.getImageUrl(row.poster, 'w185')}
+                          src={tmdb.getImageUrl(row.poster, 'w500')}
+                          srcSet={`${tmdb.getImageUrl(row.poster, 'w500')} 1x, ${tmdb.getImageUrl(row.poster, 'w780')} 2x`}
                           alt={row.title}
                           className="w-full h-full object-cover"
                           loading="lazy"

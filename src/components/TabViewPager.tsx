@@ -638,8 +638,8 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
       }
     };
     vp.addEventListener('touchmove', onTouchMove, { passive: false });
-    vp.addEventListener('touchend', onTouchEnd);
-    vp.addEventListener('touchcancel', onTouchCancel);
+    vp.addEventListener('touchend', onTouchEnd, { passive: true });
+    vp.addEventListener('touchcancel', onTouchCancel, { passive: true });
     return () => {
       vp.removeEventListener('touchmove', onTouchMove);
       vp.removeEventListener('touchend', onTouchEnd);

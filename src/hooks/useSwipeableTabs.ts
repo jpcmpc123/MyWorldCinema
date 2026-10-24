@@ -691,11 +691,11 @@ export function useSwipeableTabs({
       }
     };
     vp?.addEventListener('touchmove', onTouchMove, { passive: false });
-    vp?.addEventListener('touchend', onTouchEnd);
-    vp?.addEventListener('touchcancel', onTouchCancel);
+    vp?.addEventListener('touchend', onTouchEnd, { passive: true });
+    vp?.addEventListener('touchcancel', onTouchCancel, { passive: true });
     bar?.addEventListener('touchmove', onTouchMove, { passive: false });
-    bar?.addEventListener('touchend', onTouchEnd);
-    bar?.addEventListener('touchcancel', onTouchCancel);
+    bar?.addEventListener('touchend', onTouchEnd, { passive: true });
+    bar?.addEventListener('touchcancel', onTouchCancel, { passive: true });
     window.addEventListener('pointerup', onWindowPointerUp);
     window.addEventListener('pointercancel', onWindowPointerCancel);
     window.addEventListener('blur', onWindowPointerCancel);

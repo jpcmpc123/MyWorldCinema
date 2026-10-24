@@ -37,28 +37,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadProfile = useCallback(async (userId: string, fallbackEmail?: string) => {
     if (!supabase) return;
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, username, display_name, avatar_url, bio')
-      .eq('id', userId)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, bio')
+        .eq('id', userId)
+        .maybeSingle();
 
-    if (!error && data) {
-      setProfile(data as Profile);
-      return;
+      if (!error && data) {
+        setProfile(data as Profile);
+        return;
+      }
+
+      // Perfil ainda não existe (trigger pode ter falhado): cria via upsert mínimo
+      const baseUsername = (fallbackEmail ? fallbackEmail.split('@')[0] : 'user')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '')
+        .slice(0, 20) || 'user';
+      const { data: created } = await supabase
+        .from('profiles')
+        .upsert({ id: userId, username: baseUsername, display_name: baseUsername }, { onConflict: 'id' })
+        .select('id, username, display_name, avatar_url, bio')
+        .maybeSingle();
+      if (created) setProfile(created as Profile);
+    } catch (err) {
+      console.error('AuthContext loadProfile error:', err);
     }
-
-    // Perfil ainda não existe (trigger pode ter falhado): cria via upsert mínimo
-    const baseUsername = (fallbackEmail ? fallbackEmail.split('@')[0] : 'user')
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, '')
-      .slice(0, 20) || 'user';
-    const { data: created } = await supabase
-      .from('profiles')
-      .upsert({ id: userId, username: baseUsername, display_name: baseUsername }, { onConflict: 'id' })
-      .select('id, username, display_name, avatar_url, bio')
-      .maybeSingle();
-    if (created) setProfile(created as Profile);
   }, []);
 
   useEffect(() => {
@@ -82,16 +86,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await supabase!.auth.signInWithPassword({ email, password });
     };
 
-    devAutoLogin().then(() => supabase!.auth.getSession()).then(async ({ data }) => {
-      setSession(data.session);
-      if (data.session?.user) {
-        // Aguarda o PERFIL (não só a sessão) antes de liberar o primeiro render,
-        // senão páginas como /:username renderizam 1 frame com o fallback local
-        // (username de demo) antes do perfil chegar.
-        await loadProfile(data.session.user.id, data.session.user.email);
+    let cancelled = false;
+    (async () => {
+      try {
+        await devAutoLogin();
+        const { data } = await supabase!.auth.getSession();
+        if (cancelled) return;
+        setSession(data.session);
+        if (data.session?.user) {
+          // Aguarda o PERFIL (não só a sessão) antes de liberar o primeiro render,
+          // senão páginas como /:username renderizam 1 frame com o fallback local
+          // (username de demo) antes do perfil chegar.
+          await loadProfile(data.session.user.id, data.session.user.email);
+        }
+      } catch (err) {
+        console.error('AuthContext session init error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
-    });
+    })();
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
@@ -116,6 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('mw:pull-to-refresh', onPullToRefresh);
 
     return () => {
+      cancelled = true;
       subscription.subscription.unsubscribe();
       window.removeEventListener('mw:pull-to-refresh', onPullToRefresh);
     };
@@ -206,10 +220,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    setSession(null);
-    setProfile(null);
+    try {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (err) {
+      console.error('AuthContext signOut error:', err);
+    } finally {
+      setSession(null);
+      setProfile(null);
+    }
   }, []);
 
   const value = useMemo<AuthContextType>(

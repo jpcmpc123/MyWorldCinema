@@ -44,7 +44,7 @@ interface ActorTabPanelProps {
  * a filmografia daquele cargo). Nenhuma chamada de API acontece aqui: os dados
  * já vieram no fetch único da pessoa.
  */
-export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
+export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
   tabKey,
   items,
   personId,
@@ -120,40 +120,45 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
 
   // Card de pôster (grade de 4 colunas e lista compacta).
   // Série (media_type 'tv') abre /tv/{id}; filme abre /film/{id}.
-  const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 640;
-  const posterCard = (film: TMDBPersonMovieCredit, idx: number, className = '') => (
-    <Link
-      key={`${film.media_type ?? 'movie'}-${film.id}`}
-      to={`${film.media_type === 'tv' ? '/tv' : '/film'}/${film.id}`}
-      state={buildLinkState(film)}
-      onPointerDown={() => handlePrefetch(film)}
-      onTouchStart={() => handlePrefetch(film)}
-      onMouseEnter={() => handlePrefetch(film)}
-      className={`person-film-card relative block ${className}`}
-    >
-      {film.poster_path ? (
-        <img
-          src={tmdb.getImageUrl(film.poster_path, isMobileViewport ? 'w185' : 'w342')}
-          alt={film.title}
-          loading={idx < 16 ? 'eager' : 'lazy'}
-          fetchPriority={idx < 8 ? 'high' : 'auto'}
-          decoding="async"
-        />
-      ) : (
-        <span className="w-full h-full flex items-center justify-center p-1 text-center text-[10px] leading-tight text-[#9ab]">
-          {film.title}
-        </span>
-      )}
-      {isMovieWatched(film.id) && (
-        <span
-          className="absolute bottom-1 right-1 bg-[#00e054] text-black rounded-full p-0.5 shadow"
-          aria-hidden="true"
-        >
-          <Eye className="w-2.5 h-2.5" />
-        </span>
-      )}
-    </Link>
-  );
+  const posterCard = (film: TMDBPersonMovieCredit, idx: number, className = '') => {
+    const p500 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w500') : '';
+    const p780 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w780') : '';
+    return (
+      <Link
+        key={`${film.media_type ?? 'movie'}-${film.id}`}
+        to={`${film.media_type === 'tv' ? '/tv' : '/film'}/${film.id}`}
+        state={buildLinkState(film)}
+        onPointerDown={() => handlePrefetch(film)}
+        onTouchStart={() => handlePrefetch(film)}
+        onMouseEnter={() => handlePrefetch(film)}
+        className={`person-film-card relative block ${className}`}
+      >
+        {film.poster_path ? (
+          <img
+            src={p500}
+            srcSet={`${p500} 500w, ${p780} 780w`}
+            sizes="(max-width: 640px) 380px, 500px"
+            alt={film.title}
+            loading={idx < 8 ? 'eager' : 'lazy'}
+            fetchPriority={idx < 4 ? 'high' : 'auto'}
+            decoding="async"
+          />
+        ) : (
+          <span className="w-full h-full flex items-center justify-center p-1 text-center text-[10px] leading-tight text-[#9ab]">
+            {film.title}
+          </span>
+        )}
+        {isMovieWatched(film.id) && (
+          <span
+            className="absolute bottom-1 right-1 bg-[#00e054] text-black rounded-full p-0.5 shadow"
+            aria-hidden="true"
+          >
+            <Eye className="w-2.5 h-2.5" />
+          </span>
+        )}
+      </Link>
+    );
+  };
 
   // ---- Aba Bio: foto + biografia completa ---------------------------------
   if (tabKey === 'Bio') {
@@ -251,6 +256,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = ({
       )}
     </>
   );
-};
+});
 
 export default ActorTabPanel;
+

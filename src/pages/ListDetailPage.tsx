@@ -448,13 +448,16 @@ export const ListDetailPage: React.FC = () => {
                 {sortedMovies.map(({ movie: m, rank }) => {
                   const year = m.release_date?.slice(0, 4) || '';
                   const posterUrl = m.poster_path
-                    ? tmdb.getImageUrl(m.poster_path, 'w185')
+                    ? tmdb.getImageUrl(m.poster_path, 'w500')
+                    : null;
+                  const posterW780 = m.poster_path
+                    ? tmdb.getImageUrl(m.poster_path, 'w780')
                     : null;
                   return (
                     <Link
                       key={m.id}
                       to={`/film/${m.id}`}
-                      className="px-3.5 py-2.5 flex items-center gap-3.5 active:bg-white/[0.03]"
+                      className="px-3.5 py-2.5 flex items-center gap-3.5 active:bg-white/[0.03] diary-row-optimized"
                     >
                       <div className="relative w-[42px] aspect-[2/3] shrink-0">
                         <div className="w-full h-full rounded-[3px] overflow-hidden border border-white/15 bg-[#1c2228]">
@@ -463,6 +466,7 @@ export const ListDetailPage: React.FC = () => {
                               loading="lazy"
                               decoding="async"
                               src={posterUrl}
+                              srcSet={`${posterUrl} 1x, ${posterW780} 2x`}
                               alt={m.title}
                               className="w-full h-full object-cover block"
                             />
@@ -785,12 +789,15 @@ export const ListDetailPage: React.FC = () => {
         <div className="space-y-4">
           {list.movies.map((m, idx) => {
             const posterUrl = m.poster_path
-              ? tmdb.getImageUrl(m.poster_path, 'w185')
+              ? tmdb.getImageUrl(m.poster_path, 'w500')
+              : null;
+            const posterW780 = m.poster_path
+              ? tmdb.getImageUrl(m.poster_path, 'w780')
               : null;
             return (
               <div
                 key={m.id}
-                className="bg-lb-surface border border-lb-elevated rounded-lg p-4 flex gap-4 items-start group hover:border-lb-border-light transition-colors"
+                className="bg-lb-surface border border-lb-elevated rounded-lg p-4 flex gap-4 items-start group hover:border-lb-border-light transition-colors diary-row-optimized"
               >
                 {/* Rank Number */}
                 {list.isRanked && (
@@ -806,6 +813,7 @@ export const ListDetailPage: React.FC = () => {
                       loading="lazy"
                       decoding="async"
                       src={posterUrl}
+                      srcSet={`${posterUrl} 1x, ${posterW780} 2x`}
                       alt={m.title}
                       className="w-16 h-24 sm:w-20 sm:h-30 object-cover rounded shadow border border-white/10 group-hover:border-lb-green transition-colors"
                     />

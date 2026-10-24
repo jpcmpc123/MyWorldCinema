@@ -82,6 +82,7 @@ export const HomePage: React.FC = () => {
               sizes="100vw"
               alt={featuredFilm.title}
               className="absolute inset-0 w-full h-full object-cover object-top opacity-35 filter brightness-75 backdrop-mask"
+              loading="eager"
               fetchPriority="high"
               decoding="async"
             />
@@ -105,13 +106,13 @@ export const HomePage: React.FC = () => {
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
                   onClick={() => openLogModal()}
-                  className="bg-lb-green hover:bg-lb-green-hover text-lb-bg font-black text-xs uppercase tracking-wider px-6 py-2.5 rounded-sm transition-all shadow-[0_0_15px_rgba(0,224,84,0.4)] cursor-pointer"
+                  className="bg-lb-green hover:bg-lb-green-hover text-lb-bg font-black text-xs uppercase tracking-wider px-6 py-2.5 rounded-sm transition-colors shadow-[0_0_15px_rgba(0,224,84,0.4)] cursor-pointer"
                 >
                   {t('home_log_now')}
                 </button>
                 <Link
                   to="/films"
-                  className="bg-lb-elevated/80 hover:bg-lb-border text-white font-bold text-xs uppercase tracking-wider px-6 py-2.5 rounded-sm transition-all border border-white/10"
+                  className="bg-lb-elevated/80 hover:bg-lb-border text-white font-bold text-xs uppercase tracking-wider px-6 py-2.5 rounded-sm transition-colors border border-white/10"
                 >
                   {t('explore_films')}
                 </Link>
@@ -188,14 +189,17 @@ export const HomePage: React.FC = () => {
                 <Link
                   key={list.id}
                   to={`/list/${list.id}`}
-                  className="block bg-lb-surface border border-lb-elevated rounded-lg p-3 hover:border-lb-green transition-all group"
+                  className="block bg-lb-surface border border-lb-elevated rounded-lg p-3 hover:border-lb-green transition-colors group"
                 >
                   {/* Overlapping mini posters */}
                   <div className="flex items-center -space-x-4 mb-3 overflow-hidden pb-1">
                     {list.movies.slice(0, 4).map((m, idx) => (
                       <img
                         key={idx}
-                        src={tmdb.getImageUrl(m.poster_path, 'w92')}
+                        loading="lazy"
+                        decoding="async"
+                        src={tmdb.getImageUrl(m.poster_path, 'w500')}
+                        srcSet={`${tmdb.getImageUrl(m.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(m.poster_path, 'w780')} 2x`}
                         alt={m.title}
                         className="w-12 aspect-[2/3] object-cover rounded shadow border border-white/10 group-hover:translate-y-[-2px] transition-transform"
                         style={{ zIndex: 10 - idx }}

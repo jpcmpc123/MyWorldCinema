@@ -1,0 +1,6 @@
+{
+  "summary":  "Plano de otimização de performance 120Hz (mobile e desktop) com pipeline de imagens Retina/HD (w500 e w780), virtualização CSS (content-visibility), aceleração de GPU e eliminação de re-renderizações em cascata.",
+  "updatedAt":  "2026-10-24T00:26:08.109456575Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

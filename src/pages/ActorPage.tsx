@@ -288,9 +288,14 @@ export function ActorPage() {
       return;
     }
     let cancelled = false;
-    tmdb.getPersonProviderMediaKeys(person.id, serviceFilter, tabItems).then((keys) => {
-      if (!cancelled) setServiceMatchedKeys(keys);
-    });
+    tmdb
+      .getPersonProviderMediaKeys(person.id, serviceFilter, tabItems)
+      .then((keys) => {
+        if (!cancelled) setServiceMatchedKeys(keys);
+      })
+      .catch(() => {
+        if (!cancelled) setServiceMatchedKeys(new Set());
+      });
     return () => {
       cancelled = true;
     };

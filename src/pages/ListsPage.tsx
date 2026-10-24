@@ -52,7 +52,10 @@ export const ListsPage: React.FC = () => {
                       <div className="flex items-center w-full">
                         {previewMovies.map((m, idx) => {
                           const posterUrl = m.poster_path
-                            ? tmdb.getImageUrl(m.poster_path, 'w185')
+                            ? tmdb.getImageUrl(m.poster_path, 'w500')
+                            : null;
+                          const posterW780 = m.poster_path
+                            ? tmdb.getImageUrl(m.poster_path, 'w780')
                             : null;
                           return (
                             <div
@@ -64,6 +67,7 @@ export const ListsPage: React.FC = () => {
                                   loading="lazy"
                                   decoding="async"
                                   src={posterUrl}
+                                  srcSet={`${posterUrl} 1x, ${posterW780} 2x`}
                                   alt={m.title}
                                   className="w-full h-full object-cover block"
                                 />
@@ -156,13 +160,16 @@ export const ListsPage: React.FC = () => {
               <Link
                 key={list.id}
                 to={`/list/${list.id}`}
-                className="bg-lb-surface border border-white/10 md:border-lb-elevated hover:border-lb-green rounded-lg p-4 md:p-5 transition-all group block shadow-lg hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
+                className="bg-lb-surface border border-white/10 md:border-lb-elevated hover:border-lb-green rounded-lg p-4 md:p-5 transition-colors group block shadow-lg hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
               >
                 {/* Overlapping poster fan */}
                 <div className="flex items-center -space-x-8 mb-4 overflow-hidden pt-1 pb-2">
                   {list.movies.slice(0, 5).map((m, idx) => {
                     const posterUrl = m.poster_path
-                      ? tmdb.getImageUrl(m.poster_path, 'w185')
+                      ? tmdb.getImageUrl(m.poster_path, 'w500')
+                      : null;
+                    const posterW780 = m.poster_path
+                      ? tmdb.getImageUrl(m.poster_path, 'w780')
                       : null;
                     return posterUrl ? (
                       <img
@@ -170,6 +177,7 @@ export const ListsPage: React.FC = () => {
                         decoding="async"
                         key={idx}
                         src={posterUrl}
+                        srcSet={`${posterUrl} 1x, ${posterW780} 2x`}
                         alt={m.title}
                         className="w-20 aspect-[2/3] object-cover rounded shadow-lg border border-white/10 group-hover:translate-y-[-4px] transition-transform"
                         style={{ zIndex: 10 - idx }}

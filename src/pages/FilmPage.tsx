@@ -557,9 +557,10 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   const movieAny = movie as unknown as Record<string, unknown>;
 
   // Key Crew: diretor / criador usado no cabeçalho (com fallback para autor da obra original, roteirista ou produtor)
+  const crewList = movie.credits?.crew ?? [];
   const director =
-    movie.credits?.crew.find((c) => c.job === 'Creator' || c.job === 'Director' || c.job === 'Series Director') ||
-    movie.credits?.crew.find((c) =>
+    crewList.find((c) => c.job === 'Creator' || c.job === 'Director' || c.job === 'Series Director') ||
+    crewList.find((c) =>
       [
         'Original Creator',
         'Original Series Creator',
@@ -576,9 +577,9 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
         'Story',
       ].includes(c.job)
     ) ||
-    movie.credits?.crew.find((c) => c.department === 'Directing' || c.department === 'Writing') ||
-    movie.credits?.crew.find((c) => c.job === 'Executive Producer' || c.job === 'Producer') ||
-    movie.credits?.crew[0];
+    crewList.find((c) => c.department === 'Directing' || c.department === 'Writing') ||
+    crewList.find((c) => c.job === 'Executive Producer' || c.job === 'Producer') ||
+    crewList[0];
 
   const fallbackCreditName = !director
     ? movie.production_companies?.[0]?.name ||
@@ -587,10 +588,11 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     : '';
 
   // Trailer finding
+  const videoList = movie.videos?.results ?? [];
   const trailerVideo =
-    movie.videos?.results.find(
+    videoList.find(
       (v) => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
-    ) || movie.videos?.results.find((v) => v.site === 'YouTube');
+    ) || videoList.find((v) => v.site === 'YouTube');
 
   // Format release year (filmes usam release_date; séries usam first_air_date)
   const rawReleaseDate = movie.release_date || (movieAny.first_air_date as string) || '';
@@ -646,15 +648,17 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     (effectiveBackdropPath ? tmdb.getBackdropUrl(effectiveBackdropPath, 'original') : null);
 
   const posterPath = override?.poster || movie.poster_path;
+  const isCustomFullPoster = Boolean(posterPath && posterPath.startsWith('http'));
   const posterUrl =
     override?.poster ||
-    tmdb.getImageUrl(movie.poster_path, 'w500');
+    tmdb.getImageUrl(movie.poster_path, 'w780');
   const posterMobileUrl =
     override?.poster ||
-    tmdb.getImageUrl(movie.poster_path, 'w342');
-  const posterSrcSet = posterPath
-    ? `${tmdb.getImageUrl(posterPath, 'w342')} 342w, ${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w`
-    : undefined;
+    tmdb.getImageUrl(movie.poster_path, 'w500');
+  const posterSrcSet =
+    posterPath && !isCustomFullPoster
+      ? `${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w`
+      : undefined;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -726,13 +730,16 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                 className="letterboxd-poster-frame overflow-hidden flex-shrink-0 cursor-pointer group relative"
               >
                 <img
+                  loading="eager"
                   fetchPriority="high"
                   decoding="async"
                   src={posterUrl}
+                  srcSet={posterSrcSet}
+                  sizes="460px"
                   alt={movie.title}
                   className="w-full h-full object-cover"
                 />
-                <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded-[4px] transition-all pointer-events-none" />
+                <span className="absolute inset-0 ring-inset ring-2 ring-transparent group-hover:ring-[#00e054] rounded-[4px] transition-opacity pointer-events-none" />
               </button>
 
               {/* Production Statistics List — 10px below poster, 12px font, #667788 */}
@@ -885,9 +892,12 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             >
               <div className="w-full aspect-[2/3] rounded-[4px] overflow-hidden ring-1 ring-white/15 shadow-xl bg-lb-surface">
                 <img
+                  loading="eager"
                   fetchPriority="high"
                   decoding="async"
                   src={posterMobileUrl}
+                  srcSet={posterSrcSet}
+                  sizes="380px"
                   alt={movie.title}
                   className="w-full h-full object-cover"
                 />
@@ -1432,22 +1442,28 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
                   </Link>
                   <div data-h-scroll="true" className="similar-carousel">
-                    {relatedFilms.map((item) => (
-                      <Link
-                        key={item.id}
-                        to={`/film/${item.id}`}
-                        state={{ previewMovie: item }}
-                        className="similar-card"
-                        aria-label={item.title}
-                      >
-                        <img
-                          src={tmdb.getImageUrl(item.poster_path, 'w185')}
-                          alt={item.title}
-                          loading="eager"
-                          decoding="async"
-                        />
-                      </Link>
-                    ))}
+                    {relatedFilms.map((item) => {
+                      const p500 = tmdb.getImageUrl(item.poster_path, 'w500');
+                      const p780 = tmdb.getImageUrl(item.poster_path, 'w780');
+                      return (
+                        <Link
+                          key={item.id}
+                          to={`/film/${item.id}`}
+                          state={{ previewMovie: item }}
+                          className="similar-card"
+                          aria-label={item.title}
+                        >
+                          <img
+                            src={p500}
+                            srcSet={`${p500} 500w, ${p780} 780w`}
+                            sizes="(max-width: 640px) 380px, 500px"
+                            alt={item.title}
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        </Link>
+                      );
+                    })}
                   </div>
                 </section>
               )}
@@ -1476,7 +1492,6 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                         showDetails={false}
                         tv={false}
                         disableHoverActions
-                        eager
                       />
                     ))}
                   </div>
@@ -1499,22 +1514,28 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
                   </Link>
                   <div data-h-scroll="true" className="similar-carousel">
-                    {displaySimilar.map((item) => (
-                      <Link
-                        key={item.id}
-                        to={`${isTv ? '/tv' : '/film'}/${item.id}`}
-                        state={{ previewMovie: item }}
-                        className="similar-card"
-                        aria-label={item.title}
-                      >
-                        <img
-                          src={tmdb.getImageUrl(item.poster_path, 'w185')}
-                          alt={item.title}
-                          loading="eager"
-                          decoding="async"
-                        />
-                      </Link>
-                    ))}
+                    {displaySimilar.map((item) => {
+                      const p500 = tmdb.getImageUrl(item.poster_path, 'w500');
+                      const p780 = tmdb.getImageUrl(item.poster_path, 'w780');
+                      return (
+                        <Link
+                          key={item.id}
+                          to={`${isTv ? '/tv' : '/film'}/${item.id}`}
+                          state={{ previewMovie: item }}
+                          className="similar-card"
+                          aria-label={item.title}
+                        >
+                          <img
+                            src={p500}
+                            srcSet={`${p500} 500w, ${p780} 780w`}
+                            sizes="(max-width: 640px) 380px, 500px"
+                            alt={item.title}
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        </Link>
+                      );
+                    })}
                   </div>
                 </section>
               )}

@@ -168,7 +168,10 @@ export const LogModal: React.FC = () => {
                         className="p-2 flex items-center gap-3 hover:bg-lb-elevated cursor-pointer w-full text-left"
                       >
                         <img
-                          src={tmdb.getImageUrl(res.poster_path, 'w92')}
+                          loading="lazy"
+                          decoding="async"
+                          src={tmdb.getImageUrl(res.poster_path, 'w500')}
+                          srcSet={`${tmdb.getImageUrl(res.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(res.poster_path, 'w780')} 2x`}
                           alt={res.title}
                           className="w-8 h-12 object-cover rounded bg-lb-elevated"
                         />
@@ -185,7 +188,10 @@ export const LogModal: React.FC = () => {
           ) : (
             <div className="flex items-center gap-4 bg-lb-bg p-3 rounded border border-lb-elevated">
               <img
-                src={tmdb.getImageUrl(movie.poster_path, 'w185')}
+                loading="eager"
+                decoding="async"
+                src={tmdb.getImageUrl(movie.poster_path, 'w500')}
+                srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 2x`}
                 alt={movie.title}
                 className="w-12 h-18 object-cover rounded shadow border border-white/10"
               />
@@ -254,7 +260,7 @@ export const LogModal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setLiked(!liked)}
-                className={`p-2 rounded-full border transition-all ${
+                className={`p-2 rounded-full border transition-colors ${
                   liked
                     ? 'bg-lb-orange border-lb-orange text-white shadow-[0_0_10px_rgba(255,128,0,0.5)]'
                     : 'bg-lb-surface border-lb-elevated text-lb-muted hover:text-lb-orange'
@@ -320,7 +326,7 @@ export const LogModal: React.FC = () => {
             <button
               type="submit"
               disabled={!movie}
-              className={`px-5 py-2 rounded text-xs font-bold uppercase tracking-wider transition-all ${
+              className={`px-5 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors ${
                 movie
                   ? 'bg-lb-green hover:bg-lb-green-hover text-lb-bg cursor-pointer shadow-[0_0_12px_rgba(0,224,84,0.3)]'
                   : 'bg-lb-elevated text-lb-muted cursor-not-allowed'

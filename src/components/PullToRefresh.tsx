@@ -263,12 +263,24 @@ export const PullToRefresh: React.FC = () => {
       if (e.cancelable) {
         e.preventDefault();
       }
-      // Amortecimento elástico estilo Android SwipeRefreshLayout
+      // Amortecimento elástico estilo Android SwipeRefreshLayout (coalescido em rAF para 120Hz suave)
       const damped = Math.min(82, rawPull * 0.55);
-      setPullPx(damped);
+      pullPxRef.current = damped;
+      if (pullRafId === null) {
+        pullRafId = window.requestAnimationFrame(() => {
+          pullRafId = null;
+          setPullPx(pullPxRef.current);
+        });
+      }
     };
 
+    let pullRafId: number | null = null;
+
     const finishGesture = () => {
+      if (pullRafId !== null) {
+        window.cancelAnimationFrame(pullRafId);
+        pullRafId = null;
+      }
       if (!trackingRef.current) return;
       trackingRef.current = false;
 
@@ -294,6 +306,9 @@ export const PullToRefresh: React.FC = () => {
     window.addEventListener('touchcancel', finishGesture, { passive: true });
 
     return () => {
+      if (pullRafId !== null) {
+        window.cancelAnimationFrame(pullRafId);
+      }
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('touchend', finishGesture);

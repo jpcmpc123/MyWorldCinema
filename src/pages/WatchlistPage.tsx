@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Shuffle, Clock, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -20,6 +20,26 @@ export const WatchlistPage: React.FC = () => {
 
   const [isShuffling, setIsShuffling] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const shuffleTimerRef = useRef<number | null>(null);
+
+  const clearShuffleTimer = useCallback(() => {
+    if (shuffleTimerRef.current !== null) {
+      window.clearInterval(shuffleTimerRef.current);
+      shuffleTimerRef.current = null;
+    }
+  }, []);
+
+  const closeShuffleModal = useCallback(() => {
+    clearShuffleTimer();
+    setIsShuffling(false);
+    setIsModalOpen(false);
+  }, [clearShuffleTimer]);
+
+  useEffect(() => {
+    return () => {
+      clearShuffleTimer();
+    };
+  }, [clearShuffleTimer]);
 
   // Lock body scroll while the shuffle modal is open + close on Escape
   useEffect(() => {
@@ -27,28 +47,34 @@ export const WatchlistPage: React.FC = () => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsModalOpen(false);
+      if (e.key === 'Escape') closeShuffleModal();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [isModalOpen]);
+  }, [isModalOpen, closeShuffleModal]);
 
   const handleShuffle = () => {
-    if (watchlist.length === 0) return;
+    if (watchlist.length === 0 || isShuffling) return;
+    clearShuffleTimer();
     setIsModalOpen(true);
     setIsShuffling(true);
 
     let counter = 0;
-    const interval = setInterval(() => {
+    shuffleTimerRef.current = window.setInterval(() => {
+      if (watchlist.length === 0) {
+        clearShuffleTimer();
+        setIsShuffling(false);
+        return;
+      }
       const randomIdx = Math.floor(Math.random() * watchlist.length);
       setShuffledMovie(watchlist[randomIdx]);
       counter++;
 
       if (counter >= 12) {
-        clearInterval(interval);
+        clearShuffleTimer();
         setIsShuffling(false);
         confetti({
           particleCount: 50,
@@ -73,7 +99,7 @@ export const WatchlistPage: React.FC = () => {
           {watchlist.length > 0 && (
             <button
               onClick={handleShuffle}
-              className="flex items-center gap-1.5 bg-lb-blue hover:bg-[#32a8dd] text-lb-bg font-black text-[11px] uppercase px-2.5 py-1 rounded-sm transition-all cursor-pointer shrink-0"
+              className="flex items-center gap-1.5 bg-lb-blue hover:bg-[#32a8dd] text-lb-bg font-black text-[11px] uppercase px-2.5 py-1 rounded-sm transition-colors cursor-pointer shrink-0"
             >
               <Shuffle className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>{t('wl_shuffle')}</span>
@@ -100,7 +126,7 @@ export const WatchlistPage: React.FC = () => {
         {watchlist.length > 0 && (
           <button
             onClick={handleShuffle}
-            className="flex items-center gap-2 bg-lb-blue hover:bg-[#32a8dd] text-lb-bg font-black text-xs uppercase px-4 py-2 rounded-sm transition-all shadow-[0_0_12px_rgba(64,188,244,0.3)] cursor-pointer shrink-0"
+            className="flex items-center gap-2 bg-lb-blue hover:bg-[#32a8dd] text-lb-bg font-black text-xs uppercase px-4 py-2 rounded-sm transition-colors shadow-[0_0_12px_rgba(64,188,244,0.3)] cursor-pointer shrink-0"
           >
             <Shuffle className="w-4 h-4 stroke-[2.5]" />
             <span>{t('wl_shuffle')}</span>
@@ -141,7 +167,7 @@ export const WatchlistPage: React.FC = () => {
                 {t('wl_tonight')}
               </span>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeShuffleModal}
                 aria-label={t('btn_close')}
                 className="text-lb-muted hover:text-white"
               >
@@ -151,14 +177,18 @@ export const WatchlistPage: React.FC = () => {
 
             <div className="flex flex-col items-center py-2">
               <div
-                className={`w-44 aspect-[2/3] rounded-md overflow-hidden shadow-2xl border-2 transition-all ${
+                className={`w-44 aspect-[2/3] rounded-md overflow-hidden shadow-2xl border-2 transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                   isShuffling
                     ? 'border-lb-blue scale-95 opacity-80'
                     : 'border-lb-green scale-100 shadow-[0_0_20px_rgba(0,224,84,0.3)]'
                 }`}
               >
-                <img loading="lazy" decoding="async"
+                <img
+                  loading="eager"
+                  decoding="async"
                   src={tmdb.getImageUrl(shuffledMovie.poster_path, 'w500')}
+                  srcSet={`${tmdb.getImageUrl(shuffledMovie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(shuffledMovie.poster_path, 'w780')} 780w`}
+                  sizes="352px"
                   alt={shuffledMovie.title}
                   className="w-full h-full object-cover"
                 />
@@ -176,13 +206,13 @@ export const WatchlistPage: React.FC = () => {
               <button
                 onClick={handleShuffle}
                 disabled={isShuffling}
-                className="flex-1 py-2 bg-lb-elevated hover:bg-lb-border text-white text-xs font-bold uppercase rounded transition-colors"
+                className="flex-1 py-2 bg-lb-elevated hover:bg-lb-border text-white text-xs font-bold uppercase rounded transition-colors disabled:opacity-50"
               >
                 {t('wl_spin')}
               </button>
               <Link
                 to={`/film/${shuffledMovie.id}`}
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeShuffleModal}
                 className="flex-1 py-2 bg-lb-green hover:bg-lb-green-hover text-lb-bg text-xs font-black uppercase rounded transition-colors"
               >
                 {t('wl_view_film')}

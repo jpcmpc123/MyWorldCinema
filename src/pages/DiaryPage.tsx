@@ -10,6 +10,183 @@ import { parseProfileTabRoute } from '../utils/tabRoutes';
 const INITIAL_DIARY_ROWS = 40;
 const DIARY_BATCH_SIZE = 40;
 
+interface DiaryRowProps {
+  entry: ReturnType<typeof useApp>['logs'][number];
+  formattedDate: string;
+  isRemote: boolean;
+  onDelete: (id: string) => void;
+  deleteTitle: string;
+  rewatchedTitle: string;
+}
+
+const DiaryMobileRow = React.memo<DiaryRowProps>(
+  ({ entry, formattedDate, isRemote, onDelete, deleteTitle }) => {
+    const p500 = tmdb.getImageUrl(entry.moviePoster, 'w500');
+    const p780 = tmdb.getImageUrl(entry.moviePoster, 'w780');
+    return (
+      <div className="py-3 flex gap-3 items-start diary-row-optimized">
+        <Link to={`/film/${entry.movieId}`} className="shrink-0">
+          <img
+            loading="lazy"
+            decoding="async"
+            src={p500}
+            srcSet={entry.moviePoster ? `${p500} 1x, ${p780} 2x` : undefined}
+            alt={entry.movieTitle}
+            className="w-14 aspect-[2/3] object-cover rounded-[4px] bg-lb-surface ring-1 ring-white/15"
+          />
+        </Link>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <Link
+              to={`/film/${entry.movieId}`}
+              className="font-bold text-white text-sm leading-tight truncate hover:text-lb-green"
+            >
+              {entry.movieTitle}
+              {entry.movieYear && (
+                <span className="ml-1.5 text-xs font-normal text-lb-muted font-mono">
+                  {entry.movieYear}
+                </span>
+              )}
+            </Link>
+            {!isRemote && (
+              <button
+                onClick={() => onDelete(entry.id)}
+                title={deleteTitle}
+                className="text-lb-muted hover:text-lb-red p-1 -mr-1 rounded transition-colors shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 mt-1 text-xs tabular-nums">
+            {entry.rating > 0 && (
+              <span className="text-lb-green font-bold tracking-tight">
+                {'★'.repeat(Math.floor(entry.rating))}
+                {entry.rating % 1 !== 0 ? '½' : ''}
+              </span>
+            )}
+            {entry.liked && (
+              <Heart className="w-3.5 h-3.5 fill-lb-orange text-lb-orange" />
+            )}
+            <span className="text-[11px] text-lb-muted">{formattedDate}</span>
+          </div>
+
+          {entry.reviewText && (
+            <p className="text-xs text-lb-text mt-1.5 line-clamp-3 leading-relaxed">
+              {entry.reviewText}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  },
+);
+
+const DiaryDesktopRow = React.memo<DiaryRowProps>(
+  ({ entry, formattedDate, isRemote, onDelete, deleteTitle, rewatchedTitle }) => {
+    const p500 = tmdb.getImageUrl(entry.moviePoster, 'w500');
+    const p780 = tmdb.getImageUrl(entry.moviePoster, 'w780');
+    return (
+      <tr className="hover:bg-lb-elevated/40 transition-colors group diary-row-optimized">
+        {/* Date */}
+        <td className="py-3 px-4 text-lb-text font-medium whitespace-nowrap tabular-nums">
+          {formattedDate}
+        </td>
+
+        {/* Poster */}
+        <td className="py-3 px-3">
+          <Link to={`/film/${entry.movieId}`}>
+            <img
+              loading="lazy"
+              decoding="async"
+              src={p500}
+              srcSet={entry.moviePoster ? `${p500} 1x, ${p780} 2x` : undefined}
+              alt={entry.movieTitle}
+              className="w-9 aspect-[2/3] object-cover rounded shadow border border-white/10 group-hover:border-lb-green transition-colors"
+            />
+          </Link>
+        </td>
+
+        {/* Film Title */}
+        <td className="py-3 px-4">
+          <Link
+            to={`/film/${entry.movieId}`}
+            className="font-bold text-white text-sm hover:text-lb-green transition-colors line-clamp-1"
+          >
+            {entry.movieTitle}
+          </Link>
+          {entry.tags?.length > 0 && (
+            <div className="flex gap-1 mt-1">
+              {entry.tags.map((tag, idx) => (
+                <span
+                  key={idx}
+                  className="text-[10px] bg-lb-bg text-lb-muted px-1.5 py-0.5 rounded"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </td>
+
+        {/* Released */}
+        <td className="py-3 px-3 text-lb-muted font-mono tabular-nums">
+          {entry.movieYear}
+        </td>
+
+        {/* Rating */}
+        <td className="py-3 px-4 text-lb-green font-bold text-sm whitespace-nowrap tabular-nums">
+          {entry.rating > 0 ? `${entry.rating} ★` : '—'}
+        </td>
+
+        {/* Like */}
+        <td className="py-3 px-3 text-center">
+          {entry.liked ? (
+            <Heart className="w-4 h-4 fill-lb-orange text-lb-orange inline" />
+          ) : (
+            <span className="text-lb-muted">—</span>
+          )}
+        </td>
+
+        {/* Rewatch */}
+        <td className="py-3 px-3 text-center text-lb-text">
+          {entry.isRewatch ? (
+            <span title={rewatchedTitle} className="text-sm">🔄</span>
+          ) : (
+            <span className="text-lb-muted">—</span>
+          )}
+        </td>
+
+        {/* Review */}
+        <td className="py-3 px-3 text-center">
+          {entry.reviewText ? (
+            <span title={entry.reviewText} className="cursor-pointer">
+              <MessageSquare className="w-4 h-4 text-lb-blue inline" />
+            </span>
+          ) : (
+            <span className="text-lb-muted">—</span>
+          )}
+        </td>
+
+        {/* Action */}
+        <td className="py-3 px-4 text-right">
+          {!isRemote && (
+            <button
+              onClick={() => onDelete(entry.id)}
+              title={deleteTitle}
+              className="text-lb-muted hover:text-lb-red p-1 rounded transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </td>
+      </tr>
+    );
+  },
+);
+
 export const DiaryPage: React.FC = () => {
   const { t, language } = useLanguage();
   const { username: paramUsername } = useParams<{ username: string }>();
@@ -28,7 +205,7 @@ export const DiaryPage: React.FC = () => {
   // Collect available years (memoized)
   const years = useMemo(
     () =>
-      Array.from(new Set(viewLogs.map((l) => l.watchedDate.slice(0, 4)).filter(Boolean)))
+      Array.from(new Set(viewLogs.map((l) => (l.watchedDate ?? '').slice(0, 4)).filter(Boolean)))
         .sort()
         .reverse(),
     [viewLogs],
@@ -37,7 +214,7 @@ export const DiaryPage: React.FC = () => {
   const filteredLogs = useMemo(
     () =>
       viewLogs.filter((l) =>
-        selectedYear === 'all' ? true : l.watchedDate.startsWith(selectedYear),
+        selectedYear === 'all' ? true : (l.watchedDate ?? '').startsWith(selectedYear),
       ),
     [viewLogs, selectedYear],
   );
@@ -76,6 +253,20 @@ export const DiaryPage: React.FC = () => {
       }),
     [language],
   );
+
+  const formatWatchedDate = (raw?: string | null) => {
+    if (!raw) return '—';
+    const d = new Date(raw.includes('T') ? raw : `${raw}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return raw || '—';
+    try {
+      return dateFormatter.format(d);
+    } catch {
+      return raw || '—';
+    }
+  };
+
+  const deleteTitle = t('diary_delete');
+  const rewatchedTitle = t('diary_rewatched');
 
   return (
     <div className="max-w-[950px] mx-auto px-4 pt-3 pb-4 md:py-8 space-y-4 md:space-y-6">
@@ -155,69 +346,17 @@ export const DiaryPage: React.FC = () => {
         <>
           {/* Mobile Card Feed */}
           <div className="md:hidden divide-y divide-white/10">
-            {visibleLogs.map((entry) => {
-              const formattedDate = entry.watchedDate
-                ? dateFormatter.format(new Date(entry.watchedDate + 'T00:00:00'))
-                : '—';
-
-              return (
-                <div key={entry.id} className="py-3 flex gap-3 items-start">
-                  <Link to={`/film/${entry.movieId}`} className="shrink-0">
-                    <img
-                      loading="lazy"
-                      decoding="async"
-                      src={tmdb.getImageUrl(entry.moviePoster, 'w185')}
-                      alt={entry.movieTitle}
-                      className="w-14 aspect-[2/3] object-cover rounded-[4px] bg-lb-surface ring-1 ring-white/15"
-                    />
-                  </Link>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <Link
-                        to={`/film/${entry.movieId}`}
-                        className="font-bold text-white text-sm leading-tight truncate hover:text-lb-green"
-                      >
-                        {entry.movieTitle}
-                        {entry.movieYear && (
-                          <span className="ml-1.5 text-xs font-normal text-lb-muted font-mono">
-                            {entry.movieYear}
-                          </span>
-                        )}
-                      </Link>
-                      {!remote.isRemote && (
-                        <button
-                          onClick={() => deleteLog(entry.id)}
-                          title={t('diary_delete')}
-                          className="text-lb-muted hover:text-lb-red p-1 -mr-1 rounded transition-colors shrink-0"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 mt-1 text-xs tabular-nums">
-                      {entry.rating > 0 && (
-                        <span className="text-lb-green font-bold tracking-tight">
-                          {'★'.repeat(Math.floor(entry.rating))}
-                          {entry.rating % 1 !== 0 ? '½' : ''}
-                        </span>
-                      )}
-                      {entry.liked && (
-                        <Heart className="w-3.5 h-3.5 fill-lb-orange text-lb-orange" />
-                      )}
-                      <span className="text-[11px] text-lb-muted">{formattedDate}</span>
-                    </div>
-
-                    {entry.reviewText && (
-                      <p className="text-xs text-lb-text mt-1.5 line-clamp-3 leading-relaxed">
-                        {entry.reviewText}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {visibleLogs.map((entry) => (
+              <DiaryMobileRow
+                key={entry.id}
+                entry={entry}
+                formattedDate={formatWatchedDate(entry.watchedDate)}
+                isRemote={remote.isRemote}
+                onDelete={deleteLog}
+                deleteTitle={deleteTitle}
+                rewatchedTitle={rewatchedTitle}
+              />
+            ))}
           </div>
 
           {/* Desktop Table */}
@@ -238,108 +377,17 @@ export const DiaryPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-lb-elevated/60">
-                  {visibleLogs.map((entry) => {
-                    const formattedDate = entry.watchedDate
-                      ? dateFormatter.format(new Date(entry.watchedDate + 'T00:00:00'))
-                      : '—';
-
-                    return (
-                      <tr
-                        key={entry.id}
-                        className="hover:bg-lb-elevated/40 transition-colors group"
-                      >
-                        {/* Date */}
-                        <td className="py-3 px-4 text-lb-text font-medium whitespace-nowrap tabular-nums">
-                          {formattedDate}
-                        </td>
-
-                        {/* Poster */}
-                        <td className="py-3 px-3">
-                          <Link to={`/film/${entry.movieId}`}>
-                            <img loading="lazy" decoding="async"
-                              src={tmdb.getImageUrl(entry.moviePoster, 'w92')}
-                              alt={entry.movieTitle}
-                              className="w-9 aspect-[2/3] object-cover rounded shadow border border-white/10 group-hover:border-lb-green transition-colors"
-                            />
-                          </Link>
-                        </td>
-
-                        {/* Film Title */}
-                        <td className="py-3 px-4">
-                          <Link
-                            to={`/film/${entry.movieId}`}
-                            className="font-bold text-white text-sm hover:text-lb-green transition-colors line-clamp-1"
-                          >
-                            {entry.movieTitle}
-                          </Link>
-                          {entry.tags?.length > 0 && (
-                            <div className="flex gap-1 mt-1">
-                              {entry.tags.map((tag, idx) => (
-                                <span
-                                  key={idx}
-                                  className="text-[10px] bg-lb-bg text-lb-muted px-1.5 py-0.5 rounded"
-                                >
-                                  #{tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Released */}
-                        <td className="py-3 px-3 text-lb-muted font-mono tabular-nums">
-                          {entry.movieYear}
-                        </td>
-
-                        {/* Rating */}
-                        <td className="py-3 px-4 text-lb-green font-bold text-sm whitespace-nowrap tabular-nums">
-                          {entry.rating > 0 ? `${entry.rating} ★` : '—'}
-                        </td>
-
-                        {/* Like */}
-                        <td className="py-3 px-3 text-center">
-                          {entry.liked ? (
-                            <Heart className="w-4 h-4 fill-lb-orange text-lb-orange inline" />
-                          ) : (
-                            <span className="text-lb-muted">—</span>
-                          )}
-                        </td>
-
-                        {/* Rewatch */}
-                        <td className="py-3 px-3 text-center text-lb-text">
-                          {entry.isRewatch ? (
-                            <span title={t('diary_rewatched')} className="text-sm">🔄</span>
-                          ) : (
-                            <span className="text-lb-muted">—</span>
-                          )}
-                        </td>
-
-                        {/* Review */}
-                        <td className="py-3 px-3 text-center">
-                          {entry.reviewText ? (
-                            <span title={entry.reviewText} className="cursor-pointer">
-                              <MessageSquare className="w-4 h-4 text-lb-blue inline" />
-                            </span>
-                          ) : (
-                            <span className="text-lb-muted">—</span>
-                          )}
-                        </td>
-
-                        {/* Action */}
-                        <td className="py-3 px-4 text-right">
-                          {!remote.isRemote && (
-                          <button
-                            onClick={() => deleteLog(entry.id)}
-                            title={t('diary_delete')}
-                            className="text-lb-muted hover:text-lb-red p-1 rounded transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {visibleLogs.map((entry) => (
+                    <DiaryDesktopRow
+                      key={entry.id}
+                      entry={entry}
+                      formattedDate={formatWatchedDate(entry.watchedDate)}
+                      isRemote={remote.isRemote}
+                      onDelete={deleteLog}
+                      deleteTitle={deleteTitle}
+                      rewatchedTitle={rewatchedTitle}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>

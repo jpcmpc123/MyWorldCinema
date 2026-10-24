@@ -170,102 +170,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
+  const readLocalJson = <T,>(key: string, fallback: T, validate?: (val: unknown) => val is T): T => {
+    try {
+      const saved = localStorage.getItem(key);
+      if (!saved) return fallback;
+      const parsed: unknown = JSON.parse(saved);
+      if (validate && !validate(parsed)) return fallback;
+      return parsed as T;
+    } catch {
+      return fallback;
+    }
+  };
+
   // AuthProvider já garante que a sessão foi resolvida antes deste mount,
   // então isAuthenticated é confiável aqui. DESLOGADO → estado visitante vazio
   // (nunca reidrata lb_* do localStorage — seriam dados de outra conta).
   const [user, setUser] = useState<UserProfile>(() => {
     if (!isAuthenticated) return guestUser;
-    const saved = localStorage.getItem('lb_user');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.username === 'cinephile' || parsed.username === 'jpcmpc23') return guestUser;
-      return parsed;
+    const parsed = readLocalJson<UserProfile | null>(
+      'lb_user',
+      null,
+      (v): v is UserProfile => typeof v === 'object' && v !== null && 'username' in v,
+    );
+    if (!parsed || parsed.username === 'cinephile' || parsed.username === 'jpcmpc23') {
+      return guestUser;
     }
-    return guestUser;
+    return parsed;
   });
 
   const [logs, setLogs] = useState<LogEntry[]>(() => {
     if (!isAuthenticated) return initialLogs;
-    const saved = localStorage.getItem('lb_logs');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.length <= 4) return initialLogs;
-      return parsed;
-    }
-    return initialLogs;
+    return readLocalJson<LogEntry[]>('lb_logs', initialLogs, Array.isArray);
   });
 
   const [watchlist, setWatchlist] = useState<MovieShort[]>(() => {
     if (!isAuthenticated) return [];
-    const saved = localStorage.getItem('lb_watchlist');
-    return saved ? JSON.parse(saved) : [];
+    return readLocalJson<MovieShort[]>('lb_watchlist', [], Array.isArray);
   });
 
   const [watchedMovieIds, setWatchedMovieIds] = useState<number[]>(() => {
     if (!isAuthenticated) return initialWatchedIds;
-    const saved = localStorage.getItem('lb_watched');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.length <= 5) return initialWatchedIds;
-      return parsed;
-    }
-    return initialWatchedIds;
+    return readLocalJson<number[]>('lb_watched', initialWatchedIds, Array.isArray);
   });
 
   const [likedMovieIds, setLikedMovieIds] = useState<number[]>(() => {
     if (!isAuthenticated) return initialLikedIds;
-    const saved = localStorage.getItem('lb_likes');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.length <= 5) return initialLikedIds;
-      return parsed;
-    }
-    return initialLikedIds;
+    return readLocalJson<number[]>('lb_likes', initialLikedIds, Array.isArray);
   });
 
   const [ratingsMap, setRatingsMap] = useState<Record<number, number>>(() => {
     if (!isAuthenticated) return initialRatings;
-    const saved = localStorage.getItem('lb_ratings');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Object.keys(parsed).length <= 5) return initialRatings;
-      return parsed;
-    }
-    return initialRatings;
+    return readLocalJson<Record<number, number>>(
+      'lb_ratings',
+      initialRatings,
+      (v): v is Record<number, number> => typeof v === 'object' && v !== null && !Array.isArray(v),
+    );
   });
 
   const [top4MovieIds, setTop4MovieIds] = useState<number[]>(() => {
     if (!isAuthenticated) return guestUser.top4MovieIds;
-    const saved = localStorage.getItem('lb_top4');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.includes(157336)) return guestUser.top4MovieIds;
-      return parsed;
-    }
-    return guestUser.top4MovieIds;
+    const parsed = readLocalJson<number[]>('lb_top4', guestUser.top4MovieIds, Array.isArray);
+    if (parsed.includes(157336)) return guestUser.top4MovieIds;
+    return parsed;
   });
 
   const [lists, setLists] = useState<MovieList[]>(() => {
     if (!isAuthenticated) return [];
-    const saved = localStorage.getItem('lb_lists');
-    return saved ? JSON.parse(saved) : [];
+    return readLocalJson<MovieList[]>('lb_lists', [], Array.isArray);
   });
 
   const [reviews, setReviews] = useState<Review[]>(() => {
     if (!isAuthenticated) return [];
-    const saved = localStorage.getItem('lb_reviews');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.length <= 2) return initialReviewsList;
-      return parsed;
-    }
-    return initialReviewsList;
+    return readLocalJson<Review[]>('lb_reviews', initialReviewsList, Array.isArray);
   });
 
   // Custom poster/backdrop overrides per film (like MyWorld's "Set film poster/backdrop")
   const [movieOverrides, setMovieOverrides] = useState<Record<number, { poster?: string; backdrop?: string }>>(() => {
-    const saved = localStorage.getItem('lb_movie_overrides');
-    return saved ? JSON.parse(saved) : {};
+    return readLocalJson<Record<number, { poster?: string; backdrop?: string }>>(
+      'lb_movie_overrides',
+      {},
+      (v): v is Record<number, { poster?: string; backdrop?: string }> =>
+        typeof v === 'object' && v !== null && !Array.isArray(v),
+    );
   });
 
   // Refs-espelho do estado: permitem useCallback com deps mínimas (identidade
@@ -275,6 +261,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const watchedIdsRef = useRef(watchedMovieIds); watchedIdsRef.current = watchedMovieIds;
   const likedIdsRef = useRef(likedMovieIds); likedIdsRef.current = likedMovieIds;
   const overridesRef = useRef(movieOverrides); overridesRef.current = movieOverrides;
+
+  const logsRef = useRef(logs); logsRef.current = logs;
 
   const setMovieOverride = useCallback((movieId: number, override: { poster?: string; backdrop?: string }) => {
     const next = { ...(overridesRef.current[movieId] || {}), ...override };
@@ -288,30 +276,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { ...prev, [movieId]: merged };
     });
 
-    // Persiste no Supabase (tabela film_overrides â€” migration_film_overrides.sql)
+    // Persiste no Supabase (tabela film_overrides — migration_film_overrides.sql)
     if (supabase && isAuthenticated && authUser) {
       void (async () => {
-        if (!next.poster && !next.backdrop) {
-          const { error } = await supabase
-            .from('film_overrides')
-            .delete()
-            .eq('user_id', authUser.id)
-            .eq('film_id', movieId);
-          if (error) console.warn('film_overrides delete error (rode migration_film_overrides.sql):', error.message);
-        } else {
-          const { error } = await supabase
-            .from('film_overrides')
-            .upsert(
-              {
-                user_id: authUser.id,
-                film_id: movieId,
-                poster_url: next.poster ?? null,
-                backdrop_url: next.backdrop ?? null,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'user_id,film_id' }
-            );
-          if (error) console.warn('film_overrides upsert error (rode migration_film_overrides.sql):', error.message);
+        try {
+          if (!next.poster && !next.backdrop) {
+            const { error } = await supabase
+              .from('film_overrides')
+              .delete()
+              .eq('user_id', authUser.id)
+              .eq('film_id', movieId);
+            if (error) console.warn('film_overrides delete error (rode migration_film_overrides.sql):', error.message);
+          } else {
+            const { error } = await supabase
+              .from('film_overrides')
+              .upsert(
+                {
+                  user_id: authUser.id,
+                  film_id: movieId,
+                  poster_url: next.poster ?? null,
+                  backdrop_url: next.backdrop ?? null,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'user_id,film_id' }
+              );
+            if (error) console.warn('film_overrides upsert error (rode migration_film_overrides.sql):', error.message);
+          }
+        } catch (err) {
+          console.error('Supabase film_overrides sync error:', err);
         }
       })();
     }
@@ -516,86 +508,112 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, authUser?.id]);
 
-  // Upsert de um "quick log" (sem data) em film_logs â€” usado por toggles/rating
+  // Upsert de um "quick log" (sem data) em film_logs — usado por toggles/rating
   const persistQuickLog = async (filmId: number, patch: { watched?: boolean; liked?: boolean; rating?: number }) => {
     if (!supabase || !isAuthenticated || !authUser) return;
-    const meta = movieMetaRef.current[filmId] ?? { title: '', poster: null, year: null };
+    try {
+      const meta = movieMetaRef.current[filmId] ?? { title: '', poster: null, year: null };
 
-    const { data: existing } = await supabase
-      .from('film_logs')
-      .select('id, rating, liked, review_text')
-      .eq('user_id', authUser.id)
-      .eq('film_id', filmId)
-      .is('watched_on', null)
-      .maybeSingle();
+      const { data: existing } = await supabase
+        .from('film_logs')
+        .select('id, rating, liked, review_text')
+        .eq('user_id', authUser.id)
+        .eq('film_id', filmId)
+        .is('watched_on', null)
+        .maybeSingle();
 
-    if (existing) {
-      const updates: Record<string, unknown> = {};
-      if (patch.liked !== undefined) updates.liked = patch.liked;
-      if (patch.rating !== undefined) updates.rating = patch.rating > 0 ? patch.rating : null;
-      if (patch.watched === false && !existing.review_text) {
-        await supabase.from('film_logs').delete().eq('id', existing.id);
-        return;
+      if (existing) {
+        const updates: Record<string, unknown> = {};
+        if (patch.liked !== undefined) updates.liked = patch.liked;
+        if (patch.rating !== undefined) updates.rating = patch.rating > 0 ? patch.rating : null;
+        if (patch.watched === false && !existing.review_text) {
+          await supabase.from('film_logs').delete().eq('id', existing.id);
+          return;
+        }
+        if (Object.keys(updates).length > 0) {
+          const { error } = await supabase.from('film_logs').update(updates).eq('id', existing.id);
+          if (error) console.error('Supabase film_logs update error:', error);
+        }
+      } else if (patch.watched !== false && (patch.watched === true || (patch.rating && patch.rating > 0) || patch.liked)) {
+        const { error } = await supabase.from('film_logs').insert({
+          user_id: authUser.id,
+          film_id: filmId,
+          film_title: meta.title,
+          film_poster: meta.poster,
+          film_year: meta.year,
+          watched_on: null,
+          rating: patch.rating && patch.rating > 0 ? patch.rating : null,
+          liked: patch.liked ?? false,
+        });
+        if (error) console.error('Supabase film_logs insert error:', error);
       }
-      if (Object.keys(updates).length > 0) {
-        const { error } = await supabase.from('film_logs').update(updates).eq('id', existing.id);
-        if (error) console.error('Supabase film_logs update error:', error);
-      }
-    } else if (patch.watched !== false) {
-      const { error } = await supabase.from('film_logs').insert({
-        user_id: authUser.id,
-        film_id: filmId,
-        film_title: meta.title,
-        film_poster: meta.poster,
-        film_year: meta.year,
-        watched_on: null,
-        rating: patch.rating && patch.rating > 0 ? patch.rating : null,
-        liked: patch.liked ?? false,
-      });
-      if (error) console.error('Supabase film_logs insert error:', error);
+    } catch (err) {
+      console.error('Supabase persistQuickLog error:', err);
     }
   };
 
   const persistWatchlistAdd = async (movie: MovieShort) => {
     if (!supabase || !isAuthenticated || !authUser) return;
-    rememberMovie(movie);
-    const meta = movieMetaRef.current[movie.id];
-    const { error } = await supabase.from('watchlist').upsert(
-      {
-        user_id: authUser.id,
-        film_id: movie.id,
-        film_title: meta?.title ?? movie.title,
-        film_poster: meta?.poster ?? movie.poster_path,
-        film_year: meta?.year ?? (movie.release_date ? parseInt(movie.release_date.slice(0, 4), 10) : null),
-      },
-      { onConflict: 'user_id,film_id' }
-    );
-    if (error) console.error('Supabase watchlist upsert error:', error);
+    try {
+      rememberMovie(movie);
+      const meta = movieMetaRef.current[movie.id];
+      const { error } = await supabase.from('watchlist').upsert(
+        {
+          user_id: authUser.id,
+          film_id: movie.id,
+          film_title: meta?.title ?? movie.title,
+          film_poster: meta?.poster ?? movie.poster_path,
+          film_year: meta?.year ?? (movie.release_date ? parseInt(movie.release_date.slice(0, 4), 10) : null),
+        },
+        { onConflict: 'user_id,film_id' }
+      );
+      if (error) console.error('Supabase watchlist upsert error:', error);
+    } catch (err) {
+      console.error('Supabase persistWatchlistAdd error:', err);
+    }
   };
 
   const persistWatchlistRemove = async (filmId: number) => {
     if (!supabase || !isAuthenticated || !authUser) return;
-    const { error } = await supabase.from('watchlist').delete().eq('user_id', authUser.id).eq('film_id', filmId);
-    if (error) console.error('Supabase watchlist delete error:', error);
+    try {
+      const { error } = await supabase.from('watchlist').delete().eq('user_id', authUser.id).eq('film_id', filmId);
+      if (error) console.error('Supabase watchlist delete error:', error);
+    } catch (err) {
+      console.error('Supabase persistWatchlistRemove error:', err);
+    }
   };
 
-  const persistFullLog = async (entry: Omit<LogEntry, 'id' | 'createdAt'>) => {
+  const persistFullLog = async (entry: Omit<LogEntry, 'id' | 'createdAt'>, tempId: string) => {
     if (!supabase || !isAuthenticated || !authUser) return;
-    rememberMovie({ id: entry.movieId, movieTitle: entry.movieTitle, moviePoster: entry.moviePoster, movieYear: entry.movieYear });
-    const meta = movieMetaRef.current[entry.movieId];
-    const { error } = await supabase.from('film_logs').insert({
-      user_id: authUser.id,
-      film_id: entry.movieId,
-      film_title: meta.title,
-      film_poster: meta.poster,
-      film_year: meta.year,
-      watched_on: entry.watchedDate || null,
-      rating: entry.rating > 0 ? entry.rating : null,
-      liked: entry.liked,
-      review_text: entry.reviewText.trim() || null,
-      contains_spoilers: entry.containsSpoilers,
-    });
-    if (error) console.error('Supabase film_logs insert error:', error);
+    try {
+      rememberMovie({ id: entry.movieId, movieTitle: entry.movieTitle, moviePoster: entry.moviePoster, movieYear: entry.movieYear });
+      const meta = movieMetaRef.current[entry.movieId];
+      const { data, error } = await supabase
+        .from('film_logs')
+        .insert({
+          user_id: authUser.id,
+          film_id: entry.movieId,
+          film_title: meta.title,
+          film_poster: meta.poster,
+          film_year: meta.year,
+          watched_on: entry.watchedDate || null,
+          rating: entry.rating > 0 ? entry.rating : null,
+          liked: entry.liked,
+          review_text: entry.reviewText.trim() || null,
+          contains_spoilers: entry.containsSpoilers,
+        })
+        .select('id')
+        .maybeSingle();
+      if (error) {
+        console.error('Supabase film_logs insert error:', error);
+      } else if (data?.id) {
+        const realId = String(data.id);
+        setLogs((prev) => prev.map((l) => (l.id === tempId ? { ...l, id: realId } : l)));
+        setReviews((prev) => prev.map((r) => (r.id === `rev-${tempId}` ? { ...r, id: `rev-${realId}` } : r)));
+      }
+    } catch (err) {
+      console.error('Supabase persistFullLog error:', err);
+    }
   };
 
   const updateUser = useCallback((updates: Partial<UserProfile>) => {
@@ -633,7 +651,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (entry.reviewText.trim()) {
       const u = userRef.current;
       const review: Review = {
-        id: `rev-${Date.now()}`,
+        id: `rev-${newId}`,
         movieId: entry.movieId,
         movieTitle: entry.movieTitle,
         moviePoster: entry.moviePoster,
@@ -656,12 +674,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setReviews((prev) => [review, ...prev]);
     }
 
-    void persistFullLog(entry);
+    void persistFullLog(entry, newId);
   }, [isAuthenticated, authUser]);
 
   const deleteLog = useCallback((id: string) => {
-    setLogs((prev) => prev.filter((item) => item.id !== id));
-  }, []);
+    const currentLogs = logsRef.current;
+    const target = currentLogs.find((item) => item.id === id);
+    const remaining = currentLogs.filter((item) => item.id !== id);
+    setLogs(remaining);
+    setReviews((prev) => prev.filter((r) => r.id !== `rev-${id}`));
+
+    if (target) {
+      const movieLogsLeft = remaining.filter((item) => item.movieId === target.movieId);
+      if (movieLogsLeft.length === 0) {
+        setWatchedMovieIds((prev) => prev.filter((mId) => mId !== target.movieId));
+        setLikedMovieIds((prev) => prev.filter((mId) => mId !== target.movieId));
+        setRatingsMap((prev) => {
+          const { [target.movieId]: _removed, ...rest } = prev;
+          return rest;
+        });
+      } else {
+        const latestRated = movieLogsLeft.find((l) => l.rating > 0);
+        setRatingsMap((prev) => {
+          if (latestRated) return { ...prev, [target.movieId]: latestRated.rating };
+          const { [target.movieId]: _removed, ...rest } = prev;
+          return rest;
+        });
+        const anyLiked = movieLogsLeft.some((l) => l.liked);
+        if (!anyLiked) {
+          setLikedMovieIds((prev) => prev.filter((mId) => mId !== target.movieId));
+        }
+      }
+    }
+
+    if (supabase && isAuthenticated && authUser && !id.startsWith('log-')) {
+      void (async () => {
+        try {
+          const { error } = await supabase
+            .from('film_logs')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', authUser.id);
+          if (error) console.error('Supabase film_logs delete error:', error);
+        } catch (err) {
+          console.error('Supabase deleteLog error:', err);
+        }
+      })();
+    }
+  }, [isAuthenticated, authUser]);
 
   const toggleWatchlist = useCallback((movie: MovieShort) => {
     const exists = watchlistRef.current.some((m) => m.id === movie.id);
@@ -711,6 +771,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const setMovieRating = useCallback((movieId: number, rating: number) => {
+    if (rating <= 0) {
+      setRatingsMap((prev) => {
+        const { [movieId]: _removed, ...rest } = prev;
+        return rest;
+      });
+      void persistQuickLog(movieId, { rating: 0 });
+      return;
+    }
     setRatingsMap((prev) => ({ ...prev, [movieId]: rating }));
     if (!watchedIdsRef.current.includes(movieId)) {
       setWatchedMovieIds((prev) => [movieId, ...prev]);
@@ -719,18 +787,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isAuthenticated, authUser]);
 
   // Persiste o Top 4 no Supabase (profiles.favorite_films, int[]).
-  // Slots vazios sÃ£o persistidos como 0 â€” int[] nÃ£o aceita null.
+  // Slots vazios são persistidos como 0 — int[] não aceita null.
   const persistTop4 = async (ids: number[]) => {
     if (!supabase || !isAuthenticated || !authUser) return;
-    const { error } = await supabase
-      .from('profiles')
-      .update({ favorite_films: ids })
-      .eq('id', authUser.id);
-    if (error) {
-      console.warn(
-        'NÃ£o foi possÃ­vel salvar favorite_films â€” rode supabase/migration_settings.sql no Supabase SQL Editor.',
-        error.message
-      );
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ favorite_films: ids })
+        .eq('id', authUser.id);
+      if (error) {
+        console.warn(
+          'Não foi possível salvar favorite_films — rode supabase/migration_settings.sql no Supabase SQL Editor.',
+          error.message
+        );
+      }
+    } catch (err) {
+      console.error('Supabase persistTop4 error:', err);
     }
   };
 

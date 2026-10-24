@@ -219,6 +219,7 @@ const ProfileTab: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     setNotice(null);
 
     if (!USERNAME_RE.test(form.username)) {
@@ -234,42 +235,48 @@ const ProfileTab: React.FC = () => {
     }
 
     setSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        username: form.username,
+        bio: form.bio,
+        location: form.location,
+        website: form.website,
+      };
 
-    const payload: Record<string, unknown> = {
-      username: form.username,
-      bio: form.bio,
-      location: form.location,
-      website: form.website,
-    };
+      let { error } = await supabase.from('profiles').update(payload).eq('id', authUser.id);
 
-    let { error } = await supabase.from('profiles').update(payload).eq('id', authUser.id);
+      // If location/website columns don't exist yet, retry without them
+      if (error && /location|website/i.test(error.message)) {
+        setExtraFieldsAvailable(false);
+        delete payload.location;
+        delete payload.website;
+        ({ error } = await supabase.from('profiles').update(payload).eq('id', authUser.id));
+      }
 
-    // If location/website columns don't exist yet, retry without them
-    if (error && /location|website/i.test(error.message)) {
-      setExtraFieldsAvailable(false);
-      delete payload.location;
-      delete payload.website;
-      ({ error } = await supabase.from('profiles').update(payload).eq('id', authUser.id));
-    }
+      if (error) {
+        const isUnique = error.code === '23505' || /duplicate key|unique/i.test(error.message);
+        setNotice({
+          kind: 'error',
+          message: isUnique ? `${t('cfg_username')} "${form.username}" ${t('cfg_is_taken')}` : error.message,
+        });
+        return;
+      }
 
-    setSaving(false);
-
-    if (error) {
-      const isUnique = error.code === '23505' || /duplicate key|unique/i.test(error.message);
+      updateUser({
+        username: form.username,
+        bio: form.bio,
+        location: form.location,
+        website: form.website,
+      });
+      setNotice({ kind: 'success', message: t('cfg_profile_updated') });
+    } catch (err) {
       setNotice({
         kind: 'error',
-        message: isUnique ? `${t('cfg_username')} "${form.username}" ${t('cfg_is_taken')}` : error.message,
+        message: err instanceof Error ? err.message : 'Error saving profile.',
       });
-      return;
+    } finally {
+      setSaving(false);
     }
-
-    updateUser({
-      username: form.username,
-      bio: form.bio,
-      location: form.location,
-      website: form.website,
-    });
-    setNotice({ kind: 'success', message: t('cfg_profile_updated') });
   };
 
   return (
@@ -453,24 +460,44 @@ const MobileProfileSettings: React.FC = () => {
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
   const handleSave = async () => {
+    if (saving) return;
     setNotice(null);
     setSaving(true);
-    const displayName = [form.givenName, form.familyName].filter(Boolean).join(' ');
-    updateUser({
-      displayName,
-      bio: form.bio,
-      location: form.location,
-      website: form.website,
-    });
-    // Best-effort persist to Supabase (same fields as the desktop form)
-    if (supabase && authUser) {
-      await supabase
-        .from('profiles')
-        .update({ bio: form.bio, location: form.location, website: form.website })
-        .eq('id', authUser.id);
+    try {
+      const displayName = [form.givenName, form.familyName].filter(Boolean).join(' ');
+      updateUser({
+        displayName,
+        bio: form.bio,
+        location: form.location,
+        website: form.website,
+      });
+      // Best-effort persist to Supabase (same fields as the desktop form)
+      if (supabase && authUser) {
+        const payload: Record<string, unknown> = {
+          bio: form.bio,
+          location: form.location,
+          website: form.website,
+        };
+        const { error } = await supabase
+          .from('profiles')
+          .update(payload)
+          .eq('id', authUser.id);
+        if (error && /location|website/i.test(error.message)) {
+          await supabase
+            .from('profiles')
+            .update({ bio: form.bio })
+            .eq('id', authUser.id);
+        }
+      }
+      navigate(-1);
+    } catch (err) {
+      setNotice({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Error saving profile.',
+      });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    navigate(-1);
   };
 
   const handleSignOut = async () => {
@@ -642,17 +669,23 @@ const AvatarTab: React.FC = () => {
       setNotice({ kind: 'error', message: t('cfg_supabase_missing') });
       return false;
     }
-    const { error } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', authUser.id);
-    if (error) {
-      setNotice({ kind: 'error', message: error.message });
+    try {
+      const { error } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', authUser.id);
+      if (error) {
+        setNotice({ kind: 'error', message: error.message });
+        return false;
+      }
+      updateUser({ avatarUrl: url });
+      setAvatarUrlInput(url);
+      return true;
+    } catch (err) {
+      setNotice({ kind: 'error', message: err instanceof Error ? err.message : t('cfg_upload_failed') });
       return false;
     }
-    updateUser({ avatarUrl: url });
-    setAvatarUrlInput(url);
-    return true;
   };
 
   const handleUploadFile = async (file: File) => {
+    if (uploading) return;
     setNotice(null);
     if (!file.type.startsWith('image/')) {
       setNotice({ kind: 'error', message: 'Please choose an image file (PNG, JPG, WebP…).' });
@@ -664,42 +697,53 @@ const AvatarTab: React.FC = () => {
     }
 
     setUploading(true);
-    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-    const path = `${authUser.id}/avatar.${ext}`;
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `${authUser.id}/avatar.${ext}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true, contentType: file.type });
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true, contentType: file.type });
 
-    if (uploadError) {
-      setUploading(false);
+      if (uploadError) {
+        setNotice({
+          kind: 'error',
+          message: `${t('cfg_upload_failed')}: ${uploadError.message}. ${t('cfg_bucket_hint')}`,
+        });
+        return;
+      }
+
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
+      // Bust cache: append timestamp so the new avatar shows immediately
+      const publicUrl = `${pub.publicUrl}?v=${Date.now()}`;
+
+      const ok = await applyAvatarToProfile(publicUrl);
+      if (ok) setNotice({ kind: 'success', message: t('cfg_avatar_updated') });
+    } catch (err) {
       setNotice({
         kind: 'error',
-        message: `${t('cfg_upload_failed')}: ${uploadError.message}. ${t('cfg_bucket_hint')}`,
+        message: err instanceof Error ? err.message : t('cfg_upload_failed'),
       });
-      return;
+    } finally {
+      setUploading(false);
     }
-
-    const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path);
-    // Bust cache: append timestamp so the new avatar shows immediately
-    const publicUrl = `${pub.publicUrl}?v=${Date.now()}`;
-
-    const ok = await applyAvatarToProfile(publicUrl);
-    setUploading(false);
-    if (ok) setNotice({ kind: 'success', message: t('cfg_avatar_updated') });
   };
 
   const handleSaveUrl = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingUrl) return;
     setNotice(null);
     if (!avatarUrlInput.trim()) {
       setNotice({ kind: 'error', message: t('cfg_paste_url_first') });
       return;
     }
     setSavingUrl(true);
-    const ok = await applyAvatarToProfile(avatarUrlInput.trim());
-    setSavingUrl(false);
-    if (ok) setNotice({ kind: 'success', message: t('cfg_avatar_updated') });
+    try {
+      const ok = await applyAvatarToProfile(avatarUrlInput.trim());
+      if (ok) setNotice({ kind: 'success', message: t('cfg_avatar_updated') });
+    } finally {
+      setSavingUrl(false);
+    }
   };
 
   return (
@@ -950,7 +994,7 @@ const DataTab: React.FC = () => {
         );
         watchlistCsv = toCsv(
           ['film_id', 'name', 'year'],
-          watchlist.map((m) => [m.id, m.title, m.release_date.slice(0, 4)])
+          watchlist.map((m) => [m.id, m.title, (m.release_date ?? '').slice(0, 4)])
         );
       }
 

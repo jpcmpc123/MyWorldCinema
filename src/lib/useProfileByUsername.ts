@@ -54,45 +54,50 @@ export function useProfileByUsername(
     setStatus('loading');
 
     const load = async () => {
-      const { data: profileData } = await client
-        .from('profiles')
-        .select('id, username, display_name, avatar_url, bio')
-        .eq('username', username)
-        .maybeSingle();
+      try {
+        const { data: profileData, error: profileErr } = await client
+          .from('profiles')
+          .select('id, username, display_name, avatar_url, bio')
+          .eq('username', username)
+          .maybeSingle();
 
-      if (cancelled) return;
-      if (!profileData) {
-        setStatus('not-found');
-        return;
+        if (cancelled) return;
+        if (profileErr || !profileData) {
+          setStatus('not-found');
+          return;
+        }
+
+        setProfile(profileData as RemoteProfile);
+
+        const { data: logsData } = await client
+          .from('film_logs')
+          .select('*')
+          .eq('user_id', profileData.id)
+          .order('created_at', { ascending: false });
+
+        if (cancelled) return;
+        setLogs(
+          (logsData ?? []).map((row) => ({
+            id: row.id,
+            movieId: row.film_id,
+            movieTitle: row.film_title,
+            moviePoster: row.film_poster,
+            movieYear: row.film_year ? String(row.film_year) : '',
+            watchedDate: row.watched_on ?? '',
+            rating: row.rating ?? 0,
+            isRewatch: false,
+            liked: Boolean(row.liked),
+            reviewText: row.review_text ?? '',
+            containsSpoilers: Boolean(row.contains_spoilers),
+            tags: [],
+            createdAt: row.created_at,
+          }))
+        );
+        setStatus('ready');
+      } catch (err) {
+        console.error('useProfileByUsername load error:', err);
+        if (!cancelled) setStatus('not-found');
       }
-
-      setProfile(profileData as RemoteProfile);
-
-      const { data: logsData } = await client
-        .from('film_logs')
-        .select('*')
-        .eq('user_id', profileData.id)
-        .order('created_at', { ascending: false });
-
-      if (cancelled) return;
-      setLogs(
-        (logsData ?? []).map((row) => ({
-          id: row.id,
-          movieId: row.film_id,
-          movieTitle: row.film_title,
-          moviePoster: row.film_poster,
-          movieYear: row.film_year ? String(row.film_year) : '',
-          watchedDate: row.watched_on ?? '',
-          rating: row.rating ?? 0,
-          isRewatch: false,
-          liked: row.liked,
-          reviewText: row.review_text ?? '',
-          containsSpoilers: row.contains_spoilers,
-          tags: [],
-          createdAt: row.created_at,
-        }))
-      );
-      setStatus('ready');
     };
 
     void load();
