@@ -157,7 +157,67 @@ function areAllUrlsLoaded(urls: string[]): boolean {
   return urls.every((u) => isImageUrlPreloaded(u));
 }
 
-let hasCompletedFirstDetailVerification = false;
+interface InitialMoviePayload {
+  id: number;
+  title?: string;
+  name?: string;
+  original_title?: string;
+  original_name?: string;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
+  overview?: string;
+  release_date?: string;
+  first_air_date?: string;
+  vote_average?: number;
+  vote_count?: number;
+  popularity?: number;
+  directors?: string[];
+}
+
+function buildPartialMovieDetails(
+  raw: InitialMoviePayload | null | undefined,
+  targetId: number,
+  isTv: boolean,
+): TMDBMovieDetails | null {
+  if (!raw || Number(raw.id) !== targetId) return null;
+  const title = raw.title || raw.name || raw.original_title || raw.original_name || '';
+  const originalTitle = raw.original_title || raw.original_name || title;
+  const releaseDate = raw.release_date || raw.first_air_date || '';
+  const crew = Array.isArray(raw.directors) && raw.directors.length > 0
+    ? raw.directors.map((name, idx) => ({
+        id: -(idx + 1),
+        name,
+        job: isTv ? 'Creator' : 'Director',
+        department: 'Directing',
+        profile_path: null,
+      }))
+    : [];
+
+  return {
+    id: targetId,
+    title,
+    original_title: originalTitle,
+    poster_path: raw.poster_path ?? null,
+    backdrop_path: raw.backdrop_path ?? null,
+    overview: raw.overview ?? '',
+    release_date: releaseDate,
+    vote_average: raw.vote_average ?? 0,
+    vote_count: raw.vote_count ?? 0,
+    popularity: raw.popularity ?? 0,
+    tagline: '',
+    runtime: 0,
+    status: '',
+    budget: 0,
+    revenue: 0,
+    genres: [],
+    production_companies: [],
+    production_countries: [],
+    spoken_languages: [],
+    credits: { cast: [], crew },
+    similar: { results: [] },
+    recommendations: { results: [] },
+  };
+}
 
 export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: boolean }> = ({
   isTvRoute,
@@ -188,9 +248,13 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   const { t } = useLanguage();
   const navigate = useNavigate();
 
-  const fromPersonProfilePath = (
-    location.state as { fromPerson?: { profile_path?: string | null } } | null
-  )?.fromPerson?.profile_path;
+  const locationState = location.state as {
+    initialMovie?: InitialMoviePayload;
+    previewMovie?: InitialMoviePayload;
+    fromPerson?: { profile_path?: string | null };
+  } | null;
+
+  const fromPersonProfilePath = locationState?.fromPerson?.profile_path;
 
   const cachedDetails = useMemo<TMDBMovieDetails | null>(() => {
     if (!movieId) return null;
@@ -201,40 +265,26 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     return null;
   }, [movieId, isTv]);
 
-  const extraAvatarUrls = useMemo(() => {
-    const revAvatars = reviews
-      .filter((r) => r.movieId === movieId)
-      .map((r) => r.author.avatarUrl);
-    return [profile?.avatar_url, ...revAvatars];
-  }, [reviews, movieId, profile?.avatar_url]);
-
-  const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => cachedDetails);
-  const [loading, setLoading] = useState<boolean>(() => !cachedDetails);
-  const [assetsReady, setAssetsReady] = useState<boolean>(() => {
-    if (!cachedDetails || !hasCompletedFirstDetailVerification) return false;
-    const urls = getRequiredFilmImageUrls(
-      cachedDetails,
-      isMobile,
-      movieOverrides[movieId],
-      fromPersonProfilePath,
-      extraAvatarUrls,
+  const initialPartialMovie = useMemo<TMDBMovieDetails | null>(() => {
+    if (!movieId) return null;
+    return buildPartialMovieDetails(
+      locationState?.initialMovie ?? locationState?.previewMovie,
+      movieId,
+      isTv,
     );
-    return areAllUrlsLoaded(urls);
-  });
+  }, [locationState?.initialMovie, locationState?.previewMovie, movieId, isTv]);
+
+  const seedMovie = cachedDetails ?? initialPartialMovie;
+
+  const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => seedMovie);
+  const [loading, setLoading] = useState<boolean>(() => !seedMovie);
+  const [assetsReady, setAssetsReady] = useState<boolean>(() => Boolean(seedMovie));
 
   if (movie?.id !== movieId) {
-    if (cachedDetails) {
-      setMovie(cachedDetails);
+    if (seedMovie) {
+      setMovie(seedMovie);
       if (loading) setLoading(false);
-      const urls = getRequiredFilmImageUrls(
-        cachedDetails,
-        isMobile,
-        movieOverrides[movieId],
-        fromPersonProfilePath,
-        extraAvatarUrls,
-      );
-      const alreadyReady = hasCompletedFirstDetailVerification && areAllUrlsLoaded(urls);
-      if (assetsReady !== alreadyReady) setAssetsReady(alreadyReady);
+      if (!assetsReady) setAssetsReady(true);
     } else {
       if (movie !== null) setMovie(null);
       if (!loading) setLoading(true);
@@ -252,8 +302,11 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   const filmTabMountedRef = useRef<boolean>(false);
   const prevActiveTabRef = useRef<TabKey>(activeTab);
 
-  // Reset tab when film changes
-  useEffect(() => {
+  // Reset tab and scroll to top immediately when film changes (e.g. PUSH from /film/A to /film/B)
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
     setActiveTab('cast');
     setHasChangedTab(false);
     filmPrevPosRef.current = { left: 0, width: 0 };
@@ -381,77 +434,65 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   useEffect(() => {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    const mountTime = performance.now();
-
-    const waitSlideIfMobile = async () => {
-      if (!isMobile) return;
-      const elapsed = performance.now() - mountTime;
-      const remaining = Math.max(0, 355 - elapsed);
-      if (remaining > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
-      }
-    };
 
     async function loadFilm(attempt = 1) {
       if (!movieId) return;
       if (attempt === 1) {
-        window.scrollTo(0, 0);
         const cached = tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie');
         if (cached && Array.isArray(cached.credits?.cast) && Array.isArray(cached.similar?.results)) {
           setMovie(cached);
           setLoading(false);
+          setAssetsReady(true);
           const urls = getRequiredFilmImageUrls(
             cached,
             isMobile,
             movieOverrides[movieId],
             fromPersonProfilePath,
           );
-          if (areAllUrlsLoaded(urls)) {
-            setAssetsReady(true);
-            return;
-          }
-          setAssetsReady(false);
-          await Promise.all([
-            Promise.race([
-              Promise.all(urls.map(preloadSingleImage)),
-              new Promise<void>((resolve) => setTimeout(resolve, isMobile ? 1200 : 3000)),
-            ]),
-            document.fonts?.ready ? document.fonts.ready.catch(() => {}) : Promise.resolve(),
-            waitSlideIfMobile(),
-          ]);
-          if (!cancelled) {
-            setAssetsReady(true);
-          }
+          urls.forEach((u) => {
+            void preloadSingleImage(u);
+          });
           return;
         }
-        setMovie(null);
-        setLoading(true);
-        setAssetsReady(false);
+
+        if (initialPartialMovie && initialPartialMovie.id === movieId) {
+          setMovie((prev) => (prev && prev.id === movieId ? prev : initialPartialMovie));
+          setLoading(false);
+          setAssetsReady(true);
+        } else {
+          setMovie(null);
+          setLoading(true);
+          setAssetsReady(false);
+        }
       }
 
       try {
         const details = isTv ? await tmdb.getTVDetails(movieId) : await tmdb.getMovieDetails(movieId);
         if (cancelled) return;
-        setMovie(details);
+        setMovie((prev) => {
+          // Preserva overview/poster/backdrop do initialMovie caso a API retorne algum campo vazio
+          if (prev && prev.id === details.id) {
+            return {
+              ...details,
+              overview: details.overview || prev.overview || '',
+              poster_path: details.poster_path || prev.poster_path,
+              backdrop_path: details.backdrop_path || prev.backdrop_path,
+            };
+          }
+          return details;
+        });
+        setAssetsReady(true);
+        setLoading(false);
+
         const urls = getRequiredFilmImageUrls(
           details,
           isMobile,
           movieOverrides[movieId],
           fromPersonProfilePath,
         );
-        await Promise.all([
-          areAllUrlsLoaded(urls)
-            ? Promise.resolve()
-            : Promise.race([
-                Promise.all(urls.map(preloadSingleImage)),
-                new Promise<void>((resolve) => setTimeout(resolve, isMobile ? 1200 : 3000)),
-              ]),
-          document.fonts?.ready ? document.fonts.ready.catch(() => {}) : Promise.resolve(),
-          waitSlideIfMobile(),
-        ]);
-        if (cancelled) return;
-        setAssetsReady(true);
-        setLoading(false);
+        urls.forEach((u) => {
+          void preloadSingleImage(u);
+        });
       } catch (err) {
         if (cancelled) return;
         console.error('Failed to load movie details (attempt ' + attempt + '):', err);
@@ -470,7 +511,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [movieId, isTv, isMobile]);
+  }, [movieId, isTv, isMobile, initialPartialMovie]);
 
   // Se o filme pertence a uma coleção mas a busca da coleção demorou >4000ms na abertura,
   // preenchemos `collection_parts` assim que ela terminar em segundo plano.
@@ -1456,11 +1497,19 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     {relatedFilms.map((item) => {
                       const p500 = tmdb.getImageUrl(item.poster_path, 'w500');
                       const p780 = tmdb.getImageUrl(item.poster_path, 'w780');
+                      const prefetchRelated = () => {
+                        if (item.backdrop_path) {
+                          void preloadSingleImage(tmdb.getBackdropUrl(item.backdrop_path, 'w1280'));
+                        }
+                        void tmdb.getMovieDetails(item.id).catch(() => {});
+                      };
                       return (
                         <Link
                           key={item.id}
                           to={`/film/${item.id}`}
-                          state={{ previewMovie: item }}
+                          state={{ initialMovie: item, previewMovie: item, fromPoster: true }}
+                          onPointerDown={prefetchRelated}
+                          onMouseEnter={prefetchRelated}
                           className="similar-card"
                           aria-label={item.title}
                         >
@@ -1531,11 +1580,20 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     {displaySimilar.map((item) => {
                       const p500 = tmdb.getImageUrl(item.poster_path, 'w500');
                       const p780 = tmdb.getImageUrl(item.poster_path, 'w780');
+                      const prefetchSimilar = () => {
+                        if (item.backdrop_path) {
+                          void preloadSingleImage(tmdb.getBackdropUrl(item.backdrop_path, 'w1280'));
+                        }
+                        const req = isTv ? tmdb.getTVDetails(item.id) : tmdb.getMovieDetails(item.id);
+                        void req.catch(() => {});
+                      };
                       return (
                         <Link
                           key={item.id}
                           to={`${isTv ? '/tv' : '/film'}/${item.id}`}
-                          state={{ previewMovie: item }}
+                          state={{ initialMovie: item, previewMovie: item, fromPoster: true }}
+                          onPointerDown={prefetchSimilar}
+                          onMouseEnter={prefetchSimilar}
                           className="similar-card"
                           aria-label={item.title}
                         >

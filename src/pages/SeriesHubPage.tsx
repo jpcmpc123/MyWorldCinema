@@ -7,10 +7,14 @@ import { PosterCard } from '../components/PosterCard';
 import { MobileCatalogSections } from '../components/mobile/MobileCatalogSections';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useNavigationType } from 'react-router-dom';
+
+const seriesFindCache = new Map<string, TMDBMovie[]>();
 
 export const SeriesHubPage: React.FC = () => {
   const { t } = useLanguage();
   const isMobile = useIsMobile();
+  const navType = useNavigationType();
 
   const [cachedHub] = useState(() => tabDataCache.getSeriesHub());
 
@@ -55,23 +59,38 @@ export const SeriesHubPage: React.FC = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Search debounce
+  const findRequestIdRef = useRef(0);
+
+  // Search debounce blindado contra race conditions + cache em memória
   useEffect(() => {
-    if (!findQuery.trim() || findQuery.length < 2) {
+    const q = findQuery.trim();
+    if (!q || q.length < 2) {
+      findRequestIdRef.current += 1;
       setFindResults([]);
       return;
     }
+    const cacheKey = q.toLowerCase();
+    const cached = seriesFindCache.get(cacheKey);
+    if (cached) {
+      findRequestIdRef.current += 1;
+      setFindResults(cached);
+      return;
+    }
+    const reqId = ++findRequestIdRef.current;
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await tmdb.searchTV(findQuery.trim(), 1);
-        setFindResults(res.results.slice(0, 5));
+        const res = await tmdb.searchTV(q, 1);
+        if (reqId !== findRequestIdRef.current) return;
+        const top5 = res.results.slice(0, 5);
+        seriesFindCache.set(cacheKey, top5);
+        setFindResults(top5);
       } catch (err) {
-        console.error(err);
+        if (reqId === findRequestIdRef.current) console.error(err);
       } finally {
-        setIsSearching(false);
+        if (reqId === findRequestIdRef.current) setIsSearching(false);
       }
-    }, 250);
+    }, 220);
     return () => clearTimeout(timer);
   }, [findQuery]);
 
@@ -82,7 +101,7 @@ export const SeriesHubPage: React.FC = () => {
     }
 
     async function loadData() {
-      if (!isMobile) window.scrollTo(0, 0);
+      if (!isMobile && navType !== 'POP') window.scrollTo(0, 0);
       try {
         const hub = await tmdb.getSeriesHubSections();
         if (cancelled) return;
@@ -382,6 +401,13 @@ export const SeriesHubPage: React.FC = () => {
                   <Link
                     key={m.id}
                     to={`/tv/${m.id}`}
+                    state={{ initialMovie: m, previewMovie: m, fromPoster: true }}
+                    onPointerDown={() => {
+                      tmdb.getTVDetails(m.id).catch(() => {});
+                    }}
+                    onMouseEnter={() => {
+                      tmdb.getTVDetails(m.id).catch(() => {});
+                    }}
                     className="p-2 flex items-center gap-2.5 hover:bg-lb-elevated block"
                   >
                     <img loading="lazy" decoding="async"

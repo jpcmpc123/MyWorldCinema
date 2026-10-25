@@ -74,10 +74,21 @@ export const SeriesDetailPage: React.FC = () => {
     return null;
   }, [tvId]);
 
-  const [show, setShow] = useState<TMDBMovieDetails | null>(() => cachedShow);
-  const [loading, setLoading] = useState<boolean>(() => !cachedShow);
+  const seedShow = cachedShow ?? previewShow;
+  const [show, setShow] = useState<TMDBMovieDetails | null>(() => seedShow);
+  const [loading, setLoading] = useState<boolean>(() => !seedShow);
   const [showTrailerModal, setShowTrailerModal] = useState(false);
   const [showFullSynopsis, setShowFullSynopsis] = useState(false);
+
+  if (show?.id !== tvId) {
+    if (seedShow) {
+      setShow(seedShow);
+      if (loading) setLoading(false);
+    } else {
+      if (show !== null) setShow(null);
+      if (!loading) setLoading(true);
+    }
+  }
 
   useEffect(() => {
     if (!showTrailerModal) return;
@@ -106,8 +117,13 @@ export const SeriesDetailPage: React.FC = () => {
         return;
       }
 
-      setShow(null);
-      setLoading(true);
+      if (previewShow && previewShow.id === tvId) {
+        setShow((prev) => (prev && prev.id === tvId ? prev : previewShow));
+        setLoading(false);
+      } else {
+        setShow(null);
+        setLoading(true);
+      }
 
       try {
         const details = await tmdb.getTVDetails(tvId);
@@ -122,7 +138,7 @@ export const SeriesDetailPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tvId]);
+  }, [tvId, previewShow]);
 
   if (!show || show.id !== tvId || loading) {
     if (loading) {

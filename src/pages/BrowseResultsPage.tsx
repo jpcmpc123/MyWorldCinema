@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useNavigationType, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
@@ -32,6 +32,15 @@ interface ThemeOrNanogenreSection {
 }
 
 const DECADES = [2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950, 1940, 1930, 1920];
+
+interface BrowseCachedState {
+  items: GridItem[];
+  page: number;
+  hasMore: boolean;
+  sourceDetails: TMDBMovieDetails | null;
+}
+
+const browseStateCache = new Map<string, BrowseCachedState>();
 
 const normTitle = (m: TMDBMovie): TMDBMovie => {
   const a = m as unknown as Record<string, unknown>;
@@ -142,10 +151,13 @@ export const BrowseResultsPage: React.FC = () => {
   const isTvMedia: boolean = type === 'tv';
 
   const location = useLocation();
+  const navigationType = useNavigationType();
   const locationState = location.state as {
     initialItems?: TMDBMovie[];
     sourceMovie?: TMDBMovieDetails;
   } | null;
+  const paramsCacheKey = `${language}:${searchParams.toString()}`;
+  const cachedBrowse = browseStateCache.get(paramsCacheKey);
   const initialItemsRef = useRef<TMDBMovie[] | null>(locationState?.initialItems ?? null);
   const initialParamsKeyRef = useRef<string>(searchParams.toString());
 
@@ -153,6 +165,9 @@ export const BrowseResultsPage: React.FC = () => {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [carouselOpen, setCarouselOpen] = useState(false);
   const [items, setItems] = useState<GridItem[]>(() => {
+    if (cachedBrowse?.items?.length) {
+      return cachedBrowse.items;
+    }
     if (locationState?.initialItems?.length) {
       const isTvInit = (searchParams.get('type') || 'movie') === 'tv';
       return locationState.initialItems.map((m) => ({
@@ -162,12 +177,15 @@ export const BrowseResultsPage: React.FC = () => {
     }
     return [];
   });
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => cachedBrowse?.page ?? 1);
   const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(() => cachedBrowse?.hasMore ?? true);
 
   // ----- Estado exclusivo para o modo "Filmes/Séries Semelhantes" no PC -----
   const [sourceDetails, setSourceDetails] = useState<TMDBMovieDetails | null>(() => {
+    if (cachedBrowse?.sourceDetails && cachedBrowse.sourceDetails.id === similarTo) {
+      return cachedBrowse.sourceDetails;
+    }
     if (locationState?.sourceMovie && locationState.sourceMovie.id === similarTo) {
       return locationState.sourceMovie;
     }
@@ -582,12 +600,46 @@ export const BrowseResultsPage: React.FC = () => {
     ],
   );
 
+  // Mantém o estado atual salvo no cache em memória para restauração 0ms ao voltar (POP)
+  useEffect(() => {
+    if (items.length > 0) {
+      if (browseStateCache.size >= 40 && !browseStateCache.has(paramsCacheKey)) {
+        const oldest = browseStateCache.keys().next().value;
+        if (oldest !== undefined) browseStateCache.delete(oldest);
+      }
+      browseStateCache.set(paramsCacheKey, {
+        items,
+        page,
+        hasMore,
+        sourceDetails,
+      });
+    }
+  }, [items, page, hasMore, sourceDetails, paramsCacheKey]);
+
+  const prevParamsKeyRef = useRef<string | null>(null);
+
   // Reload from scratch when the discovery params change
   useEffect(() => {
+    const isInitialMount = prevParamsKeyRef.current === null;
+    const isSameParams = prevParamsKeyRef.current === paramsCacheKey;
+    prevParamsKeyRef.current = paramsCacheKey;
+
+    const cached = browseStateCache.get(paramsCacheKey);
+    if (isInitialMount && navigationType === 'POP' && cached && cached.items.length > 0) {
+      setItems(cached.items);
+      setPage(cached.page);
+      setHasMore(cached.hasMore);
+      return;
+    }
+    if (isSameParams && items.length > 0) {
+      return;
+    }
     setPage(1);
-    window.scrollTo(0, 0);
+    if (navigationType !== 'POP') {
+      window.scrollTo(0, 0);
+    }
     void load(1);
-  }, [load]);
+  }, [load, paramsCacheKey, navigationType]);
 
   const loadMore = () => {
     if (loading || inFlightRef.current || !hasMore) return;

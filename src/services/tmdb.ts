@@ -273,6 +273,25 @@ async function fetchSearchEnrichment(
   id: number,
   mediaType: 'movie' | 'tv'
 ): Promise<{ directors: string[]; alternativeTitles: string[] }> {
+  const enrichKey = `${mediaType}:${id}:${tmdbLanguage}`;
+  const cachedEnrich = searchEnrichCache.get(enrichKey);
+  if (cachedEnrich) return cachedEnrich;
+
+  const cachedFull = mediaDetailsCache.get(enrichKey);
+  if (cachedFull && cachedFull.expires > Date.now()) {
+    const d = cachedFull.data;
+    const crewDirectors = (d.credits?.crew ?? [])
+      .filter((c) => c.job === 'Director')
+      .map((c) => c.name);
+    const created = ((d as unknown as { created_by?: { name: string }[] }).created_by ?? []).map((c) => c.name);
+    const directors = Array.from(
+      new Set(mediaType === 'tv' ? [...created, ...crewDirectors] : crewDirectors)
+    ).slice(0, 4);
+    const result = { directors, alternativeTitles: [] as string[] };
+    setBoundedMap(searchEnrichCache, enrichKey, result, 400);
+    return result;
+  }
+
   try {
     const details = await fetchFromTMDB<TMDBEnrichmentPayload>(`/${mediaType}/${id}`, {
       append_to_response: 'credits,alternative_titles',
@@ -291,7 +310,9 @@ async function fetchSearchEnrichment(
           .filter((t): t is string => Boolean(t && t.trim()))
       )
     );
-    return { directors: directors.slice(0, 4), alternativeTitles };
+    const result = { directors: directors.slice(0, 4), alternativeTitles };
+    setBoundedMap(searchEnrichCache, enrichKey, result, 400);
+    return result;
   } catch {
     return { directors: [], alternativeTitles: [] };
   }
@@ -330,9 +351,16 @@ async function enrichSearchItems(items: TMDBSearchResult[]): Promise<TMDBSearchR
 // navegar entre páginas (ex.: Home → Filme → voltar). Também deduplica
 // chamadas simultâneas da mesma URL (React StrictMode / mounts paralelos).
 const TMDB_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+const TMDB_DETAILS_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutos para detalhes na sessão
 const tmdbCache = new Map<string, { data: unknown; expires: number }>();
 const tmdbInflight = new Map<string, Promise<unknown>>();
 const mediaDetailsCache = new Map<string, { data: TMDBMovieDetails; expires: number }>();
+const personDetailsCache = new Map<string, { data: TMDBPersonDetails; expires: number }>();
+const collectionDetailsCache = new Map<
+  string,
+  { data: TMDBCollectionDetails; expires: number }
+>();
+const searchEnrichCache = new Map<string, { directors: string[]; alternativeTitles: string[] }>();
 
 function setBoundedMap<K, V>(map: Map<K, V>, key: K, value: V, maxEntries: number): void {
   if (map.size >= maxEntries && !map.has(key)) {
@@ -1319,12 +1347,33 @@ export const tmdb = {
     filmsHubInFlight = null;
     seriesHubInFlight = null;
     mediaDetailsCache.clear();
+    personDetailsCache.clear();
+    collectionDetailsCache.clear();
+    searchEnrichCache.clear();
     similarProfileCache.clear();
   },
 
   getCachedDetails(id: number, type: 'movie' | 'tv'): TMDBMovieDetails | null {
     const key = `${type}:${id}:${tmdbLanguage}`;
     const entry = mediaDetailsCache.get(key);
+    if (entry && entry.expires > Date.now()) {
+      return entry.data;
+    }
+    return null;
+  },
+
+  getCachedPersonDetails(id: number): TMDBPersonDetails | null {
+    const key = `person:${id}:${tmdbLanguage}`;
+    const entry = personDetailsCache.get(key);
+    if (entry && entry.expires > Date.now()) {
+      return entry.data;
+    }
+    return null;
+  },
+
+  getCachedCollectionDetails(id: number): TMDBCollectionDetails | null {
+    const key = `collection:${id}:${tmdbLanguage}`;
+    const entry = collectionDetailsCache.get(key);
     if (entry && entry.expires > Date.now()) {
       return entry.data;
     }
@@ -1457,7 +1506,7 @@ export const tmdb = {
 
     const similarRanked = await curateSimilarForDetails(movie, 'movie', true);
     movie.similar = { results: similarRanked };
-    setBoundedMap(mediaDetailsCache, cacheKey, { data: movie, expires: Date.now() + TMDB_CACHE_TTL_MS }, 80);
+    setBoundedMap(mediaDetailsCache, cacheKey, { data: movie, expires: Date.now() + TMDB_DETAILS_CACHE_TTL_MS }, 200);
     return movie;
   },
 
@@ -1468,6 +1517,11 @@ export const tmdb = {
   },
 
   async getCollectionDetails(collectionId: number): Promise<TMDBCollectionDetails> {
+    const cacheKey = `collection:${collectionId}:${tmdbLanguage}`;
+    const cached = collectionDetailsCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
     const col = await fetchFromTMDB<TMDBCollectionDetails>(`/collection/${collectionId}`);
     const parts = (col.parts || [])
       .map(normalizeMediaItem)
@@ -1477,10 +1531,12 @@ export const tmdb = {
         const db = itemDate(b) || '9999-12-31';
         return da.localeCompare(db);
       });
-    return {
+    const result: TMDBCollectionDetails = {
       ...col,
       parts,
     };
+    setBoundedMap(collectionDetailsCache, cacheKey, { data: result, expires: Date.now() + TMDB_DETAILS_CACHE_TTL_MS }, 80);
+    return result;
   },
 
   async discoverByKeywordsOrGenres(
@@ -1675,6 +1731,11 @@ export const tmdb = {
    * refaz a chamada em en-US — a aba Bio nunca fica sem texto.
    */
   async getPersonDetails(id: number): Promise<TMDBPersonDetails> {
+    const cacheKey = `person:${id}:${tmdbLanguage}`;
+    const cached = personDetailsCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
     const person = await fetchFromTMDB<TMDBPersonDetails>(`/person/${id}`, {
       append_to_response: 'movie_credits,tv_credits,external_ids',
     });
@@ -1770,6 +1831,7 @@ export const tmdb = {
       person.tv_credits.cast = normalizeTv(person.tv_credits.cast, true);
       person.tv_credits.crew = normalizeTv(person.tv_credits.crew, false);
     }
+    setBoundedMap(personDetailsCache, cacheKey, { data: person, expires: Date.now() + TMDB_DETAILS_CACHE_TTL_MS }, 100);
     return person;
   },
 
@@ -2555,7 +2617,7 @@ export const tmdb = {
     if (show.recommendations) show.recommendations.results = normList(show.recommendations.results);
     const similarRanked = await curateSimilarForDetails(show, 'tv', true);
     show.similar = { results: similarRanked };
-    setBoundedMap(mediaDetailsCache, cacheKey, { data: show, expires: Date.now() + TMDB_CACHE_TTL_MS }, 80);
+    setBoundedMap(mediaDetailsCache, cacheKey, { data: show, expires: Date.now() + TMDB_DETAILS_CACHE_TTL_MS }, 200);
     return show;
   },
 

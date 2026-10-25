@@ -1,5 +1,5 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, type Location } from 'react-router-dom';
+import React, { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { BrowserRouter, Routes, Route, useLocation, useNavigationType, type Location } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider } from './context/AppContext';
@@ -28,6 +28,17 @@ function parseDetailRoute(pathname: string): { type: 'movie' | 'tv'; id: number 
   const m = pathname.match(/^\/(film|tv)\/(\d+)/);
   if (!m) return null;
   return { type: m[1] === 'tv' ? 'tv' : 'movie', id: Number(m[2]) };
+}
+
+/**
+ * Mapa em memória das posições de scroll por rota (location.key e pathname+search).
+ * Alimentado por um listener passivo de scroll enquanto a rota está ativa, garantindo
+ * que o valor nunca seja sobrescrito pelo 0 da nova página durante uma transição.
+ */
+const routeScrollPositions = new Map<string, number>();
+
+function getRouteScrollKey(loc: Location): string {
+  return `${loc.pathname}${loc.search}`;
 }
 
 /**
@@ -172,6 +183,7 @@ const MemoizedRouteTree = React.memo(
 
 function AppShell() {
   const location = useLocation();
+  const navigationType = useNavigationType();
   const isMobile = useIsMobile();
   const { user } = useApp();
   const { isAuthenticated, profile } = useAuth();
@@ -181,44 +193,119 @@ function AppShell() {
   const [outgoingState, setOutgoingState] = useState<{ location: Location; scrollY: number } | null>(null);
   const [slidePhase, setSlidePhase] = useState<'idle' | 'prepare' | 'run'>('idle');
 
+  // Referências para captura exata de scrollY antes de qualquer troca de rota
+  const activeLocationRef = useRef<Location>(location);
+  const isTransitioningRouteRef = useRef(false);
+  const lastLiveScrollYRef = useRef<number>(typeof window !== 'undefined' ? window.scrollY : 0);
+
+  // Se o React Router já trocou `location` neste render (antes dos effects rodarem),
+  // trancamos imediatamente a gravação do listener de scroll para que um scrollTo(0, 0)
+  // da nova página jamais sobrescreva o scrollY salvo da página anterior.
+  if (
+    location.pathname !== activeLocationRef.current.pathname ||
+    location.search !== activeLocationRef.current.search
+  ) {
+    isTransitioningRouteRef.current = true;
+  }
+
   useEffect(() => {
+    const onScroll = () => {
+      if (isTransitioningRouteRef.current) return;
+      const y = window.scrollY;
+      lastLiveScrollYRef.current = y;
+      const activeLoc = activeLocationRef.current;
+      if (activeLoc.key) {
+        routeScrollPositions.set(`key:${activeLoc.key}`, y);
+      }
+      routeScrollPositions.set(getRouteScrollKey(activeLoc), y);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useLayoutEffect(() => {
     if (
       location.pathname === committedLocation.pathname &&
       location.search === committedLocation.search
     ) {
+      activeLocationRef.current = location;
+      isTransitioningRouteRef.current = false;
       return;
     }
+
+    // Salva a posição exata da rota que está saindo antes de atualizar committedLocation
+    const prevLoc = committedLocation;
+    const savedPrevScroll =
+      (prevLoc.key ? routeScrollPositions.get(`key:${prevLoc.key}`) : undefined) ??
+      routeScrollPositions.get(getRouteScrollKey(prevLoc)) ??
+      lastLiveScrollYRef.current;
+
+    if (prevLoc.key) {
+      routeScrollPositions.set(`key:${prevLoc.key}`, savedPrevScroll);
+    }
+    routeScrollPositions.set(getRouteScrollKey(prevLoc), savedPrevScroll);
 
     // Se apenas a query string mudou na mesma rota (ex.: digitação em /search?q=...)
     if (location.pathname === committedLocation.pathname) {
       setCommittedLocation(location);
+      activeLocationRef.current = location;
+      isTransitioningRouteRef.current = false;
       return;
     }
 
     const detail = parseDetailRoute(location.pathname);
+    const wasDetail = Boolean(parseDetailRoute(prevLoc.pathname));
+    const isBackRestore = navigationType === 'POP' || (wasDetail && !detail);
+
     if (!detail) {
       setOutgoingState(null);
       setSlidePhase('idle');
       setCommittedLocation(location);
-      window.scrollTo(0, 0);
-      return;
+      activeLocationRef.current = location;
+
+      // Ao voltar (POP ou saindo de /film/:id ou /tv/:id para a listagem anterior),
+      // restaura imediatamente a posição de rolagem salva sem cair para o topo.
+      const targetScrollY = isBackRestore
+        ? (location.key ? routeScrollPositions.get(`key:${location.key}`) : undefined) ??
+          routeScrollPositions.get(getRouteScrollKey(location)) ??
+          0
+        : 0;
+
+      window.scrollTo({ top: targetScrollY, left: 0, behavior: 'auto' });
+      lastLiveScrollYRef.current = targetScrollY;
+      const raf = window.requestAnimationFrame(() => {
+        window.scrollTo({ top: targetScrollY, left: 0, behavior: 'auto' });
+        lastLiveScrollYRef.current = targetScrollY;
+        isTransitioningRouteRef.current = false;
+      });
+      return () => {
+        window.cancelAnimationFrame(raf);
+        isTransitioningRouteRef.current = false;
+      };
     }
 
-    const prevLoc = committedLocation;
-    const prevScroll = window.scrollY;
-
-    if (isMobile) {
-      setOutgoingState({ location: prevLoc, scrollY: prevScroll });
+    if (isMobile && navigationType !== 'POP' && !wasDetail) {
+      setOutgoingState({ location: prevLoc, scrollY: savedPrevScroll });
       setSlidePhase('prepare');
       setCommittedLocation(location);
+      activeLocationRef.current = location;
       window.scrollTo(0, 0);
+      lastLiveScrollYRef.current = 0;
+      isTransitioningRouteRef.current = false;
     } else {
       setOutgoingState(null);
       setSlidePhase('idle');
       setCommittedLocation(location);
-      window.scrollTo(0, 0);
+      activeLocationRef.current = location;
+      const targetDetailScrollY =
+        navigationType === 'POP'
+          ? (location.key ? routeScrollPositions.get(`key:${location.key}`) : undefined) ?? 0
+          : 0;
+      window.scrollTo(0, targetDetailScrollY);
+      lastLiveScrollYRef.current = targetDetailScrollY;
+      isTransitioningRouteRef.current = false;
     }
-  }, [location, committedLocation, isMobile]);
+  }, [location, committedLocation, isMobile, navigationType]);
 
   // Fase 1 ('prepare') -> Fase 2 ('run'): aguarda 2 frames (layout + upload das texturas na GPU)
   // antes de disparar o transform 340ms nos dois planos simultaneamente a 60/120 FPS.

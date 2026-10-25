@@ -5,9 +5,13 @@ import { tmdb, type TMDBMovie } from '../services/tmdb';
 import { tabDataCache, prewarmHubPosters } from '../services/tabDataCache';
 import { PosterCard } from '../components/PosterCard';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useNavigationType } from 'react-router-dom';
+
+const filmsFindCache = new Map<string, TMDBMovie[]>();
 
 export const FilmsHubPage: React.FC = () => {
   const { t } = useLanguage();
+  const navType = useNavigationType();
   const [cachedHub] = useState(() => tabDataCache.getFilmsHub());
   const [popularFilms, setPopularFilms] = useState<TMDBMovie[]>(() =>
     cachedHub ? cachedHub.popular.slice(0, 16) : [],
@@ -44,23 +48,38 @@ export const FilmsHubPage: React.FC = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Search debounce
+  const findRequestIdRef = useRef(0);
+
+  // Search debounce blindado contra race conditions + cache em memória
   useEffect(() => {
-    if (!findQuery.trim() || findQuery.length < 2) {
+    const q = findQuery.trim();
+    if (!q || q.length < 2) {
+      findRequestIdRef.current += 1;
       setFindResults([]);
       return;
     }
+    const cacheKey = q.toLowerCase();
+    const cached = filmsFindCache.get(cacheKey);
+    if (cached) {
+      findRequestIdRef.current += 1;
+      setFindResults(cached);
+      return;
+    }
+    const reqId = ++findRequestIdRef.current;
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await tmdb.searchMovies(findQuery.trim(), 1);
-        setFindResults(res.results.slice(0, 5));
+        const res = await tmdb.searchMovies(q, 1);
+        if (reqId !== findRequestIdRef.current) return;
+        const top5 = res.results.slice(0, 5);
+        filmsFindCache.set(cacheKey, top5);
+        setFindResults(top5);
       } catch (err) {
-        console.error(err);
+        if (reqId === findRequestIdRef.current) console.error(err);
       } finally {
-        setIsSearching(false);
+        if (reqId === findRequestIdRef.current) setIsSearching(false);
       }
-    }, 250);
+    }, 220);
     return () => clearTimeout(timer);
   }, [findQuery]);
 
@@ -72,7 +91,7 @@ export const FilmsHubPage: React.FC = () => {
 
     async function loadData() {
       setLoading(true);
-      window.scrollTo(0, 0);
+      if (navType !== 'POP') window.scrollTo(0, 0);
       try {
         // "Just reviewed" do hub desktop passa a ser também curado por data:
         // nada de lançados na fileira de inéditos
@@ -353,6 +372,13 @@ export const FilmsHubPage: React.FC = () => {
                   <Link
                     key={m.id}
                     to={`/film/${m.id}`}
+                    state={{ initialMovie: m, previewMovie: m, fromPoster: true }}
+                    onPointerDown={() => {
+                      tmdb.getMovieDetails(m.id).catch(() => {});
+                    }}
+                    onMouseEnter={() => {
+                      tmdb.getMovieDetails(m.id).catch(() => {});
+                    }}
                     className="p-2 flex items-center gap-2.5 hover:bg-lb-elevated block"
                   >
                     <img loading="lazy" decoding="async"

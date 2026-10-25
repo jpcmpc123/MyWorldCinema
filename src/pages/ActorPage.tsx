@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Check,
@@ -80,13 +80,17 @@ export function ActorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const [searchParams] = useSearchParams();
   const { t, language } = useLanguage();
   const { isMovieWatched } = useApp();
   const isMobile = useIsMobile();
 
-  const [person, setPerson] = useState<TMDBPersonDetails | null>(null);
-  const [loading, setLoading] = useState(true);
+  const numericId = id ? Number(id) : 0;
+  const cachedPerson = numericId ? tmdb.getCachedPersonDetails(numericId) : null;
+
+  const [person, setPerson] = useState<TMDBPersonDetails | null>(() => cachedPerson);
+  const [loading, setLoading] = useState<boolean>(() => !cachedPerson);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('Bio');
   const [bioExpanded, setBioExpanded] = useState(false);
@@ -140,16 +144,19 @@ export function ActorPage() {
 
   // ---- Fetch: pessoa + filmografia em UMA chamada --------------------------
   useLayoutEffect(() => {
-    window.scrollTo(0, 0);
-  }, [id]);
+    if (navigationType !== 'POP') {
+      window.scrollTo(0, 0);
+    }
+  }, [id, navigationType]);
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    window.scrollTo(0, 0);
-    setLoading(true);
+    const hit = tmdb.getCachedPersonDetails(Number(id));
+    if (navigationType !== 'POP') {
+      window.scrollTo(0, 0);
+    }
     setError(null);
-    setPerson(null);
     setBioExpanded(false);
     setFiltersOpen(false);
     setShowAllFilms(false);
@@ -160,6 +167,15 @@ export function ActorPage() {
     setServiceMatchedKeys(null);
     setWatchedMode('all');
     setOpenDropdown(null);
+
+    if (hit && hit.id === Number(id)) {
+      setPerson(hit);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setPerson(null);
     // Nova pessoa = aguarda a definição da aba inicial antes de animar
     setRoleReady(false);
     initedForRef.current = null;
@@ -179,7 +195,7 @@ export function ActorPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, t]);
+  }, [id, t, language]);
 
   // ---- Actor: FILMES + SÉRIES juntos (movie_credits.cast + tv_credits.cast)
   const castFilms = useMemo(() => {

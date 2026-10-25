@@ -8,6 +8,7 @@ import type { TranslationKey } from '../i18n/translations';
 import { openPersonProfile, personRoleFromDepartment } from '../utils/personNav';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useSwipeableTabs } from '../hooks/useSwipeableTabs';
+import { preloadPoster } from '../components/PosterCard';
 
 /**
  * SearchPage — página dedicada de RESULTADOS DE BUSCA no layout do Letterboxd.
@@ -34,6 +35,40 @@ const FILTERS: { id: SearchFilter; labelKey: TranslationKey }[] = [
 /** Abas do MOBILE (fluxo do app): Filmes, Séries, Críticas, Listas, Elenco/Equipe/Estúdios */
 const MOBILE_FILTER_IDS: SearchFilter[] = ['films', 'series', 'reviews', 'lists', 'cast'];
 const MOBILE_FILTERS = FILTERS.filter((f) => MOBILE_FILTER_IDS.includes(f.id));
+
+type PanelCacheEntry = {
+  term: string;
+  items: TMDBSearchResult[];
+  people: TMDBSearchPerson[];
+  searched: boolean;
+  page: number;
+  hasMore: boolean;
+};
+
+/**
+ * Cache em memória de resultados de busca por (idioma + filtro + termo normalizado).
+ * Permite exibir resultados em 0ms ao apagar uma letra, alternar abas ou repetir buscas recentes.
+ */
+const searchMemoryCache = new Map<string, PanelCacheEntry>();
+const MAX_SEARCH_MEMORY_ENTRIES = 120;
+
+function getSearchMemoryKey(lang: string, filter: SearchFilter, term: string): string {
+  return `${lang}|${filter}|${term.trim().toLowerCase()}`;
+}
+
+function setSearchMemoryEntry(key: string, entry: PanelCacheEntry): void {
+  if (searchMemoryCache.size >= MAX_SEARCH_MEMORY_ENTRIES && !searchMemoryCache.has(key)) {
+    const oldest = searchMemoryCache.keys().next().value;
+    if (oldest !== undefined) searchMemoryCache.delete(oldest);
+  }
+  searchMemoryCache.set(key, entry);
+}
+
+let lastSearchSessionState: {
+  term: string;
+  panelCache: Record<string, PanelCacheEntry>;
+  tabScroll: Partial<Record<SearchFilter, number>>;
+} | null = null;
 
 /** Fade-in: monta com opacity-0 e, no frame seguinte, vai para opacity-100 (transição real). */
 /** Fade-in; com `dir` (±1) entra também deslizando lateralmente, como a esteira
@@ -111,6 +146,9 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
   const watched = isMovieWatched(item.id);
   const href = item.media_type === 'tv' ? `/tv/${item.id}` : `/film/${item.id}`;
   const handlePrefetch = () => {
+    if (item.poster_path) {
+      preloadPoster(item.poster_path, 'w500', true);
+    }
     if (item.media_type === 'tv') {
       tmdb.getTVDetails(item.id).catch(() => {});
     } else {
@@ -124,6 +162,7 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
   return (
     <Link
       to={href}
+      state={{ initialMovie: item, previewMovie: item, fromPoster: true }}
       onPointerDown={handlePrefetch}
       onTouchStart={handlePrefetch}
       onMouseEnter={handlePrefetch}
@@ -327,6 +366,9 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
     item.original_title!.trim().toLowerCase() !== item.title.trim().toLowerCase();
   const href = item.media_type === 'tv' ? `/tv/${item.id}` : `/film/${item.id}`;
   const handlePrefetch = () => {
+    if (item.poster_path) {
+      preloadPoster(item.poster_path, 'w500', true);
+    }
     if (item.media_type === 'tv') {
       tmdb.getTVDetails(item.id).catch(() => {});
     } else {
@@ -336,6 +378,7 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
   return (
     <Link
       to={href}
+      state={{ initialMovie: item, previewMovie: item, fromPoster: true }}
       onPointerDown={handlePrefetch}
       onTouchStart={handlePrefetch}
       onMouseEnter={handlePrefetch}
@@ -394,7 +437,7 @@ const MobileLocalRow: React.FC<{
 ));
 
 export const SearchPage: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { reviews, lists } = useApp();
   const isMobile = useIsMobile();
   // Mobile: estado de foco do input (máquina de 3 estados: idle / focused / typing)
@@ -423,9 +466,19 @@ export const SearchPage: React.FC = () => {
   const filter: SearchFilter =
     rawFilter && validFilterIds.includes(rawFilter) ? rawFilter : isMobile ? 'films' : 'all';
 
+  const initialQueryTrimmed = query.trim();
+
   // Memória de scroll por aba para o termo atualmente carregado
-  const tabScrollRef = useRef<Partial<Record<SearchFilter, number>>>({});
-  const loadedTermRef = useRef<string>('');
+  const tabScrollRef = useRef<Partial<Record<SearchFilter, number>>>(
+    lastSearchSessionState && lastSearchSessionState.term === initialQueryTrimmed
+      ? { ...lastSearchSessionState.tabScroll }
+      : {},
+  );
+  const loadedTermRef = useRef<string>(
+    lastSearchSessionState && lastSearchSessionState.term === initialQueryTrimmed
+      ? lastSearchSessionState.term
+      : '',
+  );
   const prevFilterRef = useRef<SearchFilter>(filter);
   const isRestoringScrollRef = useRef(false);
 
@@ -446,56 +499,93 @@ export const SearchPage: React.FC = () => {
       ? 'focused'
       : 'idle';
 
-  // Debounce do termo (a busca do header atualiza o ?q= a cada tecla)
+  // Debounce do termo (a busca do header atualiza o ?q= a cada tecla).
+  // Se o termo digitado já estiver em searchMemoryCache (ex.: apagou uma letra ou repetiu busca),
+  // atualiza em 0ms sem esperar os 300ms de debounce.
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   useEffect(() => {
-    const id = window.setTimeout(() => setDebouncedQuery(query), 300);
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setDebouncedQuery('');
+      return;
+    }
+    const memKey = getSearchMemoryKey(language, filter, trimmed);
+    if (searchMemoryCache.has(memKey)) {
+      setDebouncedQuery(query);
+      return;
+    }
+    const id = window.setTimeout(() => setDebouncedQuery(query), 260);
     return () => window.clearTimeout(id);
-  }, [query]);
+  }, [query, filter, language]);
 
   const term = debouncedQuery.trim();
 
-  type PanelCacheEntry = {
-    term: string;
-    items: TMDBSearchResult[];
-    people: TMDBSearchPerson[];
-    searched: boolean;
-    page: number;
-    hasMore: boolean;
-  };
-
   // Cache por aba: preserva os filmes/séries carregados ao alternar entre abas
-  // e mantém a lista anterior visível até que uma nova palavra buscada termine de carregar
-  const [panelCache, setPanelCache] = useState<Record<string, PanelCacheEntry>>({});
-  const panelCacheRef = useRef<Record<string, PanelCacheEntry>>({});
+  // e mantém a lista anterior visível até que uma nova palavra buscada termine de carregar.
+  // Se estamos voltando de uma página de detalhes para a mesma busca, hidrata em 0ms.
+  const [panelCache, setPanelCache] = useState<Record<string, PanelCacheEntry>>(() => {
+    if (lastSearchSessionState && lastSearchSessionState.term === initialQueryTrimmed && initialQueryTrimmed) {
+      return lastSearchSessionState.panelCache;
+    }
+    if (initialQueryTrimmed) {
+      const memKey = getSearchMemoryKey(language, filter, initialQueryTrimmed);
+      const cached = searchMemoryCache.get(memKey);
+      if (cached) {
+        loadedTermRef.current = initialQueryTrimmed;
+        return { [filter]: cached };
+      }
+    }
+    return {};
+  });
+  const panelCacheRef = useRef<Record<string, PanelCacheEntry>>(panelCache);
   panelCacheRef.current = panelCache;
+
+  useEffect(() => {
+    if (loadedTermRef.current) {
+      lastSearchSessionState = {
+        term: loadedTermRef.current,
+        panelCache: panelCacheRef.current,
+        tabScroll: { ...tabScrollRef.current },
+      };
+    }
+  }, [panelCache]);
 
   const [loadingFilter, setLoadingFilter] = useState<SearchFilter | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchLoadSeq, setSearchLoadSeq] = useState(0);
+  const latestRequestIdRef = useRef(0);
+  const activeAbortRef = useRef<AbortController | null>(null);
 
   const prefetchFilter = (targetFilter: SearchFilter) => {
     const activeTerm = loadedTermRef.current || term;
     if (!activeTerm) return;
     if (targetFilter === 'reviews' || targetFilter === 'lists' || targetFilter === 'members') return;
     if (panelCacheRef.current[targetFilter]?.term === activeTerm) return;
+    const memKey = getSearchMemoryKey(language, targetFilter, activeTerm);
+    const memHit = searchMemoryCache.get(memKey);
+    if (memHit) {
+      setPanelCache((c) => (c[targetFilter]?.term === activeTerm ? c : { ...c, [targetFilter]: memHit }));
+      return;
+    }
     void (async () => {
       try {
         if (targetFilter === 'cast') {
           const res = await tmdb.searchPeople(activeTerm, 1);
+          const entry: PanelCacheEntry = {
+            term: activeTerm,
+            items: [],
+            people: res.results,
+            searched: true,
+            page: 1,
+            hasMore: 1 < Math.min(res.total_pages || 1, 20),
+          };
+          setSearchMemoryEntry(memKey, entry);
           setPanelCache((c) =>
             c[targetFilter]?.term === activeTerm
               ? c
               : {
                   ...c,
-                  [targetFilter]: {
-                    term: activeTerm,
-                    items: [],
-                    people: res.results,
-                    searched: true,
-                    page: 1,
-                    hasMore: 1 < Math.min(res.total_pages || 1, 20),
-                  },
+                  [targetFilter]: entry,
                 },
           );
         } else {
@@ -507,19 +597,21 @@ export const SearchPage: React.FC = () => {
                   1,
                 )
               : await tmdb.searchMultiEnriched(activeTerm, 1);
+          const entry: PanelCacheEntry = {
+            term: activeTerm,
+            items: res,
+            people: [],
+            searched: true,
+            page: 1,
+            hasMore: res.length > 0,
+          };
+          setSearchMemoryEntry(memKey, entry);
           setPanelCache((c) =>
             c[targetFilter]?.term === activeTerm
               ? c
               : {
                   ...c,
-                  [targetFilter]: {
-                    term: activeTerm,
-                    items: res,
-                    people: [],
-                    searched: true,
-                    page: 1,
-                    hasMore: res.length > 0,
-                  },
+                  [targetFilter]: entry,
                 },
           );
         }
@@ -709,11 +801,15 @@ export const SearchPage: React.FC = () => {
 
   useEffect(() => {
     if (!term) {
+      activeAbortRef.current?.abort();
+      activeAbortRef.current = null;
+      latestRequestIdRef.current += 1;
       setPanelCache({});
       setLoadingFilter(null);
       setLoadingMore(false);
       tabScrollRef.current = {};
       loadedTermRef.current = '';
+      lastSearchSessionState = null;
       return;
     }
 
@@ -727,14 +823,39 @@ export const SearchPage: React.FC = () => {
       return;
     }
 
-    // Se a aba atual já foi carregada para este mesmo `term`, mantém os resultados e a posição de scroll
+    // 1. Se a aba atual já foi carregada para este mesmo `term`, mantém os resultados e a posição de scroll
     const existing = panelCacheRef.current[filter];
     if (existing && existing.term === term && existing.searched) {
       setLoadingFilter(null);
       return;
     }
 
-    let cancelled = false;
+    // 2. Cache em memória de sessão (0ms ao apagar uma letra ou repetir termo recente)
+    const memKey = getSearchMemoryKey(language, filter, term);
+    const memCached = searchMemoryCache.get(memKey);
+    if (memCached) {
+      activeAbortRef.current?.abort();
+      activeAbortRef.current = null;
+      latestRequestIdRef.current += 1;
+      const isNewTerm = loadedTermRef.current !== term;
+      setPanelCache((prev) =>
+        isNewTerm ? { [filter]: memCached } : { ...prev, [filter]: memCached },
+      );
+      if (isNewTerm) {
+        loadedTermRef.current = term;
+        tabScrollRef.current = { [filter]: 0 };
+        setSearchLoadSeq((s) => s + 1);
+      }
+      setLoadingFilter(null);
+      return;
+    }
+
+    // 3. Disparo de rede blindado contra race conditions (AbortController + latestRequestIdRef)
+    activeAbortRef.current?.abort();
+    const controller = new AbortController();
+    activeAbortRef.current = controller;
+    const requestId = ++latestRequestIdRef.current;
+
     const isNewTerm = loadedTermRef.current !== term;
     setLoadingFilter(filter);
 
@@ -742,7 +863,7 @@ export const SearchPage: React.FC = () => {
       try {
         if (filter === 'cast') {
           const res = await tmdb.searchPeople(term, 1);
-          if (cancelled) return;
+          if (controller.signal.aborted || requestId !== latestRequestIdRef.current) return;
           const entry: PanelCacheEntry = {
             term,
             items: [],
@@ -751,13 +872,14 @@ export const SearchPage: React.FC = () => {
             page: 1,
             hasMore: 1 < Math.min(res.total_pages || 1, 20),
           };
+          setSearchMemoryEntry(memKey, entry);
           setPanelCache((prev) => (isNewTerm ? { [filter]: entry } : { ...prev, [filter]: entry }));
         } else {
           const res =
             filter === 'films' || filter === 'series'
               ? await tmdb.searchEnriched(term, filter === 'films' ? 'movie' : 'tv', 1)
               : await tmdb.searchMultiEnriched(term, 1);
-          if (cancelled) return;
+          if (controller.signal.aborted || requestId !== latestRequestIdRef.current) return;
           const entry: PanelCacheEntry = {
             term,
             items: res,
@@ -766,6 +888,7 @@ export const SearchPage: React.FC = () => {
             page: 1,
             hasMore: res.length > 0,
           };
+          setSearchMemoryEntry(memKey, entry);
           setPanelCache((prev) => (isNewTerm ? { [filter]: entry } : { ...prev, [filter]: entry }));
         }
 
@@ -775,7 +898,7 @@ export const SearchPage: React.FC = () => {
           setSearchLoadSeq((s) => s + 1);
         }
       } catch {
-        if (cancelled) return;
+        if (controller.signal.aborted || requestId !== latestRequestIdRef.current) return;
         const emptyEntry: PanelCacheEntry = {
           term,
           items: [],
@@ -793,16 +916,16 @@ export const SearchPage: React.FC = () => {
           setSearchLoadSeq((s) => s + 1);
         }
       } finally {
-        if (!cancelled) {
+        if (!controller.signal.aborted && requestId === latestRequestIdRef.current) {
           setLoadingFilter((curr) => (curr === filter ? null : curr));
         }
       }
     })();
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [term, filter, isLocalFilter]);
+  }, [term, filter, isLocalFilter, language]);
 
   const handleLoadMore = async () => {
     const current = panelCacheRef.current[filter];
@@ -810,6 +933,7 @@ export const SearchPage: React.FC = () => {
     const nextPage = current.page + 1;
     const requestTerm = current.term;
     const requestFilter = filter;
+    const memKey = getSearchMemoryKey(language, requestFilter, requestTerm);
     setLoadingMore(true);
     try {
       if (requestFilter === 'cast') {
@@ -818,14 +942,16 @@ export const SearchPage: React.FC = () => {
         setPanelCache((prev) => {
           const existing = prev[requestFilter];
           if (!existing || existing.term !== requestTerm) return prev;
+          const updated: PanelCacheEntry = {
+            ...existing,
+            people: [...existing.people, ...res.results],
+            page: nextPage,
+            hasMore: nextPage < Math.min(res.total_pages || 1, 20),
+          };
+          setSearchMemoryEntry(memKey, updated);
           return {
             ...prev,
-            [requestFilter]: {
-              ...existing,
-              people: [...existing.people, ...res.results],
-              page: nextPage,
-              hasMore: nextPage < Math.min(res.total_pages || 1, 20),
-            },
+            [requestFilter]: updated,
           };
         });
       } else {
@@ -841,14 +967,16 @@ export const SearchPage: React.FC = () => {
         setPanelCache((prev) => {
           const existing = prev[requestFilter];
           if (!existing || existing.term !== requestTerm) return prev;
+          const updated: PanelCacheEntry = {
+            ...existing,
+            items: [...existing.items, ...res],
+            page: nextPage,
+            hasMore: res.length > 0 && nextPage < 20,
+          };
+          setSearchMemoryEntry(memKey, updated);
           return {
             ...prev,
-            [requestFilter]: {
-              ...existing,
-              items: [...existing.items, ...res],
-              page: nextPage,
-              hasMore: res.length > 0 && nextPage < 20,
-            },
+            [requestFilter]: updated,
           };
         });
       }

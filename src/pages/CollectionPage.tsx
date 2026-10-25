@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useNavigationType, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   ChevronDown,
@@ -24,14 +24,28 @@ export const CollectionPage: React.FC = () => {
   const collectionId = Number(id);
   const navigate = useNavigate();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const { t } = useLanguage();
   const { isMovieWatched, isMovieInWatchlist } = useApp();
 
   const navState = (location.state as CollectionLocationState | null) ?? null;
+  const cachedCollection =
+    collectionId && !Number.isNaN(collectionId)
+      ? tmdb.getCachedCollectionDetails(collectionId)
+      : null;
 
-  const [collectionName, setCollectionName] = useState<string>(navState?.collectionName || '');
-  const [parts, setParts] = useState<TMDBMovie[]>(navState?.initialParts || []);
-  const [loading, setLoading] = useState<boolean>(!(navState?.initialParts && navState.initialParts.length > 0));
+  const [collectionName, setCollectionName] = useState<string>(
+    cachedCollection?.name || navState?.collectionName || '',
+  );
+  const [parts, setParts] = useState<TMDBMovie[]>(
+    cachedCollection?.parts || navState?.initialParts || [],
+  );
+  const [loading, setLoading] = useState<boolean>(
+    !(
+      (cachedCollection?.parts && cachedCollection.parts.length > 0) ||
+      (navState?.initialParts && navState.initialParts.length > 0)
+    ),
+  );
 
   // Filter & Sort state (shared across mobile and desktop)
   const [decadeFilter, setDecadeFilter] = useState<number | undefined>(undefined);
@@ -58,7 +72,17 @@ export const CollectionPage: React.FC = () => {
 
   useEffect(() => {
     if (!collectionId || Number.isNaN(collectionId)) return;
-    window.scrollTo(0, 0);
+    if (navigationType !== 'POP') {
+      window.scrollTo(0, 0);
+    }
+
+    const hit = tmdb.getCachedCollectionDetails(collectionId);
+    if (hit) {
+      setCollectionName(hit.name || navState?.collectionName || '');
+      setParts(hit.parts || []);
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
     async function loadCollection() {

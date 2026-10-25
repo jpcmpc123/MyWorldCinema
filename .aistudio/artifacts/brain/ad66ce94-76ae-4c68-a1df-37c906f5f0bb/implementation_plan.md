@@ -1,98 +1,112 @@
-# Eliminação de Head-of-Line Blocking e Fila Escalonada de Pôsteres
+# Abertura Instantânea de Detalhes (0ms), Busca Blindada e Restauração de Scroll ao Voltar
 
-Este plano elimina a contenção de rede (Head-of-Line Blocking) no carregamento inicial da Home, garantindo que os 8 pôsteres visíveis na primeira dobra recebam 100% da largura de banda com `fetchPriority="high"`, sem requisições duplicadas entre `new Image()` e `<img />`, enquanto a vizinhança imediata dos carrosséis é pré-carregada em cascata (2 ondas) e o restante sob demanda via `IntersectionObserver`.
+Este plano implementa a renderização imediata no primeiro frame (0ms) ao abrir filmes e séries a partir de qualquer pôster ou busca, blinda a busca contra condições de corrida com cache em memória instantâneo ao apagar/repetir termos e preserva tanto os dados quanto a posição exata de rolagem ao voltar da página de detalhes para a listagem anterior.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> **Trava de Regressão Visual e Estrutural**:
-> - Nenhuma alteração em cores, tipografia, larguras de itens (`ITEM_W`), `aspect-[2/3]`, espaçamentos ou animações CSS (`.poster-card-optimized` e `[data-h-scroll="true"]`).
-> - Proibido adicionar `content-visibility: auto` ou `contain-intrinsic-size` nos cards de pôsteres.
-> - Mantido o fade-in suave de 300ms (`transition-opacity duration-300 ease-out`) e exibição em 0ms para imagens em cache (`complete` + `Set` em memória).
+> **Trava de Regressão (Guardrail Crítico)**:
+> - Os módulos de pôsteres, carrosséis mobile, cache de abas da Home e as regras CSS de 120Hz (`.poster-card-optimized` e `[data-h-scroll="true"]`) permanecem **100% intactos**.
+> - Nenhuma alteração em cores, fontes, espaçamentos ou estrutura visual das páginas.
 
-- **Decisão Confirmada 1 — Prioridade Estrita na Primeira Dobra**: Nos carrosséis mobile, apenas os 4 primeiros itens das 2 primeiras seções (`sectionIndex < 2 && idx < 4`, totalizando 8 pôsteres) recebem `priority={true}` (`fetchPriority="high"`), e apenas a vizinhança imediata (`sectionIndex < 2 ? idx < 6 : sectionIndex === 2 && idx < 4`) recebe `eager={true}`.
-- **Decisão Confirmada 2 — Unificação de `primarySrc` e `preloadPoster` sem Disparo Duplo**: Tanto `preloadPoster` quanto `primarySrc` do `PosterCard` passam a apontar diretamente para a resolução física calculada por `getOptimalPosterSize(isLarge)`. Além disso, removemos chamadas redundantes a `preloadPoster` dentro do `useEffect` e do `IntersectionObserver` do `PosterCard`, deixando a própria tag `<img loading="eager" />` conduzir o download único no DOM.
-- **Decisão Confirmada 3 — Aquecimento Centralizado em 2 Ondas**: Removemos a duplicação de `warmUpVisiblePosters` na Home e centralizamos o aquecimento em `prewarmHubPosters` dividido em Onda 1 (imediata para os 8 pôsteres visíveis) e Onda 2 (após `250ms` + `requestIdleCallback` para a vizinhança dos carrosséis).
+- **Decisão Confirmada 1 — Renderização 0ms na Página de Detalhes (`/film/:id` e `/tv/:id`)**: Inicializar o estado `movie` sincronamente com `cachedDetails` (se já visitado na sessão) ou com um objeto parcial derivado de `location.state.initialMovie` (quando `Number(initialMovie.id) === movieId`), liberando a renderização do cabeçalho, pôster, backdrop, nota, ano e sinopse imediatamente no frame zero sem tela de carregamento bloqueante enquanto `getMovieDetails` / `getTVDetails` completa elenco, vídeos e streaming em segundo plano.
+- **Decisão Confirmada 2 — Transição Direta entre Filmes (`PUSH` de `/film/A` para `/film/B`)**: Ao clicar em um filme relacionado/similar dentro da própria página de detalhes (mudando de `movieId` via `PUSH`), a página rola imediatamente para o topo (`window.scrollTo(0, 0)`), passa `state={{ initialMovie: item, fromPoster: true }}` nos cards de coleção/similares e atualiza o estado `movie` sincronamente no mesmo ciclo de renderização com o novo `cachedDetails ?? initialPartialMovie`.
+- **Decisão Confirmada 3 — Busca sem Race Conditions + Cache Instantâneo ao Apagar/Repetir**: Controlar todas as buscas por `latestRequestIdRef` + `AbortController` e manter um `Map` em memória de resultados por termo e aba (`idioma + filtro + termo`). Se o usuário apagar uma letra, alternar abas ou repetir um termo já consultado, o resultado aparece em 0ms (pulando inclusive o debounce de 300ms quando o termo já está no cache).
+- **Decisão Confirmada 4 — Captura Protegida de `scrollY` e Restauração no Botão Voltar (`POP`)**: Registrar continuamente a posição de rolagem da rota ativa em um listener `scroll` (`{ passive: true }`) indexado por chave de rota (`pathname + search`) usando uma trava (`isNavigatingOrRestoringRef`) e ref da rota ativa atual para garantir que o `window.scrollTo(0, 0)` da nova página nunca sobrescreva o `scrollY` salvo da página anterior.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Reserva toda a prioridade de rede do navegador no instante zero para os 8 pôsteres visíveis na primeira dobra e escalona o pré-carregamento dos itens adjacentes dos carrosséis em segundo plano quando a thread/rede estiver livre.
-- **Target Audience / Persona**: Usuários mobile e desktop navegando pelas vitrines de Filmes e Séries.
-- **Key Value**: Renderização quase instantânea dos 8 pôsteres principais sem fila de espera causada por dezenas de downloads concorrentes fora da tela.
+- **What It Does**:
+  1. **Detalhes em 0ms (inclusive de Filme A → Filme B)**: Ao tocar em qualquer pôster, resultado de busca ou card de filme similar/coleção, a página do filme/série abre já desenhada com capa, backdrop, título, ano, avaliação e sinopse usando `initialMovie`, rolando para o topo em navegações `PUSH`.
+  2. **Busca Instantânea**: Digitações rápidas nunca exibem resultados atrasados de letras anteriores, e apagar caracteres ou repetir buscas exibe a lista imediatamente da memória RAM.
+  3. **Navegação "Voltar" Nativa**: Voltar de um filme para a Home, Busca, Perfil de Ator ou Resultados de Filtro mantém a lista já carregada e restaura a altura exata da página onde o usuário estava.
+- **Target Audience / Persona**: Usuários navegando rapidamente entre catálogos, buscas, filmografias de atores e páginas de filmes/séries no mobile e no desktop.
+- **Key Value**: Sensação de aplicativo nativo com transição instantânea na ida e na volta, sem telas de loading repetitivas nem perda de posição na lista.
 
 ---
 
 ## 2. User Experience & Visual Design
 
 - **Key User Flows**:
-  1. **Abertura da Home (0ms–150ms)**: Os 8 pôsteres visíveis de "Populares da semana" e "Mais bem avaliados" baixam imediatamente com `fetchPriority="high"`, sem concorrer com os outros 64 pôsteres fora da tela.
-  2. **Pausa Curta Pós-Pintura (250ms + Idle)**: A Onda 2 aquece silenciosamente em background os próximos pôsteres dos carrosséis (`idx 4..9` das duas primeiras seções e `idx 0..5` da 3ª e 4ª seções).
-  3. **Deslize Horizontal ou Vertical**: Conforme o usuário rola o carrossel além do 10º item, o `IntersectionObserver` (`rootMargin: '400px 200px'`) ativa `nearViewport = true` com desconexão imediata (`observer.disconnect()`), mudando a `<img />` para `loading="eager"` antes que o card entre na área visível.
-- **Visual Identity & Theme**: Preservação integral da estética escura (`#14181c`, `#232a31`) e das curvas de animação a 120Hz.
+  1. **Toque no Pôster, Resultado de Busca ou Similar → Página do Filme (0ms)**:
+     - Se o filme já foi aberto antes na sessão, 100% dos dados (incluindo elenco, coleção e similares) vêm do cache em memória em 0ms.
+     - Se é a primeira abertura (ou clique em um filme similar de `/film/A` para `/film/B`), a página vai para o topo (`window.scrollTo(0, 0)`), exibe cabeçalho, backdrop, pôster, nota e sinopse imediatamente via `location.state.initialMovie`, e preenche elenco, equipe e provedores assim que a requisição em background conclui.
+  2. **Digitação e Backspace na Busca**:
+     - Ao digitar um termo inédito, o debounce de 300ms dispara a busca identificada por `requestId` e `AbortSignal`.
+     - Ao apagar letras (voltando a um prefixo já buscado) ou revisitar a página de busca pelo botão Voltar, o cache em memória entrega a lista em 0ms sem piscar.
+  3. **Botão Voltar (`←` ou Gesto Nativo)**:
+     - Ao sair de `/film/:id` ou `/tv/:id` de volta para Home, Busca, Ator ou Browse Results, a página anterior já possui seus itens no estado inicial (via cache em memória) e restaura exatamente o `window.scrollY` salvo antes da saída.
+- **Visual Identity & Theme**: Nenhuma mudança estética; toda a identidade visual Letterboxd Dark permanece inalterada.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decisão 1: `primarySrc` Dinâmico Alinhado a `getOptimalPosterSize(isLarge)`**
-  - *Abordagem Escolhida*: Definir `const optimalSize = getOptimalPosterSize(isLarge)` e `const primarySrc = optimalSize === 'w342' ? urlW342 : optimalSize === 'w780' ? urlW780 : urlW500`, enquanto `preloadPoster` delega diretamente para `preloadImageUrl(tmdb.getImageUrl(posterPath, targetSize))`.
-  - *Por quê*: Garante que o atributo `src`, a seleção do `srcSet` e o `new Image()` do preloader apontem exatamente para a mesma URL (ex.: `w342` em telas mobile DPR 3x), eliminando qualquer divergência ou sintaxe desnecessária de `srcset` no `new Image()`.
-- **Decisão 2: Fim do Disparo Duplo entre `preloadPoster` e `<img loading="eager" />`**
-  - *Abordagem Escolhida*: No `PosterCard`, remover `preloadPoster(...)` de dentro do `useEffect` de montagem e de dentro do callback do `IntersectionObserver`. Quando `priority`, `eager` ou `nearViewport` for verdadeiro, a própria tag `<img loading="eager" />` realiza a requisição e alimenta o `Set` em memória no `onLoad`.
-  - *Por quê*: Evita instanciar um `new Image()` no mesmo milissegundo em que a tag `<img />` do DOM já iniciou a requisição.
-- **Decisão 3: Fila Escalonada em 2 Ondas Centralizada no Serviço de Cache**
-  - *Abordagem Escolhida*: Remover `warmUpVisiblePosters` da página inicial e centralizar em `prewarmHubPosters`:
-    - **Onda 1 (Síncrona)**: `popular.slice(0, 4)` e `highestRated.slice(0, 4)` (8 pôsteres da primeira dobra).
-    - **Onda 2 (`setTimeout(..., 250)` + `requestIdleCallback`)**: `popular.slice(4, 10)`, `highestRated.slice(4, 10)`, `mostWatched.slice(0, 6)` e `mostAnticipated.slice(0, 6)`.
-  - *Por quê*: Elimina a tempestade de 72 requisições simultâneas no segundo zero e mantém a vizinhança imediata dos carrosséis pronta no cache em memória.
+- **Decisão 1: Hidratação Progressiva via `initialMovie` + Suporte a `/film/A` → `/film/B`**
+  - *Abordagem Escolhida*: Quando `movie?.id !== movieId` (troca de filme na mesma rota `/film/:id` ou `/tv/:id`), atualizar sincronamente `setMovie(cachedDetails ?? initialPartialMovie)`, `setLoading(!(cachedDetails || initialPartialMovie))` e `setAssetsReady(Boolean(cachedDetails || initialPartialMovie))`, além de executar `window.scrollTo(0, 0)` na transição `PUSH`. Nos carrosséis de "Filmes Relacionados" e "Filmes Semelhantes" dentro da própria página de detalhes, passar `state={{ initialMovie: item, fromPoster: true }}` para que clicar em um similar também seja 0ms.
+  - *Por quê*: Garante que tanto a entrada vinda da Home/Busca quanto a navegação encadeada entre filmes similares abram no frame zero e no topo da página.
+- **Decisão 2: Bypass de Debounce em Cache Hit na Busca**
+  - *Abordagem Escolhida*: Quando o termo digitado (ou resultante de um Backspace) já existir no `Map` em memória para a aba ativa, atualizar `debouncedQuery` imediatamente em 0ms em vez de esperar 300ms.
+  - *Por quê*: Ao apagar letras ou clicar num termo recente, o usuário percebe resposta instantânea sem tráfego de rede.
+- **Decisão 3: Captura Blindada de `scrollY` com Listener Passivo e Lock de Transição**
+  - *Abordagem Escolhida*: Manter um listener `window.addEventListener('scroll', ..., { passive: true })` que grava `routeScrollMap.set(activeRouteKeyRef.current, window.scrollY)` somente quando `location.pathname + location.search === activeRouteKeyRef.current` e `!isTransitioningRouteRef.current`. Antes de aplicar `window.scrollTo(0, 0)` para a nova rota `PUSH`, travamos a gravação e atualizamos `activeRouteKeyRef.current` para a nova rota, impedindo que o `scrollY = 0` da nova página sobrescreva o valor salvo da página anterior.
+  - *Por quê*: Elimina o bug clássico em que o evento `scroll` disparado por `window.scrollTo(0, 0)` durante a troca de rota zera o `scrollY` salvo da listagem anterior.
 
 ---
 
 ## 4. Technical Architecture & Data Strategy
 
-### Fluxo de Priorização e Carregamento em Cascata
+### Arquitetura de Navegação Instantânea, Busca e Restauração
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                     CARREGAMENTO DA HOME / VITRINES                      │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │
-         ┌───────────────────────────┴───────────────────────────┐
-         ▼                                                       ▼
-┌─────────────────────────────────┐             ┌─────────────────────────────────┐
-│     ONDA 1 (0ms - Imediata)     │             │  ONDA 2 (250ms + IdleCallback)  │
-│  • popular.slice(0, 4)          │             │  • popular.slice(4, 10)         │
-│  • highestRated.slice(0, 4)     │             │  • highestRated.slice(4, 10)    │
-│  • DOM: priority={true}         │             │  • mostWatched.slice(0, 6)      │
-│    loading="eager"              │             │  • mostAnticipated.slice(0, 6)  │
-│    fetchPriority="high"         │             │  • Notifica cards via Pub/Sub   │
-└─────────────────────────────────┘             └─────────────────────────────────┘
-                                                                 │
-                                                                 ▼
-                                                ┌─────────────────────────────────┐
-                                                │   ONDA 3 (Scroll Sob Demanda)   │
-                                                │  • Itens idx >= 6 / idx >= 10   │
-                                                │  • IntersectionObserver         │
-                                                │    rootMargin: "400px 200px"    │
-                                                │  • observer.disconnect() 1-shot │
-                                                │  • setNearViewport(true)        │
-                                                │    -> <img loading="eager" />   │
-                                                └─────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│            ORIGEM: PosterCard / Search / Actor / Browse / Similar          │
+│         Passa state={{ initialMovie, fromPoster: true }} no <Link>         │
+│    Listener passivo grava scrollY da rota ativa (protegido contra 0)       │
+└───────────────────┬────────────────────────────────────────▲───────────────┘
+                    │ Clique (PUSH -> scrollTo(0,0))         │ Voltar (POP)
+                    ▼                                        │ (0ms + ScrollY)
+┌───────────────────────────────────────────┐                │
+│     PÁGINA DE DETALHES (/film | /tv)      │                │
+│  1. Frame 0 (0ms):                        │                │
+│     • Usa cachedDetails (se existir)      │                │
+│     • Ou hidrata de state.initialMovie    │────────────────┘
+│     • De /film/A -> /film/B: scrollTo(0,0)│
+│       + hidrata novo initialMovie na hora │
+│  2. Background Fetch:                     │
+│     • getMovieDetails / getTVDetails      │
+│     • Salva em mediaDetailsCache (30 min) │
+│     • Atualiza elenco, vídeos e streaming │
+└───────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                     PIPELINE DE BUSCA BLINDADO (/search)                   │
+├────────────────────────────────────────────────────────────────────────────┤
+│  Input (?q=) ──► Cache Hit no Map<string, PanelCacheEntry>?                │
+│                    ├─► SIM: Bypass debounce (0ms) -> Renderiza imediato    │
+│                    └─► NÃO: Debounce 300ms -> Incrementa latestRequestId   │
+│                             + AbortController.abort() da anterior          │
+│                             -> Salva no Map se reqId === latestRequestId   │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Detalhamento por Módulo
+### Detalhamento Técnico
 
-1. **Seções de Catálogo Mobile (`MobileCatalogSections`)**:
-   - No `PosterRail`, configurar:
-     - `priority={sectionIndex < 2 && idx < 4}`
-     - `eager={sectionIndex < 2 ? idx < 6 : sectionIndex === 2 && idx < 4}`
-2. **Componente de Pôster e Preloader (`PosterCard`)**:
-   - Simplificar `preloadPoster(posterPath, size, isLarge)` para resolver `const targetSize = size || getOptimalPosterSize(isLarge)` e chamar `preloadImageUrl(tmdb.getImageUrl(posterPath, targetSize))`.
-   - Em `PosterCardBase`, definir `const optimalSize = getOptimalPosterSize(isLarge)` e `const primarySrc = optimalSize === 'w342' ? urlW342 : optimalSize === 'w780' ? urlW780 : urlW500`.
-   - No `useEffect` de assinatura do cache, remover `if (priority || eager || nearViewport) { preloadPoster(...); }` e inscrever o listener `subscribePosterUrlLoaded` para que cards pré-carregados pela Onda 2 mudem imediatamente para `isLoaded = true`.
-   - No `IntersectionObserver`, manter apenas `observer.disconnect()` e `setNearViewport(true)` ao interceptar `rootMargin: '400px 200px'`.
-3. **Serviço de Cache de Abas e Home (`tabDataCache` & `HomePage`)**:
-   - Em `HomePage` (e páginas de hub), remover `warmUpVisiblePosters` duplicado e acionar `prewarmHubPosters` centralizado quando houver cache inicial ou após `setFilmsHub`.
-   - Em `prewarmHubPosters`, executar a Onda 1 imediatamente nos 4 primeiros itens de `popular` e `highestRated`, e agendar a Onda 2 após `250ms` + `requestIdleCallback` para `slice(4, 10)` das duas primeiras listas e `slice(0, 6)` de `mostWatched` e `mostAnticipated`.
+1. **Abertura Instantânea na Página de Detalhes (Incluindo `/film/A` → `/film/B`)**:
+   - Criar helper `buildInitialMovieDetails(initial, movieId)` que converte `location.state?.initialMovie` (quando `Number(initial.id) === movieId`) em um `TMDBMovieDetails` parcial válido.
+   - Inicializar `movie` com `cachedDetails ?? initialPartialMovie`, `loading` com `!(cachedDetails || initialPartialMovie)` e `assetsReady` com `Boolean(cachedDetails || initialPartialMovie)`.
+   - Quando `movie?.id !== movieId` (ex.: usuário clicou em um filme similar/recomendado indo de `/film/A` para `/film/B`), atualizar sincronamente `movie` com `cachedDetails ?? initialPartialMovie`, rolar para o topo (`window.scrollTo(0, 0)`) e buscar os detalhes completos em background sem limpar a tela para um spinner.
+   - Adicionar `state={{ initialMovie: item, fromPoster: true }}` nos links de filmes relacionados/similares da página de detalhes, nas linhas de busca (`ResultRow` e `MobileMovieRow`) e nos dropdowns rápidos ("Find a film/series").
+   - Expandir o cache em memória de `getMovieDetails`, `getTVDetails`, `getPersonDetails` e `getCollectionDetails` no serviço TMDB para 30 minutos de TTL.
+
+2. **Busca Instantânea e Blindada contra Race Conditions**:
+   - Criar cache em nível de módulo `searchMemoryCache = new Map<string, PanelCacheEntry>()` indexado por `${language}:${filter}:${term.toLowerCase()}` e cache de enriquecimento `searchEnrichCache` no serviço TMDB.
+   - Adicionar `latestRequestIdRef` e `AbortController` na busca principal, no `prefetchFilter` de abas vizinhas e nas barras rápidas de busca de Filmes/Séries, descartando qualquer resposta cujo `requestId !== latestRequestIdRef.current`.
+   - Inicializar o estado da página de busca já hidratado a partir de `searchMemoryCache` quando o usuário voltar da página de um filme ou repetir uma busca recente.
+
+3. **Captura Protegida de `scrollY` e Restauração ao Voltar (Back Navigation)**:
+   - No `AppShell`, manter `routeScrollPositions = new Map<string, number>()` com listener `scroll` passivo associado à chave da rota comprometida (`committedRouteKeyRef.current`) e bloqueio `isProgrammaticScrollRef.current` durante a troca de rotas, garantindo que o `window.scrollTo(0, 0)` da nova página nunca sobrescreva o `scrollY` salvo da rota que está saindo.
+   - Ao detectar retorno (`navigationType === 'POP'`), restaurar o `scrollY` salvo em `useLayoutEffect` (e confirmar no próximo `requestAnimationFrame`) em vez de chamar `window.scrollTo(0, 0)`.
+   - Nas páginas de listagem (`BrowseResults`, `Actor`, `Collection`, `Films`, `Series`), manter cache em memória dos itens carregados (`items`, `page`, `hasMore`, `person`, `collection`) por chave de rota/parâmetros e preservar o scroll salvo quando os dados vierem do cache no retorno.
