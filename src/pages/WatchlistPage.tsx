@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Shuffle, Clock, X } from 'lucide-react';
+import { Shuffle, Clock, X, Upload } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useApp } from '../context/AppContext';
 import { PosterCard } from '../components/PosterCard';
@@ -96,15 +96,24 @@ export const WatchlistPage: React.FC = () => {
             <span className="text-xs font-normal text-lb-muted tabular-nums">({watchlist.length})</span>
           </h1>
 
-          {watchlist.length > 0 && (
-            <button
-              onClick={handleShuffle}
-              className="flex items-center gap-1.5 bg-lb-blue hover:bg-[#32a8dd] text-lb-bg font-black text-[11px] uppercase px-2.5 py-1 rounded-sm transition-colors cursor-pointer shrink-0"
+          <div className="flex items-center gap-1.5">
+            <Link
+              to="/import?mode=watchlist"
+              className="flex items-center gap-1 bg-lb-surface hover:bg-lb-elevated border border-white/15 text-lb-text hover:text-white font-bold text-[11px] uppercase px-2.5 py-1 rounded-sm transition-colors shrink-0"
             >
-              <Shuffle className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>{t('wl_shuffle')}</span>
-            </button>
-          )}
+              <Upload className="w-3 h-3" />
+              <span>{t('create_list_btn_import')}</span>
+            </Link>
+            {watchlist.length > 0 && (
+              <button
+                onClick={handleShuffle}
+                className="flex items-center gap-1.5 bg-lb-blue hover:bg-[#32a8dd] text-lb-bg font-black text-[11px] uppercase px-2.5 py-1 rounded-sm transition-colors cursor-pointer shrink-0"
+              >
+                <Shuffle className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>{t('wl_shuffle')}</span>
+              </button>
+            )}
+          </div>
         </div>
         <p className="text-[11px] text-lb-muted leading-snug">
           {t('wl_desc')}
@@ -123,15 +132,24 @@ export const WatchlistPage: React.FC = () => {
           </p>
         </div>
 
-        {watchlist.length > 0 && (
-          <button
-            onClick={handleShuffle}
-            className="flex items-center gap-2 bg-lb-blue hover:bg-[#32a8dd] text-lb-bg font-black text-xs uppercase px-4 py-2 rounded-sm transition-colors shadow-[0_0_12px_rgba(64,188,244,0.3)] cursor-pointer shrink-0"
+        <div className="flex items-center gap-2.5">
+          <Link
+            to="/import?mode=watchlist"
+            className="flex items-center gap-1.5 bg-lb-surface hover:bg-lb-elevated border border-lb-elevated text-lb-text hover:text-white font-bold text-xs uppercase px-3.5 py-2 rounded-sm transition-colors shrink-0"
           >
-            <Shuffle className="w-4 h-4 stroke-[2.5]" />
-            <span>{t('wl_shuffle')}</span>
-          </button>
-        )}
+            <Upload className="w-3.5 h-3.5" />
+            <span>{t('create_list_btn_import')}</span>
+          </Link>
+          {watchlist.length > 0 && (
+            <button
+              onClick={handleShuffle}
+              className="flex items-center gap-2 bg-lb-blue hover:bg-[#32a8dd] text-lb-bg font-black text-xs uppercase px-4 py-2 rounded-sm transition-colors shadow-[0_0_12px_rgba(64,188,244,0.3)] cursor-pointer shrink-0"
+            >
+              <Shuffle className="w-4 h-4 stroke-[2.5]" />
+              <span>{t('wl_shuffle')}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Grid of Posters */}
@@ -148,12 +166,21 @@ export const WatchlistPage: React.FC = () => {
           <p className="text-xs text-lb-text">
             {t('wl_hint')}
           </p>
-          <Link
-            to="/films"
-            className="inline-block mt-2 bg-lb-green text-lb-bg font-black text-xs uppercase px-5 py-2 rounded-sm"
-          >
-            {t('wl_browse')}
-          </Link>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <Link
+              to="/films"
+              className="inline-block bg-lb-green text-lb-bg font-black text-xs uppercase px-5 py-2 rounded-sm"
+            >
+              {t('wl_browse')}
+            </Link>
+            <Link
+              to="/import?mode=watchlist"
+              className="inline-flex items-center gap-1.5 bg-lb-elevated hover:bg-lb-border text-white font-bold text-xs uppercase px-4 py-2 rounded-sm transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>{t('create_list_btn_import')} CSV</span>
+            </Link>
+          </div>
         </div>
       )}
 

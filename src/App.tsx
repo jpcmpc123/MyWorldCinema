@@ -152,6 +152,7 @@ const MemoizedRouteTree = React.memo(
             <Route path="/list/:id/edit" element={<CreateListPage />} />
             <Route path="/list/:id" element={<ListDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/import" element={<SettingsPage />} />
             <Route path="/signin" element={<AuthPage />} />
             <Route path="/signup" element={<AuthPage />} />
             <Route path="/search" element={<SearchPage />} />

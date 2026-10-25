@@ -11,6 +11,46 @@ interface MovieShort {
   release_date: string;
 }
 
+export interface ProfileImportPayloadItem {
+  movieId: number;
+  movieTitle: string;
+  moviePoster: string | null;
+  movieYear: string;
+  watchedDate: string; // YYYY-MM-DD or ''
+  rating: number; // 0 or 0.5..5.0
+  isRewatch: boolean;
+  liked: boolean;
+  reviewText: string;
+  tags: string[];
+}
+
+export interface ProfileImportSummary {
+  watchedCount: number;
+  diaryCreatedCount: number;
+  diaryUpdatedCount: number;
+  reviewsCount: number;
+  ratingsCount: number;
+}
+
+export interface ListImportOptions {
+  targetListId: string | 'new';
+  newListTitle?: string;
+  newListDescription?: string;
+  newListTags?: string[];
+  isRanked?: boolean;
+  isPrivate?: boolean;
+  replaceExisting?: boolean;
+  markAsWatched?: boolean;
+  items: {
+    id: number;
+    title: string;
+    poster_path: string | null;
+    release_date: string;
+    notes?: string;
+    director?: string;
+  }[];
+}
+
 interface AppContextType {
   user: UserProfile;
   updateUser: (updates: Partial<UserProfile>) => void;
@@ -38,6 +78,10 @@ interface AppContextType {
   addReview: (newReview: Omit<Review, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>) => void;
   movieOverrides: Record<number, { poster?: string; backdrop?: string }>;
   setMovieOverride: (movieId: number, override: { poster?: string; backdrop?: string }) => void;
+  // Import functions (Letterboxd specification)
+  importToProfile: (items: ProfileImportPayloadItem[]) => Promise<ProfileImportSummary>;
+  importToWatchlist: (movies: MovieShort[]) => Promise<{ addedCount: number; skippedCount: number }>;
+  importToList: (options: ListImportOptions) => Promise<{ listId: string; totalCount: number; addedCount: number }>;
   // ActionBottomSheet (mobile long-press / actions)
   actionSheetMovie: { id: number; title: string; release_date?: string } | null;
   openActionSheet: (movie: { id: number; title: string; release_date?: string }) => void;
@@ -922,6 +966,460 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     movieStore.flush();
   }, [watchedMovieIds, likedMovieIds, watchlist, ratingsMap, movieOverrides]);
 
+  const listsRef = useRef(lists); listsRef.current = lists;
+
+  const importToProfile = useCallback(async (items: ProfileImportPayloadItem[]): Promise<ProfileImportSummary> => {
+    if (items.length === 0) {
+      return { watchedCount: 0, diaryCreatedCount: 0, diaryUpdatedCount: 0, reviewsCount: 0, ratingsCount: 0 };
+    }
+
+    // 1. Combine multiple lines containing the same film with the same WatchedDate
+    const combinedItems: ProfileImportPayloadItem[] = [];
+    const datedIndexMap = new Map<string, number>();
+
+    for (const raw of items) {
+      rememberMovie({
+        id: raw.movieId,
+        movieTitle: raw.movieTitle,
+        moviePoster: raw.moviePoster,
+        movieYear: raw.movieYear,
+      });
+
+      if (raw.watchedDate) {
+        const key = `${raw.movieId}:${raw.watchedDate}`;
+        const existingIdx = datedIndexMap.get(key);
+        if (existingIdx !== undefined) {
+          const prev = combinedItems[existingIdx];
+          combinedItems[existingIdx] = {
+            ...prev,
+            rating: raw.rating > 0 ? raw.rating : prev.rating,
+            isRewatch: prev.isRewatch || raw.isRewatch,
+            liked: prev.liked || raw.liked,
+            tags: Array.from(new Set([...prev.tags, ...raw.tags])),
+            reviewText:
+              prev.reviewText && raw.reviewText && prev.reviewText !== raw.reviewText
+                ? `${prev.reviewText}\n\n${raw.reviewText}`
+                : raw.reviewText || prev.reviewText,
+          };
+          continue;
+        }
+        datedIndexMap.set(key, combinedItems.length);
+      }
+      combinedItems.push({ ...raw });
+    }
+
+    let diaryCreatedCount = 0;
+    let diaryUpdatedCount = 0;
+    let reviewsCount = 0;
+    let ratingsCount = 0;
+    const uniqueMovieIds = new Set<number>();
+
+    const nextLogs = [...logsRef.current];
+    const newWatchedSet = new Set<number>(watchedIdsRef.current);
+    const newLikedSet = new Set<number>(likedIdsRef.current);
+    const nextRatings: Record<number, number> = {};
+    const nowIso = new Date().toISOString();
+    const u = userRef.current;
+
+    const supabaseUpsertRows: {
+      user_id: string;
+      film_id: number;
+      film_title: string;
+      film_poster: string | null;
+      film_year: number | null;
+      watched_on: string | null;
+      rating: number | null;
+      liked: boolean;
+      review_text: string | null;
+      contains_spoilers: boolean;
+    }[] = [];
+
+    for (const item of combinedItems) {
+      uniqueMovieIds.add(item.movieId);
+      // All films imported to your Profile will be automatically marked as watched
+      newWatchedSet.add(item.movieId);
+
+      if (item.liked) {
+        newLikedSet.add(item.movieId);
+      }
+      if (item.rating > 0) {
+        nextRatings[item.movieId] = item.rating;
+        ratingsCount++;
+      }
+
+      if (item.watchedDate) {
+        // Check if an existing Diary Entry matches (movieId + watchedDate)
+        const existingLogIdx = nextLogs.findIndex(
+          (l) => l.movieId === item.movieId && l.watchedDate === item.watchedDate,
+        );
+
+        if (existingLogIdx !== -1) {
+          const existing = nextLogs[existingLogIdx];
+          const updatedTags = Array.from(new Set([...(existing.tags || []), ...(item.tags || [])]));
+          const updatedReview = item.reviewText.trim() || existing.reviewText;
+          const updatedRating = item.rating > 0 ? item.rating : existing.rating;
+          const updatedLiked = existing.liked || item.liked;
+          const updatedRewatch = existing.isRewatch || item.isRewatch;
+
+          nextLogs[existingLogIdx] = {
+            ...existing,
+            rating: updatedRating,
+            liked: updatedLiked,
+            isRewatch: updatedRewatch,
+            tags: updatedTags,
+            reviewText: updatedReview,
+          };
+          diaryUpdatedCount++;
+          if (item.reviewText.trim()) reviewsCount++;
+
+          if (supabase && isAuthenticated && authUser) {
+            supabaseUpsertRows.push({
+              user_id: authUser.id,
+              film_id: item.movieId,
+              film_title: item.movieTitle || existing.movieTitle,
+              film_poster: item.moviePoster ?? existing.moviePoster,
+              film_year: item.movieYear ? parseInt(item.movieYear.slice(0, 4), 10) || null : null,
+              watched_on: item.watchedDate,
+              rating: updatedRating > 0 ? updatedRating : null,
+              liked: updatedLiked,
+              review_text: updatedReview.trim() || null,
+              contains_spoilers: existing.containsSpoilers,
+            });
+          }
+        } else {
+          const newId = `log-imp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          const newEntry: LogEntry = {
+            id: newId,
+            movieId: item.movieId,
+            movieTitle: item.movieTitle,
+            moviePoster: item.moviePoster,
+            movieYear: item.movieYear,
+            watchedDate: item.watchedDate,
+            rating: item.rating,
+            isRewatch: item.isRewatch,
+            liked: item.liked,
+            reviewText: item.reviewText,
+            containsSpoilers: false,
+            tags: item.tags,
+            createdAt: nowIso,
+          };
+          nextLogs.unshift(newEntry);
+          diaryCreatedCount++;
+          if (item.reviewText.trim()) reviewsCount++;
+
+          if (supabase && isAuthenticated && authUser) {
+            supabaseUpsertRows.push({
+              user_id: authUser.id,
+              film_id: item.movieId,
+              film_title: item.movieTitle,
+              film_poster: item.moviePoster,
+              film_year: item.movieYear ? parseInt(item.movieYear.slice(0, 4), 10) || null : null,
+              watched_on: item.watchedDate,
+              rating: item.rating > 0 ? item.rating : null,
+              liked: item.liked,
+              review_text: item.reviewText.trim() || null,
+              contains_spoilers: false,
+            });
+          }
+        }
+      } else {
+        // Sem WatchedDate: se houver review, adiciona como review sem data especificada;
+        // ou atualiza/cria quick log sem data no banco.
+        const hasReview = Boolean(item.reviewText.trim());
+        if (hasReview) {
+          reviewsCount++;
+          const existingDatelessIdx = nextLogs.findIndex(
+            (l) => l.movieId === item.movieId && !l.watchedDate,
+          );
+          if (existingDatelessIdx !== -1) {
+            const existing = nextLogs[existingDatelessIdx];
+            nextLogs[existingDatelessIdx] = {
+              ...existing,
+              rating: item.rating > 0 ? item.rating : existing.rating,
+              liked: existing.liked || item.liked,
+              reviewText: item.reviewText.trim(),
+            };
+          } else {
+            const newId = `log-imp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            nextLogs.unshift({
+              id: newId,
+              movieId: item.movieId,
+              movieTitle: item.movieTitle,
+              moviePoster: item.moviePoster,
+              movieYear: item.movieYear,
+              watchedDate: '',
+              rating: item.rating,
+              isRewatch: false,
+              liked: item.liked,
+              reviewText: item.reviewText.trim(),
+              containsSpoilers: false,
+              tags: [],
+              createdAt: nowIso,
+            });
+          }
+        }
+
+        if (supabase && isAuthenticated && authUser) {
+          supabaseUpsertRows.push({
+            user_id: authUser.id,
+            film_id: item.movieId,
+            film_title: item.movieTitle,
+            film_poster: item.moviePoster,
+            film_year: item.movieYear ? parseInt(item.movieYear.slice(0, 4), 10) || null : null,
+            watched_on: null,
+            rating: item.rating > 0 ? item.rating : null,
+            liked: item.liked,
+            review_text: item.reviewText.trim() || null,
+            contains_spoilers: false,
+          });
+        }
+      }
+    }
+
+    setLogs(nextLogs);
+    setWatchedMovieIds(Array.from(newWatchedSet));
+    setLikedMovieIds(Array.from(newLikedSet));
+    if (Object.keys(nextRatings).length > 0) {
+      setRatingsMap((prev) => ({ ...prev, ...nextRatings }));
+    }
+
+    // Recompute reviews list from updated logs
+    const updatedReviews: Review[] = nextLogs
+      .filter((l) => l.reviewText && l.reviewText.trim())
+      .map((l) => ({
+        id: `rev-${l.id}`,
+        movieId: l.movieId,
+        movieTitle: l.movieTitle,
+        moviePoster: l.moviePoster,
+        movieYear: l.movieYear,
+        author: {
+          username: u.username,
+          displayName: u.displayName,
+          avatarUrl: u.avatarUrl,
+          isPro: u.isPro,
+        },
+        rating: l.rating,
+        liked: l.liked,
+        content: l.reviewText,
+        containsSpoilers: l.containsSpoilers,
+        watchedDate: l.watchedDate,
+        likesCount: 0,
+        commentsCount: 0,
+        createdAt: l.createdAt,
+      }));
+    setReviews(updatedReviews);
+
+    // Persist to Supabase if authenticated
+    if (supabase && isAuthenticated && authUser && supabaseUpsertRows.length > 0) {
+      try {
+        const datedRows = supabaseUpsertRows.filter((r) => r.watched_on !== null);
+        const datelessRows = supabaseUpsertRows.filter((r) => r.watched_on === null);
+
+        if (datedRows.length > 0) {
+          const { error } = await supabase
+            .from('film_logs')
+            .upsert(datedRows, { onConflict: 'user_id,film_id,watched_on' });
+          if (error) console.error('Supabase bulk dated import error:', error);
+        }
+
+        for (const dRow of datelessRows) {
+          const { data: existing } = await supabase
+            .from('film_logs')
+            .select('id')
+            .eq('user_id', authUser.id)
+            .eq('film_id', dRow.film_id)
+            .is('watched_on', null)
+            .maybeSingle();
+
+          if (existing?.id) {
+            await supabase
+              .from('film_logs')
+              .update({
+                rating: dRow.rating,
+                liked: dRow.liked,
+                review_text: dRow.review_text,
+              })
+              .eq('id', existing.id);
+          } else {
+            await supabase.from('film_logs').insert(dRow);
+          }
+        }
+      } catch (err) {
+        console.error('Supabase importToProfile sync error:', err);
+      }
+    }
+
+    return {
+      watchedCount: uniqueMovieIds.size,
+      diaryCreatedCount,
+      diaryUpdatedCount,
+      reviewsCount,
+      ratingsCount,
+    };
+  }, [isAuthenticated, authUser]);
+
+  const importToWatchlist = useCallback(async (movies: MovieShort[]): Promise<{ addedCount: number; skippedCount: number }> => {
+    const existingIds = new Set(watchlistRef.current.map((m) => m.id));
+    const toAdd: MovieShort[] = [];
+    let skippedCount = 0;
+
+    for (const m of movies) {
+      rememberMovie(m);
+      if (existingIds.has(m.id)) {
+        skippedCount++;
+      } else {
+        existingIds.add(m.id);
+        toAdd.push(m);
+      }
+    }
+
+    if (toAdd.length > 0) {
+      setWatchlist((prev) => [...toAdd, ...prev]);
+
+      if (supabase && isAuthenticated && authUser) {
+        try {
+          const rows = toAdd.map((m) => ({
+            user_id: authUser.id,
+            film_id: m.id,
+            film_title: m.title,
+            film_poster: m.poster_path,
+            film_year: m.release_date ? parseInt(m.release_date.slice(0, 4), 10) || null : null,
+          }));
+          const { error } = await supabase
+            .from('watchlist')
+            .upsert(rows, { onConflict: 'user_id,film_id' });
+          if (error) console.error('Supabase watchlist bulk import error:', error);
+        } catch (err) {
+          console.error('Supabase importToWatchlist error:', err);
+        }
+      }
+    }
+
+    return { addedCount: toAdd.length, skippedCount };
+  }, [isAuthenticated, authUser]);
+
+  const importToList = useCallback(async (options: ListImportOptions): Promise<{ listId: string; totalCount: number; addedCount: number }> => {
+    const {
+      targetListId,
+      newListTitle,
+      newListDescription = '',
+      newListTags,
+      isRanked = false,
+      isPrivate = false,
+      replaceExisting = false,
+      markAsWatched = false,
+      items,
+    } = options;
+
+    if (markAsWatched && items.length > 0) {
+      await importToProfile(
+        items.map((m) => ({
+          movieId: m.id,
+          movieTitle: m.title,
+          moviePoster: m.poster_path,
+          movieYear: m.release_date ? m.release_date.slice(0, 4) : '',
+          watchedDate: '',
+          rating: 0,
+          isRewatch: false,
+          liked: false,
+          reviewText: '',
+          tags: [],
+        })),
+      );
+    }
+
+    const existingList = targetListId !== 'new' ? listsRef.current.find((l) => l.id === targetListId) : undefined;
+
+    if (existingList) {
+      let finalMovies: MovieList['movies'];
+      let addedCount = 0;
+
+      if (replaceExisting) {
+        // Completely replace existing list items
+        const seen = new Set<number>();
+        finalMovies = [];
+        for (const item of items) {
+          if (seen.has(item.id)) continue;
+          seen.add(item.id);
+          finalMovies.push({
+            id: item.id,
+            title: item.title,
+            poster_path: item.poster_path,
+            release_date: item.release_date,
+            notes: item.notes,
+            director: item.director,
+          });
+          addedCount++;
+        }
+      } else {
+        // Append films not already present in the list at the end, in import file order.
+        // Any films already present in the list remain in their current positions.
+        const existingSet = new Set(existingList.movies.map((m) => m.id));
+        const appended: MovieList['movies'] = [];
+        for (const item of items) {
+          if (existingSet.has(item.id)) continue;
+          existingSet.add(item.id);
+          appended.push({
+            id: item.id,
+            title: item.title,
+            poster_path: item.poster_path,
+            release_date: item.release_date,
+            notes: item.notes,
+            director: item.director,
+          });
+          addedCount++;
+        }
+        finalMovies = [...existingList.movies, ...appended];
+      }
+
+      updateList(existingList.id, {
+        title: existingList.title,
+        description: existingList.description,
+        isRanked: existingList.isRanked,
+        isPrivate: existingList.isPrivate,
+        tags: existingList.tags,
+        movies: finalMovies,
+      });
+
+      return {
+        listId: existingList.id,
+        totalCount: finalMovies.length,
+        addedCount,
+      };
+    }
+
+    // Create a new list
+    const seen = new Set<number>();
+    const dedupedMovies: MovieList['movies'] = [];
+    for (const item of items) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      dedupedMovies.push({
+        id: item.id,
+        title: item.title,
+        poster_path: item.poster_path,
+        release_date: item.release_date,
+        notes: item.notes,
+        director: item.director,
+      });
+    }
+
+    const newId = createList({
+      title: (newListTitle || 'Imported List').trim(),
+      description: newListDescription.trim(),
+      isRanked,
+      isPrivate,
+      tags: newListTags && newListTags.length > 0 ? newListTags : undefined,
+      movies: dedupedMovies,
+    });
+
+    return {
+      listId: newId,
+      totalCount: dedupedMovies.length,
+      addedCount: dedupedMovies.length,
+    };
+  }, [createList, updateList, importToProfile]);
+
   const value = useMemo<AppContextType>(
     () => ({
       user,
@@ -950,6 +1448,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addReview,
       movieOverrides,
       setMovieOverride,
+      importToProfile,
+      importToWatchlist,
+      importToList,
       isLogModalOpen,
       selectedMovieForLog,
       openLogModal,
@@ -967,9 +1468,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isMovieInWatchlist, watchedMovieIds, toggleWatched, isMovieWatched,
       likedMovieIds, toggleLikeMovie, isMovieLiked, ratingsMap, setMovieRating,
       top4MovieIds, setTop4Movie, lists, createList, updateList, deleteList, reviews,
-      addReview, movieOverrides, setMovieOverride, isLogModalOpen,
-      selectedMovieForLog, openLogModal, closeLogModal, isTop4PickerOpen,
-      activeTop4Slot, openTop4Picker, closeTop4Picker, actionSheetMovie,
+      addReview, movieOverrides, setMovieOverride, importToProfile, importToWatchlist,
+      importToList, isLogModalOpen, selectedMovieForLog, openLogModal, closeLogModal,
+      isTop4PickerOpen, activeTop4Slot, openTop4Picker, closeTop4Picker, actionSheetMovie,
       openActionSheet, closeActionSheet,
     ]
   );

@@ -11,11 +11,13 @@ import {
   Globe,
   GripVertical,
   Film,
+  Upload,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { tmdb, type TMDBSearchResult } from '../services/tmdb';
 import { useLanguage } from '../i18n/LanguageContext';
+import { LetterboxdImportView } from '../components/LetterboxdImportView';
 
 const RECENT_SEARCHES_KEY = 'mw_list_recent_searches';
 
@@ -89,11 +91,12 @@ export const CreateListPage: React.FC = () => {
   const [results, setResults] = useState<TMDBSearchResult[]>([]);
   const [, setIsSearching] = useState(false);
 
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
   const addInputRef = useRef<HTMLInputElement | null>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
   const dropdownWrapperRef = useRef<HTMLDivElement | null>(null);
   const sortWrapperRef = useRef<HTMLDivElement | null>(null);
-  const csvInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (mobileScreen === 'search') {
@@ -278,50 +281,58 @@ export const CreateListPage: React.FC = () => {
     setSortDropdownOpen(false);
   };
 
-  const handleImportCsv = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter((l) => l.trim());
-      if (lines.length < 2) return;
-      const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
-      const nameIdx = headers.findIndex((h) => h === 'name' || h === 'title' || h === 'film');
-      const colIdx = nameIdx >= 0 ? nameIdx : 0;
+  const handleApplyImportedListItems = (
+    importedItems: {
+      id: number;
+      title: string;
+      poster_path: string | null;
+      release_date: string;
+      notes?: string;
+    }[],
+    options: { replaceExisting: boolean; markAsWatched: boolean },
+  ) => {
+    setItems((prev) => {
+      if (options.replaceExisting) {
+        const seen = new Set<number>();
+        const clean: SelectedListItem[] = [];
+        for (const item of importedItems) {
+          if (seen.has(item.id)) continue;
+          seen.add(item.id);
+          clean.push({
+            id: item.id,
+            title: item.title,
+            poster_path: item.poster_path,
+            release_date: item.release_date || '',
+            notes: item.notes || '',
+          });
+        }
+        return clean;
+      }
 
-      const titlesToFetch = lines
-        .slice(1, 16)
-        .map((line) => {
-          const cols = line.split(',');
-          return cols[colIdx]?.replace(/^["']|["']$/g, '').trim();
-        })
-        .filter(Boolean);
-
-      for (const filmTitle of titlesToFetch) {
-        if (!filmTitle) continue;
-        const searchRes = await tmdb.searchMovies(filmTitle, 1);
-        const top = searchRes.results?.[0];
-        if (top) {
-          setItems((prev) => {
-            if (prev.some((i) => i.id === top.id)) return prev;
-            return [
-              ...prev,
-              {
-                id: top.id,
-                title: top.title,
-                poster_path: top.poster_path,
-                release_date: top.release_date || '',
-                notes: '',
-              },
-            ];
+      const existingIds = new Set(prev.map((m) => m.id));
+      const updatedExisting = prev.map((m) => {
+        const imp = importedItems.find((i) => i.id === m.id);
+        if (imp && imp.notes && !m.notes) {
+          return { ...m, notes: imp.notes };
+        }
+        return m;
+      });
+      const appended: SelectedListItem[] = [];
+      for (const item of importedItems) {
+        if (!existingIds.has(item.id)) {
+          existingIds.add(item.id);
+          appended.push({
+            id: item.id,
+            title: item.title,
+            poster_path: item.poster_path,
+            release_date: item.release_date || '',
+            notes: item.notes || '',
           });
         }
       }
-    } catch (err) {
-      console.error('CSV import error:', err);
-    } finally {
-      e.target.value = '';
-    }
+      return [...updatedExisting, ...appended];
+    });
+    setIsImportModalOpen(false);
   };
 
   const saveRecentSearch = (term: string) => {
@@ -472,6 +483,23 @@ export const CreateListPage: React.FC = () => {
               </div>
 
               {/* Add entries... / Edit entries... */}
+              <div className="px-4 pt-3 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setMobileScreen(items.length === 0 ? 'search' : 'films')}
+                  className="text-[14px] text-[#667788] hover:text-white cursor-pointer"
+                >
+                  {items.length === 0 ? t('create_list_add_entries') : t('create_list_edit_entries')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#2c3440] hover:bg-[#384250] text-[11px] font-bold uppercase tracking-wider text-[#ccddee] cursor-pointer"
+                >
+                  <Upload className="w-3 h-3" />
+                  {t('create_list_btn_import')}
+                </button>
+              </div>
               <div
                 role="button"
                 tabIndex={0}
@@ -482,11 +510,8 @@ export const CreateListPage: React.FC = () => {
                     setMobileScreen(items.length === 0 ? 'search' : 'films');
                   }
                 }}
-                className="flex-1 px-4 py-3.5 flex flex-col cursor-pointer active:bg-white/[0.02] transition-colors"
+                className="flex-1 px-4 py-3 flex flex-col cursor-pointer active:bg-white/[0.02] transition-colors"
               >
-                <span className="text-[14px] text-[#667788] mb-3">
-                  {items.length === 0 ? t('create_list_add_entries') : t('create_list_edit_entries')}
-                </span>
 
                 {items.length > 0 && (
                   <div className="grid grid-cols-5 gap-2 pb-4">
@@ -1114,18 +1139,12 @@ export const CreateListPage: React.FC = () => {
                   {t('create_list_or')}
                 </span>
 
-                <input
-                  ref={csvInputRef}
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  onChange={handleImportCsv}
-                />
                 <button
                   type="button"
-                  onClick={() => csvInputRef.current?.click()}
-                  className="h-[32px] px-3.5 bg-[#445566] hover:bg-[#556677] text-[#ccddee] hover:text-white font-bold text-[12px] rounded-[3px] transition-colors cursor-pointer"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="h-[32px] px-3.5 bg-[#445566] hover:bg-[#556677] text-[#ccddee] hover:text-white font-bold text-[12px] rounded-[3px] transition-colors cursor-pointer inline-flex items-center gap-1.5"
                 >
+                  <Upload className="w-3.5 h-3.5" />
                   {t('create_list_btn_import')}
                 </button>
               </div>
@@ -1417,6 +1436,44 @@ export const CreateListPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Letterboxd List Import Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-[70] bg-black/85 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-[#14181c] border border-[#303844] rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="px-5 py-3.5 bg-[#1c2228] border-b border-[#303844] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Upload className="w-4 h-4 text-[#00e054]" />
+                <h2 className="text-sm font-bold uppercase tracking-widest text-white">
+                  {t('create_list_btn_import')} — Letterboxd / IMDb / Delicious Library
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(false)}
+                className="text-[#99aabb] hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+              <LetterboxdImportView
+                initialDestination="list"
+                inlineListMode={{
+                  hasExistingItems: items.length > 0,
+                  onApplyListItems: (importedItems, opts) => {
+                    if (opts.detectedTitle && !title.trim()) setTitle(opts.detectedTitle);
+                    if (opts.detectedDescription && !description.trim()) setDescription(opts.detectedDescription);
+                    if (opts.detectedTags?.length && tags.length === 0) setTags(opts.detectedTags);
+                    handleApplyImportedListItems(importedItems, opts);
+                  },
+                  onClose: () => setIsImportModalOpen(false),
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

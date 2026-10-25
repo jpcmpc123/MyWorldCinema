@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { Heart, Trash2, Calendar, MessageSquare, Plus } from 'lucide-react';
+import { Heart, Trash2, Calendar, MessageSquare, Plus, Upload } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useProfileByUsername } from '../lib/useProfileByUsername';
 import { tmdb } from '../services/tmdb';
@@ -282,7 +282,7 @@ export const DiaryPage: React.FC = () => {
             {t('diary_title')}
           </h1>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
@@ -295,6 +295,16 @@ export const DiaryPage: React.FC = () => {
                 </option>
               ))}
             </select>
+
+            {!remote.isRemote && (
+              <Link
+                to="/import?mode=profile"
+                className="flex items-center gap-1 bg-lb-surface hover:bg-lb-elevated border border-white/15 text-lb-text hover:text-white font-bold text-[11px] uppercase px-2 py-1 rounded-sm transition-colors"
+              >
+                <Upload className="w-3 h-3" />
+                <span>{t('create_list_btn_import')}</span>
+              </Link>
+            )}
 
             <button
               onClick={() => openLogModal()}
@@ -321,7 +331,7 @@ export const DiaryPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {/* Year filter */}
           <select
             value={selectedYear}
@@ -335,6 +345,16 @@ export const DiaryPage: React.FC = () => {
               </option>
             ))}
           </select>
+
+          {!remote.isRemote && (
+            <Link
+              to="/import?mode=profile"
+              className="flex items-center gap-1.5 bg-lb-surface hover:bg-lb-elevated border border-lb-elevated text-lb-text hover:text-white font-bold text-xs uppercase px-3 py-1.5 rounded-sm transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>{t('create_list_btn_import')}</span>
+            </Link>
+          )}
 
           <button
             onClick={() => openLogModal()}

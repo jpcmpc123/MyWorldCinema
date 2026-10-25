@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Navigate, useSearchParams, useNavigate } from 'react-router-dom';
-import { CheckCircle2, AlertTriangle, Film, Upload, Download, ImageIcon, X, Check, XCircle, Globe, User } from 'lucide-react';
+import { Navigate, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { CheckCircle2, AlertTriangle, Film, Upload, Download, ImageIcon, X, Check, XCircle, Globe, User, FileSpreadsheet, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -8,6 +8,8 @@ import { LANGUAGES } from '../i18n/translations';
 import type { TranslationKey } from '../i18n/translations';
 import { supabase } from '../lib/supabase';
 import { tmdb } from '../services/tmdb';
+import { LetterboxdImportView } from '../components/LetterboxdImportView';
+import type { ImportDestination } from '../utils/letterboxdImport';
 
 type TabKey = 'profile' | 'avatar' | 'data';
 
@@ -83,17 +85,30 @@ const LanguageBlock: React.FC = () => {
 export const SettingsPage: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
   const { t } = useLanguage();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const isDirectImportRoute = location.pathname === '/import';
   const tabParam = searchParams.get('tab') as TabKey | null;
-  const activeTab: TabKey = TABS.some((t) => t.key === tabParam) ? (tabParam as TabKey) : 'profile';
+  const activeTab: TabKey = isDirectImportRoute
+    ? 'data'
+    : TABS.some((t) => t.key === tabParam)
+      ? (tabParam as TabKey)
+      : 'profile';
+
+  const modeParam = searchParams.get('mode');
+  const initialImportDestination: ImportDestination =
+    modeParam === 'watchlist' || modeParam === 'list' || modeParam === 'profile'
+      ? modeParam
+      : 'profile';
+
   const setTab = (tab: TabKey) => setSearchParams({ tab });
 
-  if (!loading && !isAuthenticated) {
+  if (!loading && !isAuthenticated && activeTab !== 'data') {
     return <Navigate to="/signin" replace />;
   }
 
-  if (loading) {
+  if (loading && activeTab !== 'data') {
     return (
       <div className="max-w-5xl mx-auto px-4 py-16 text-center text-lb-muted text-sm">{t('cfg_loading')}</div>
     );
@@ -129,7 +144,7 @@ export const SettingsPage: React.FC = () => {
           <LanguageBlock />
           {/* Mobile "Profile Settings" screen */}
           <div className="md:hidden">
-            <MobileProfileSettings />
+            <MobileProfileSettings onOpenDataTab={() => setTab('data')} />
           </div>
           <div className="max-md:hidden">
             <ProfileTab />
@@ -137,7 +152,12 @@ export const SettingsPage: React.FC = () => {
         </>
       )}
       {activeTab === 'avatar' && <AvatarTab />}
-      {activeTab === 'data' && <DataTab />}
+      {activeTab === 'data' && (
+        <DataTab
+          initialDestination={initialImportDestination}
+          onBackMobile={() => setTab('profile')}
+        />
+      )}
     </div>
   );
 };
@@ -403,9 +423,9 @@ const MobileField: React.FC<{ label: string; children: React.ReactNode }> = ({ l
   </div>
 );
 
-const MobileProfileSettings: React.FC = () => {
+const MobileProfileSettings: React.FC<{ onOpenDataTab?: () => void }> = ({ onOpenDataTab }) => {
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user: authUser, session, signOut } = useAuth();
   const { user: appUser, updateUser, top4MovieIds, setTop4Movie } = useApp();
 
@@ -513,6 +533,23 @@ const MobileProfileSettings: React.FC = () => {
       {/* ✕ / título / ✓ ficam na barra preta do Header (ver Header.tsx, isSettingsRoute) */}
 
       {notice && <Notice kind={notice.kind} message={notice.message} />}
+
+      {/* Import / Export Data button on mobile */}
+      {onOpenDataTab && (
+        <button
+          type="button"
+          onClick={onOpenDataTab}
+          className="w-full bg-[#202830] hover:bg-[#2c3440] border border-lb-green/40 text-white rounded-md px-3.5 py-3 font-bold text-xs uppercase tracking-wider cursor-pointer transition-colors flex items-center justify-between"
+        >
+          <span className="flex items-center gap-2 text-lb-green">
+            <FileSpreadsheet className="w-4 h-4" />
+            {language.startsWith('pt')
+              ? 'Importar / Exportar Dados (Letterboxd, IMDb)'
+              : 'Import / Export Data (Letterboxd, IMDb)'}
+          </span>
+          <span className="text-lb-muted text-[11px]">→</span>
+        </button>
+      )}
 
       {/* Sign out */}
       <button
@@ -754,7 +791,7 @@ const AvatarTab: React.FC = () => {
           <img loading="lazy" decoding="async"
             src={avatarSrc}
             alt={t('cfg_current_avatar')}
-            className="w-40 h-40 rounded-full object-cover border-2 border-lb-elevated bg-lb-bg shadow-xl"
+            className="w-40 h-40 rounded-full object-cover border-2 border-lb-elevated bg-lb-surface shadow-xl"
           />
         ) : (
           <div className="w-40 h-40 rounded-full border-2 border-lb-elevated bg-lb-surface flex items-center justify-center text-lb-muted shadow-xl">
@@ -834,176 +871,101 @@ function toCsv(headers: string[], rows: unknown[][]): string {
   return [headers.join(','), ...rows.map((r) => r.map(csvEscape).join(','))].join('\n');
 }
 
-interface PendingImport {
-  name: string;
-  year: string;
-}
-
-const DataTab: React.FC = () => {
+const DataTab: React.FC<{
+  initialDestination?: ImportDestination;
+  onBackMobile?: () => void;
+}> = ({ initialDestination = 'profile', onBackMobile }) => {
   const { user: authUser, isAuthenticated } = useAuth();
-  const { logs, watchlist, saveLog } = useApp();
-  const { t } = useLanguage();
+  const { logs, watchlist } = useApp();
+  const { t, language } = useLanguage();
+  const isPt = language.startsWith('pt');
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'success' | 'error' | 'info'; message: string } | null>(null);
 
-  const [pendingImports, setPendingImports] = useState<PendingImport[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('lb_pending_imports') ?? '[]');
-    } catch {
-      return [];
-    }
-  });
-
-  const handleImportFile = async (file: File) => {
-    setNotice(null);
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter((l) => l.trim());
-
-      if (lines.length < 2) {
-        setNotice({ kind: 'error', message: t('cfg_csv_empty') });
-        return;
-      }
-
-      // Parse (simple CSV; handles quoted cells)
-      const splitCsvLine = (line: string): string[] => {
-        const out: string[] = [];
-        let cur = '';
-        let inQuotes = false;
-        for (let i = 0; i < line.length; i++) {
-          const ch = line[i];
-          if (inQuotes) {
-            if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
-            else if (ch === '"') inQuotes = false;
-            else cur += ch;
-          } else if (ch === '"') {
-            inQuotes = true;
-          } else if (ch === ',') {
-            out.push(cur);
-            cur = '';
-          } else {
-            cur += ch;
-          }
-        }
-        out.push(cur);
-        return out.map((s) => s.trim());
-      };
-
-      const header = splitCsvLine(lines[0]).map((h) => h.toLowerCase());
-      const idx = (name: string) => header.indexOf(name);
-
-      const hasFilmId = idx('film_id') !== -1;
-      const hasName = idx('name') !== -1;
-
-      if (!hasFilmId && !hasName) {
-        setNotice({
-          kind: 'error',
-          message: t('cfg_csv_unrecognized'),
-        });
-        return;
-      }
-
-      let count = 0;
-      const newPending: PendingImport[] = [];
-
-      for (const line of lines.slice(1)) {
-        const cols = splitCsvLine(line);
-        if (hasFilmId) {
-          const filmId = parseInt(cols[idx('film_id')], 10);
-          if (!Number.isFinite(filmId)) continue;
-          const rating = idx('rating') !== -1 ? parseFloat(cols[idx('rating')]) || 0 : 0;
-          const liked = idx('liked') !== -1 ? ['true', '1', 'yes'].includes((cols[idx('liked')] ?? '').toLowerCase()) : false;
-          const watchedOn = idx('watched_on') !== -1 ? cols[idx('watched_on')] : '';
-          saveLog({
-            movieId: filmId,
-            movieTitle: hasName ? cols[idx('name')] : `Film #${filmId}`,
-            moviePoster: null,
-            movieYear: idx('year') !== -1 ? cols[idx('year')] : '',
-            watchedDate: watchedOn,
-            rating,
-            isRewatch: false,
-            liked,
-            reviewText: '',
-            containsSpoilers: false,
-            tags: ['imported'],
-          });
-          count++;
-        } else {
-          // CSV in Name/Year format (no film ids): we can't resolve TMDB ids simply — stash pending
-          const name = cols[idx('name')];
-          const year = idx('year') !== -1 ? cols[idx('year')] : '';
-          if (name) newPending.push({ name, year });
-        }
-      }
-
-      if (hasFilmId) {
-        setNotice({ kind: 'success', message: `${count} ${t('cfg_films_imported')}` });
-      } else if (newPending.length > 0) {
-        const merged = [...pendingImports, ...newPending];
-        setPendingImports(merged);
-        localStorage.setItem('lb_pending_imports', JSON.stringify(merged));
-        setNotice({
-          kind: 'info',
-          message: `${newPending.length} ${t('cfg_pending_saved')}`,
-        });
-      } else {
-        setNotice({ kind: 'error', message: t('cfg_no_valid_rows') });
-      }
-    } catch (err) {
-      setNotice({ kind: 'error', message: err instanceof Error ? err.message : t('cfg_import_failed') });
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const handleExport = async () => {
+  const handleExportDiaryCsv = async () => {
     setNotice(null);
     setExporting(true);
     try {
       let logsCsv = '';
-      let watchlistCsv = '';
 
       if (supabase && isAuthenticated && authUser) {
-        const [logsRes, watchlistRes] = await Promise.all([
-          supabase.from('film_logs').select('*').eq('user_id', authUser.id),
-          supabase.from('watchlist').select('*').eq('user_id', authUser.id),
-        ]);
+        const logsRes = await supabase.from('film_logs').select('*').eq('user_id', authUser.id);
         if (logsRes.error) throw new Error(logsRes.error.message);
-        if (watchlistRes.error) throw new Error(watchlistRes.error.message);
-
         const logRows = (logsRes.data ?? []) as Record<string, unknown>[];
         logsCsv = toCsv(
-          ['film_id', 'name', 'year', 'watched_on', 'rating', 'liked', 'review_text', 'contains_spoilers', 'created_at'],
+          ['Title', 'Year', 'WatchedDate', 'Rating', 'Rewatch', 'Tags', 'Review', 'tmdbID'],
           logRows.map((r) => [
-            r.film_id, r.film_title, r.film_year, r.watched_on, r.rating, r.liked, r.review_text, r.contains_spoilers, r.created_at,
-          ])
-        );
-        watchlistCsv = toCsv(
-          ['film_id', 'name', 'year'],
-          ((watchlistRes.data ?? []) as Record<string, unknown>[]).map((r) => [r.film_id, r.film_title, r.film_year])
+            r.film_title,
+            r.film_year,
+            r.watched_on ? String(r.watched_on).slice(0, 10) : '',
+            r.rating || '',
+            '',
+            '',
+            r.review_text || '',
+            r.film_id,
+          ]),
         );
       } else {
-        // Offline fallback: local state
         logsCsv = toCsv(
-          ['film_id', 'name', 'year', 'watched_on', 'rating', 'liked', 'review_text', 'contains_spoilers', 'created_at'],
-          logs.map((l) => [l.movieId, l.movieTitle, l.movieYear, l.watchedDate, l.rating, l.liked, l.reviewText, l.containsSpoilers, l.createdAt])
-        );
-        watchlistCsv = toCsv(
-          ['film_id', 'name', 'year'],
-          watchlist.map((m) => [m.id, m.title, (m.release_date ?? '').slice(0, 4)])
+          ['Title', 'Year', 'WatchedDate', 'Rating', 'Rewatch', 'Tags', 'Review', 'tmdbID'],
+          logs.map((l) => [
+            l.movieTitle,
+            l.movieYear,
+            l.watchedDate ? l.watchedDate.slice(0, 10) : '',
+            l.rating || '',
+            l.isRewatch ? 'Yes' : 'No',
+            (l.tags || []).join(', '),
+            l.reviewText || '',
+            l.movieId,
+          ]),
         );
       }
 
-      const content = `# Diary\n${logsCsv}\n\n# Watchlist\n${watchlistCsv}\n`;
-      const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+      const blob = new Blob([logsCsv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'myworld-export.csv';
+      a.download = 'diary-letterboxd-export.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      setNotice({ kind: 'success', message: t('cfg_export_done') });
+    } catch (err) {
+      setNotice({ kind: 'error', message: err instanceof Error ? err.message : t('cfg_export_failed') });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportWatchlistCsv = async () => {
+    setNotice(null);
+    setExporting(true);
+    try {
+      let watchlistCsv = '';
+
+      if (supabase && isAuthenticated && authUser) {
+        const watchlistRes = await supabase.from('watchlist').select('*').eq('user_id', authUser.id);
+        if (watchlistRes.error) throw new Error(watchlistRes.error.message);
+        watchlistCsv = toCsv(
+          ['Title', 'Year', 'tmdbID'],
+          ((watchlistRes.data ?? []) as Record<string, unknown>[]).map((r) => [
+            r.film_title,
+            r.film_year,
+            r.film_id,
+          ]),
+        );
+      } else {
+        watchlistCsv = toCsv(
+          ['Title', 'Year', 'tmdbID'],
+          watchlist.map((m) => [m.title, (m.release_date ?? '').slice(0, 4), m.id]),
+        );
+      }
+
+      const blob = new Blob([watchlistCsv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'watchlist-letterboxd-export.csv';
       a.click();
       URL.revokeObjectURL(url);
       setNotice({ kind: 'success', message: t('cfg_export_done') });
@@ -1015,91 +977,59 @@ const DataTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      {notice && <Notice kind={notice.kind} message={notice.message} />}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Import */}
-        <section className="bg-lb-surface border border-lb-elevated rounded p-5 flex flex-col">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-white mb-2">{t('cfg_import_title')}</h2>
-          <p className="text-xs text-lb-muted mb-4 flex-1">
-            {t('cfg_import_desc_1')} <code className="text-lb-blue">film_id,rating,liked,watched_on</code> {t('cfg_import_desc_2')}{' '}
-            <code className="text-lb-blue">Name,Year</code> {t('cfg_import_desc_3')}
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleImportFile(file);
-              e.target.value = '';
-            }}
-          />
+    <div className="space-y-8 pb-20">
+      {/* Mobile back button */}
+      {onBackMobile && (
+        <div className="md:hidden flex items-center justify-between border-b border-white/10 pb-3">
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            className="btn-log-green text-lb-bg font-black text-xs px-4 py-2.5 rounded uppercase tracking-widest cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            onClick={onBackMobile}
+            className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-lb-muted hover:text-white cursor-pointer"
           >
-            <Upload className="w-3.5 h-3.5 stroke-[2.5]" />
-            {importing ? t('cfg_importing') : t('cfg_import_title')}
+            <ArrowLeft className="w-4 h-4" />
+            {isPt ? 'Voltar para Configurações' : 'Back to Settings'}
           </button>
-        </section>
+        </div>
+      )}
 
-        {/* Export */}
-        <section className="bg-lb-surface border border-lb-elevated rounded p-5 flex flex-col">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-white mb-2">{t('cfg_export_title')}</h2>
-          <p className="text-xs text-lb-muted mb-4 flex-1">
-            {t('cfg_export_desc_1')}
-            {isAuthenticated ? t('cfg_export_cloud') : t('cfg_export_local')}.
-          </p>
-          <button
-            type="button"
-            onClick={() => void handleExport()}
-            disabled={exporting}
-            className="btn-log-green text-lb-bg font-black text-xs px-4 py-2.5 rounded uppercase tracking-widest cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            <Download className="w-3.5 h-3.5 stroke-[2.5]" />
-            {exporting ? t('cfg_exporting') : t('cfg_export_title')}
-          </button>
-        </section>
-      </div>
+      {/* Letterboxd Full Importer */}
+      <LetterboxdImportView initialDestination={initialDestination} />
 
-      {pendingImports.length > 0 && (
-        <section className="bg-lb-surface border border-lb-elevated rounded p-5">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-white">
-              {t('cfg_pending_title')} <span className="text-lb-muted font-normal">({pendingImports.length} {t('cfg_saved_locally')})</span>
+      {/* Export Your Data */}
+      <section className="bg-lb-surface border border-lb-elevated rounded-md p-5 max-w-4xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-widest text-white mb-1">
+              {t('cfg_export_title')} (Letterboxd CSV)
             </h2>
+            <p className="text-xs text-lb-muted">
+              {t('cfg_export_desc_1')}
+              {isAuthenticated ? t('cfg_export_cloud') : t('cfg_export_local')}.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             <button
               type="button"
-              onClick={() => {
-                setPendingImports([]);
-                localStorage.removeItem('lb_pending_imports');
-              }}
-              className="text-[10px] uppercase font-bold text-lb-muted hover:text-red-400 cursor-pointer"
+              onClick={() => void handleExportDiaryCsv()}
+              disabled={exporting}
+              className="btn-log-green text-lb-bg font-black text-xs px-4 py-2.5 rounded uppercase tracking-widest cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {t('cfg_clear')}
+              <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+              {exporting ? t('cfg_exporting') : isPt ? 'Exportar Diário / Assistidos' : 'Export Watched / Diary'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportWatchlistCsv()}
+              disabled={exporting}
+              className="bg-[#2c3440] hover:bg-[#384250] text-white font-bold text-xs px-4 py-2.5 rounded uppercase tracking-widest cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+              {isPt ? 'Exportar Watchlist' : 'Export Watchlist'}
             </button>
           </div>
-          <p className="text-[11px] text-lb-muted mb-2">
-            {t('cfg_pending_desc')}
-          </p>
-          <ul className="text-xs text-lb-text max-h-40 overflow-y-auto divide-y divide-lb-elevated/60">
-            {pendingImports.slice(0, 50).map((p, i) => (
-              <li key={i} className="py-1.5 flex justify-between gap-3">
-                <span className="truncate text-white">{p.name}</span>
-                <span className="text-lb-muted shrink-0">{p.year}</span>
-              </li>
-            ))}
-            {pendingImports.length > 50 && (
-              <li className="py-1.5 text-lb-muted">…and {pendingImports.length - 50} more</li>
-            )}
-          </ul>
-        </section>
-      )}
+        </div>
+        {notice && <div className="mt-4"><Notice kind={notice.kind} message={notice.message} /></div>}
+      </section>
     </div>
   );
 };
