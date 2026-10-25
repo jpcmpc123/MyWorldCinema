@@ -373,19 +373,26 @@ function setBoundedMap<K, V>(map: Map<K, V>, key: K, value: V, maxEntries: numbe
 async function fetchWithRetry(
   urlString: string,
   headers: Record<string, string>,
-  maxAttempts = 3,
+  maxAttempts = 6,
 ): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4500);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     try {
       const res = await fetch(urlString, { headers, signal: controller.signal });
       clearTimeout(timeoutId);
       if (res.ok) return res;
       // Retry on rate limit (429) or transient server errors (5xx)
       if ((res.status === 429 || res.status >= 500) && attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 250 * attempt));
+        const retryAfterSec = Number(res.headers.get('Retry-After'));
+        const delayMs =
+          res.status === 429
+            ? Number.isFinite(retryAfterSec) && retryAfterSec > 0
+              ? retryAfterSec * 1000
+              : 900 * attempt
+            : 350 * attempt;
+        await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }
       throw new Error(`TMDB error ${res.status}: ${res.statusText}`);
@@ -393,14 +400,18 @@ async function fetchWithRetry(
       clearTimeout(timeoutId);
       lastError = err;
       if (attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 250 * attempt));
+        await new Promise((r) => setTimeout(r, 400 * attempt));
       }
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Failed to fetch from TMDB');
 }
 
-async function fetchFromTMDB<T>(endpoint: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
+async function fetchFromTMDB<T>(
+  endpoint: string,
+  params: Record<string, string | number | undefined> = {},
+  options?: { allowMissingPoster?: boolean },
+): Promise<T> {
   if (!TMDB_API_KEY || !TMDB_ACCESS_TOKEN) {
     throw new Error('TMDB não configurado: defina VITE_TMDB_API_KEY e VITE_TMDB_ACCESS_TOKEN no .env');
   }
@@ -423,29 +434,31 @@ async function fetchFromTMDB<T>(endpoint: string, params: Record<string, string 
     }
   });
 
+  const cacheKey = options?.allowMissingPoster ? `${url.toString()}#allowNoPoster` : url.toString();
   const urlString = url.toString();
 
   // Cache hit?
-  const cached = tmdbCache.get(urlString);
+  const cached = tmdbCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) {
     return cached.data as T;
   }
 
   // Requisição idêntica já em andamento? Reutiliza a mesma Promise.
-  const inflight = tmdbInflight.get(urlString);
+  const inflight = tmdbInflight.get(cacheKey);
   if (inflight) {
     return inflight as Promise<T>;
   }
 
   const promise = (async () => {
-    const res = await fetchWithRetry(urlString, headers, 3);
+    const res = await fetchWithRetry(urlString, headers, 6);
     const data = await res.json();
-    // Esconde itens sem pôster (no site todo): em listas de filmes, descarta
-    // resultados com poster_path nulo. Itens sem a chave (ex.: pessoas em
-    // buscas multi) ou com pôster preenchido passam normalmente.
+    // Esconde itens sem pôster nas vitrines normais, mas permite manter na importação
     if (data && Array.isArray(data.results)) {
       data.results = data.results
-        .filter((r: { poster_path?: string | null }) => !('poster_path' in r) || Boolean(r.poster_path))
+        .filter(
+          (r: { poster_path?: string | null }) =>
+            options?.allowMissingPoster || !('poster_path' in r) || Boolean(r.poster_path),
+        )
         .map((r: Record<string, unknown>) => {
           if (!r.title && typeof r.name === 'string') {
             r.title = r.name;
@@ -456,9 +469,9 @@ async function fetchFromTMDB<T>(endpoint: string, params: Record<string, string 
           return r;
         });
     }
-    tmdbCache.set(urlString, { data, expires: Date.now() + TMDB_CACHE_TTL_MS });
+    tmdbCache.set(cacheKey, { data, expires: Date.now() + TMDB_CACHE_TTL_MS });
     // Limpeza simples: evita crescimento ilimitado do cache em sessões longas.
-    if (tmdbCache.size > 300) {
+    if (tmdbCache.size > 1500) {
       const now = Date.now();
       for (const [key, entry] of tmdbCache) {
         if (entry.expires <= now) tmdbCache.delete(key);
@@ -467,11 +480,11 @@ async function fetchFromTMDB<T>(endpoint: string, params: Record<string, string 
     return data as T;
   })();
 
-  tmdbInflight.set(urlString, promise);
+  tmdbInflight.set(cacheKey, promise);
   try {
     return await promise;
   } finally {
-    tmdbInflight.delete(urlString);
+    tmdbInflight.delete(cacheKey);
   }
 }
 
@@ -2706,12 +2719,16 @@ export const tmdb = {
     if (!q) return [];
     try {
       const hasValidYear = Boolean(year && year > 1880);
-      const firstRes = await fetchFromTMDB<TMDBResponse<TMDBMovie>>('/search/movie', {
-        query: q,
-        primary_release_year: hasValidYear ? year : undefined,
-        include_adult: 'false',
-        page: 1,
-      }).catch(() => null);
+      const firstRes = await fetchFromTMDB<TMDBResponse<TMDBMovie>>(
+        '/search/movie',
+        {
+          query: q,
+          primary_release_year: hasValidYear ? year : undefined,
+          include_adult: 'false',
+          page: 1,
+        },
+        { allowMissingPoster: true },
+      ).catch(() => null);
 
       const seen = new Set<number>();
       const combined: TMDBMovie[] = [];
@@ -2722,14 +2739,26 @@ export const tmdb = {
         }
       }
 
-      // Se buscou com ano e não achou resultado exato, busca também sem filtro de ano
-      // (comum quando o ano do Letterboxd difere em ±1 ano da estreia comercial no TMDB)
-      if (hasValidYear && combined.length === 0) {
-        const fallbackRes = await fetchFromTMDB<TMDBResponse<TMDBMovie>>('/search/movie', {
-          query: q,
-          include_adult: 'false',
-          page: 1,
-        }).catch(() => null);
+      // Verifica se já encontrou algum título exato na busca com ano
+      const normQ = q.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const hasExactTitleHit = combined.some((m) => {
+        const t1 = (m.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const t2 = (m.original_title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return t1 === normQ || t2 === normQ;
+      });
+
+      // Se buscou com ano e não achou título exato (comum quando o ano do Letterboxd
+      // é o ano de festival e difere em ±1 ano da estreia comercial no TMDB), busca sem ano
+      if (hasValidYear && (!hasExactTitleHit || combined.length === 0)) {
+        const fallbackRes = await fetchFromTMDB<TMDBResponse<TMDBMovie>>(
+          '/search/movie',
+          {
+            query: q,
+            include_adult: 'false',
+            page: 1,
+          },
+          { allowMissingPoster: true },
+        ).catch(() => null);
         for (const item of fallbackRes?.results ?? []) {
           if (item && item.id && !seen.has(item.id)) {
             seen.add(item.id);

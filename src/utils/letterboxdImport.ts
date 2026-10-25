@@ -737,7 +737,7 @@ export async function matchImportRowsWithTmdb(
     return `title:${normalizeTextForMatch(r.title)}|year:${r.year}|dir:${r.directors.map(normalizeTextForMatch).join(',')}`;
   };
 
-  const CONCURRENCY = 8;
+  const CONCURRENCY = 4;
   let cursor = 0;
 
   const worker = async () => {

@@ -376,14 +376,30 @@ export const ProfilePage: React.FC = () => {
     }
 
     if (tabId === 'films') {
+      const seenMovieIds = new Set<number>();
+      const uniqueWatchedLogs = viewLogs.filter((l) => {
+        if (seenMovieIds.has(l.movieId)) return false;
+        seenMovieIds.add(l.movieId);
+        return true;
+      });
       return (
         <div className="space-y-4">
-          <h2 className="text-xs uppercase tracking-widest font-bold text-lb-text border-b border-lb-elevated pb-2">
-            {t('pp_all_watched')} ({viewLogs.length})
-          </h2>
+          <div className="flex items-center justify-between border-b border-lb-elevated pb-2">
+            <h2 className="text-xs uppercase tracking-widest font-bold text-lb-text">
+              {t('pp_all_watched')} ({uniqueWatchedLogs.length})
+            </h2>
+            {!remote.isRemote && (
+              <Link
+                to="/import?mode=profile"
+                className="text-[11px] uppercase tracking-wider font-bold text-lb-green hover:underline"
+              >
+                {t('create_list_btn_import')}
+              </Link>
+            )}
+          </div>
           {/* Mobile: strict 4-col grid with rating stars under each poster */}
           <div className="md:hidden grid grid-cols-4 gap-1.5 px-2">
-            {viewLogs.map((log, idx) => {
+            {uniqueWatchedLogs.map((log, idx) => {
               const r = remote.isRemote ? log.rating : (ratingsMap[log.movieId] ?? log.rating);
               return (
                 <div key={`all-mob-${log.id}-${idx}`}>
@@ -406,7 +422,7 @@ export const ProfilePage: React.FC = () => {
             })}
           </div>
           <div className="max-md:hidden grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
-            {viewLogs.map((log, idx) => (
+            {uniqueWatchedLogs.map((log, idx) => (
               <PosterCard
                 key={`all-${log.id}-${idx}`}
                 size="fluid"

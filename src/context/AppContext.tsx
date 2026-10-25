@@ -1123,40 +1123,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       } else {
-        // Sem WatchedDate: se houver review, adiciona como review sem data especificada;
-        // ou atualiza/cria quick log sem data no banco.
+        // Sem WatchedDate (ex.: filmes vindos de watched.csv, ratings.csv ou likes/films.csv):
+        // Sempre registra/atualiza em nextLogs para que todos os 600+ filmes assistidos
+        // apareçam imediatamente no Perfil (aba Filmes, contadores) e no histórico!
         const hasReview = Boolean(item.reviewText.trim());
         if (hasReview) {
           reviewsCount++;
-          const existingDatelessIdx = nextLogs.findIndex(
-            (l) => l.movieId === item.movieId && !l.watchedDate,
-          );
-          if (existingDatelessIdx !== -1) {
-            const existing = nextLogs[existingDatelessIdx];
-            nextLogs[existingDatelessIdx] = {
-              ...existing,
-              rating: item.rating > 0 ? item.rating : existing.rating,
-              liked: existing.liked || item.liked,
-              reviewText: item.reviewText.trim(),
-            };
-          } else {
-            const newId = `log-imp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-            nextLogs.unshift({
-              id: newId,
-              movieId: item.movieId,
-              movieTitle: item.movieTitle,
-              moviePoster: item.moviePoster,
-              movieYear: item.movieYear,
-              watchedDate: '',
-              rating: item.rating,
-              isRewatch: false,
-              liked: item.liked,
-              reviewText: item.reviewText.trim(),
-              containsSpoilers: false,
-              tags: [],
-              createdAt: nowIso,
-            });
-          }
+        }
+
+        const existingDatelessIdx = nextLogs.findIndex(
+          (l) => l.movieId === item.movieId && !l.watchedDate,
+        );
+        const existingAnyIdx = nextLogs.findIndex(
+          (l) => l.movieId === item.movieId,
+        );
+
+        if (existingDatelessIdx !== -1) {
+          const existing = nextLogs[existingDatelessIdx];
+          nextLogs[existingDatelessIdx] = {
+            ...existing,
+            movieTitle: item.movieTitle || existing.movieTitle,
+            moviePoster: item.moviePoster ?? existing.moviePoster,
+            movieYear: item.movieYear || existing.movieYear,
+            rating: item.rating > 0 ? item.rating : existing.rating,
+            liked: existing.liked || item.liked,
+            reviewText: item.reviewText.trim() || existing.reviewText,
+            tags: Array.from(new Set([...(existing.tags || []), ...(item.tags || [])])),
+          };
+        } else if (existingAnyIdx !== -1 && !hasReview) {
+          // Já possui entrada datada no diário para este filme; propaga rating/like se necessário
+          const existing = nextLogs[existingAnyIdx];
+          nextLogs[existingAnyIdx] = {
+            ...existing,
+            rating: existing.rating > 0 ? existing.rating : item.rating,
+            liked: existing.liked || item.liked,
+          };
+        } else {
+          const newId = `log-imp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          nextLogs.push({
+            id: newId,
+            movieId: item.movieId,
+            movieTitle: item.movieTitle,
+            moviePoster: item.moviePoster,
+            movieYear: item.movieYear,
+            watchedDate: '',
+            rating: item.rating,
+            isRewatch: false,
+            liked: item.liked,
+            reviewText: item.reviewText.trim(),
+            containsSpoilers: false,
+            tags: item.tags || [],
+            createdAt: nowIso,
+          });
         }
 
         if (supabase && isAuthenticated && authUser) {
@@ -1209,39 +1227,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
     setReviews(updatedReviews);
 
-    // Persist to Supabase if authenticated
+    // Persist to Supabase if authenticated (em lotes rápidos de 100 registros)
     if (supabase && isAuthenticated && authUser && supabaseUpsertRows.length > 0) {
       try {
+        const CHUNK_SIZE = 100;
         const datedRows = supabaseUpsertRows.filter((r) => r.watched_on !== null);
-        const datelessRows = supabaseUpsertRows.filter((r) => r.watched_on === null);
+        const datelessRowsRaw = supabaseUpsertRows.filter((r) => r.watched_on === null);
 
-        if (datedRows.length > 0) {
+        // Deduplica datelessRows por film_id
+        const datelessByFilm = new Map<number, (typeof datelessRowsRaw)[number]>();
+        for (const r of datelessRowsRaw) {
+          datelessByFilm.set(r.film_id, r);
+        }
+        const datelessRows = Array.from(datelessByFilm.values());
+
+        for (let i = 0; i < datedRows.length; i += CHUNK_SIZE) {
+          const chunk = datedRows.slice(i, i + CHUNK_SIZE);
           const { error } = await supabase
             .from('film_logs')
-            .upsert(datedRows, { onConflict: 'user_id,film_id,watched_on' });
+            .upsert(chunk, { onConflict: 'user_id,film_id,watched_on' });
           if (error) console.error('Supabase bulk dated import error:', error);
         }
 
-        for (const dRow of datelessRows) {
-          const { data: existing } = await supabase
+        if (datelessRows.length > 0) {
+          // 1 única consulta para buscar todos os film_logs sem data já existentes
+          const { data: existingDateless } = await supabase
             .from('film_logs')
-            .select('id')
+            .select('id, film_id')
             .eq('user_id', authUser.id)
-            .eq('film_id', dRow.film_id)
-            .is('watched_on', null)
-            .maybeSingle();
+            .is('watched_on', null);
 
-          if (existing?.id) {
-            await supabase
-              .from('film_logs')
-              .update({
-                rating: dRow.rating,
-                liked: dRow.liked,
-                review_text: dRow.review_text,
-              })
-              .eq('id', existing.id);
-          } else {
-            await supabase.from('film_logs').insert(dRow);
+          const existingMap = new Map<number, string>();
+          for (const row of (existingDateless ?? []) as { id: string; film_id: number }[]) {
+            existingMap.set(row.film_id, row.id);
+          }
+
+          const toInsert = datelessRows.filter((r) => !existingMap.has(r.film_id));
+          const toUpdate = datelessRows.filter((r) => existingMap.has(r.film_id));
+
+          // Insert em lote de 100 em 100 (importa 600+ filmes em menos de 1 segundo)
+          for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
+            const chunk = toInsert.slice(i, i + CHUNK_SIZE);
+            const { error } = await supabase.from('film_logs').insert(chunk);
+            if (error) console.error('Supabase bulk dateless insert error:', error);
+          }
+
+          // Atualiza em paralelo os que já existiam
+          for (let i = 0; i < toUpdate.length; i += 25) {
+            const batch = toUpdate.slice(i, i + 25);
+            await Promise.all(
+              batch.map((dRow) =>
+                supabase!
+                  .from('film_logs')
+                  .update({
+                    film_title: dRow.film_title,
+                    film_poster: dRow.film_poster,
+                    film_year: dRow.film_year,
+                    rating: dRow.rating,
+                    liked: dRow.liked,
+                    review_text: dRow.review_text,
+                  })
+                  .eq('id', existingMap.get(dRow.film_id)!),
+              ),
+            );
           }
         }
       } catch (err) {
@@ -1285,10 +1333,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             film_poster: m.poster_path,
             film_year: m.release_date ? parseInt(m.release_date.slice(0, 4), 10) || null : null,
           }));
-          const { error } = await supabase
-            .from('watchlist')
-            .upsert(rows, { onConflict: 'user_id,film_id' });
-          if (error) console.error('Supabase watchlist bulk import error:', error);
+          const CHUNK_SIZE = 100;
+          for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+            const chunk = rows.slice(i, i + CHUNK_SIZE);
+            const { error } = await supabase
+              .from('watchlist')
+              .upsert(chunk, { onConflict: 'user_id,film_id' });
+            if (error) console.error('Supabase watchlist bulk import error:', error);
+          }
         } catch (err) {
           console.error('Supabase importToWatchlist error:', err);
         }

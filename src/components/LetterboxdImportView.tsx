@@ -590,8 +590,8 @@ export const LetterboxdImportView: React.FC<LetterboxdImportViewProps> = ({
           headline: isPt ? 'Importação concluída com sucesso!' : 'Import completed successfully!',
           details,
           targetLink: {
-            to: '/diary',
-            label: isPt ? 'Ver meu Diário' : 'View my Diary',
+            to: '/profile?tab=films',
+            label: isPt ? 'Ver Todos os Filmes Assistidos' : 'View All Watched Films',
           },
         });
         setStage('done');
