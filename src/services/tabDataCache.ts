@@ -35,23 +35,33 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>, limitPerSection = 18): void {
+export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>): void {
   if (typeof window === 'undefined' || typeof Image === 'undefined') return;
-  const lists = [data.popular, data.highestRated, data.mostWatched, data.mostAnticipated];
-  // Aquece os primeiros 6 de cada seção sincronamente no próximo microtask/50ms e o restante do carrossel (18) logo em seguida
-  for (const list of lists) {
+  const firstFoldLists = [data.popular, data.highestRated];
+
+  // Onda 1 (Imediata): Aquece apenas os 4 primeiros itens das 2 primeiras listas (8 pôsteres visíveis na tela)
+  for (const list of firstFoldLists) {
     if (!Array.isArray(list)) continue;
-    for (const item of list.slice(0, 6)) {
+    for (const item of list.slice(0, 4)) {
       if (item?.poster_path) {
         preloadPoster(item.poster_path);
       }
     }
   }
 
-  const runRest = () => {
-    for (const list of lists) {
+  // Onda 2 (Após 250ms + requestIdleCallback): Aquece slice(4, 10) das 2 primeiras listas e slice(0, 6) de mostWatched e mostAnticipated
+  const runWave2 = () => {
+    for (const list of firstFoldLists) {
       if (!Array.isArray(list)) continue;
-      for (const item of list.slice(6, limitPerSection)) {
+      for (const item of list.slice(4, 10)) {
+        if (item?.poster_path) {
+          preloadPoster(item.poster_path);
+        }
+      }
+    }
+    for (const list of [data.mostWatched, data.mostAnticipated]) {
+      if (!Array.isArray(list)) continue;
+      for (const item of list.slice(0, 6)) {
         if (item?.poster_path) {
           preloadPoster(item.poster_path);
         }
@@ -59,14 +69,16 @@ export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>, limi
     }
   };
 
-  const win = window as Window & {
-    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-  };
-  if (typeof win.requestIdleCallback === 'function') {
-    win.requestIdleCallback(runRest, { timeout: 200 });
-  } else {
-    window.setTimeout(runRest, 50);
-  }
+  window.setTimeout(() => {
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    };
+    if (typeof win.requestIdleCallback === 'function') {
+      win.requestIdleCallback(runWave2, { timeout: 300 });
+    } else {
+      runWave2();
+    }
+  }, 250);
 }
 
 function readStorage(key: string): HubSectionsData | null {
@@ -128,7 +140,7 @@ export const tabDataCache = {
     const fromStorage = readStorage(FILMS_KEY);
     if (fromStorage) {
       memoryFilmsHub = fromStorage;
-      prewarmHubPosters(fromStorage, 18);
+      prewarmHubPosters(fromStorage);
       return fromStorage;
     }
     return null;
@@ -142,7 +154,7 @@ export const tabDataCache = {
     };
     memoryFilmsHub = entry;
     writeStorage(FILMS_KEY, entry);
-    prewarmHubPosters(entry, 18);
+    prewarmHubPosters(entry);
   },
 
   getSeriesHub(): HubSectionsData | null {
@@ -157,7 +169,7 @@ export const tabDataCache = {
     const fromStorage = readStorage(SERIES_KEY);
     if (fromStorage) {
       memorySeriesHub = fromStorage;
-      prewarmHubPosters(fromStorage, 18);
+      prewarmHubPosters(fromStorage);
       return fromStorage;
     }
     return null;
@@ -171,7 +183,7 @@ export const tabDataCache = {
     };
     memorySeriesHub = entry;
     writeStorage(SERIES_KEY, entry);
-    prewarmHubPosters(entry, 18);
+    prewarmHubPosters(entry);
   },
 
   invalidateAll(): void {

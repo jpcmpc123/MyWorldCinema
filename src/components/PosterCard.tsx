@@ -115,46 +115,9 @@ export function preloadPoster(
     preloadImageUrl(posterPath);
     return;
   }
-
-  if (size) {
-    preloadImageUrl(tmdb.getImageUrl(posterPath, size));
-    return;
-  }
-
-  const optimalSize = getOptimalPosterSize(isLarge);
-  const targetUrl = tmdb.getImageUrl(posterPath, optimalSize);
-  const url342 = tmdb.getImageUrl(posterPath, 'w342');
-  const url500 = tmdb.getImageUrl(posterPath, 'w500');
-  const url780 = tmdb.getImageUrl(posterPath, 'w780');
-
-  if (!targetUrl || loadedPosterUrls.has(targetUrl) || preloadedUrls.has(targetUrl)) {
-    return;
-  }
-  preloadedUrls.add(targetUrl);
-
-  const img = new Image();
-  img.decoding = 'async';
-  img.sizes = isLarge
-    ? '(max-width: 768px) 45vw, 300px'
-    : '(max-width: 640px) 26vw, (max-width: 1024px) 18vw, 185px';
-  img.srcset = `${url342} 342w, ${url500} 500w, ${url780} 780w`;
-  const finalizeLoad = () => {
-    img.onload = null;
-    img.onerror = null;
-    if (img.currentSrc) markPosterUrlLoaded(img.currentSrc);
-    markPosterUrlLoaded(targetUrl);
-    markPosterUrlLoaded(url342);
-    markPosterUrlLoaded(url500);
-  };
-  img.onload = finalizeLoad;
-  img.onerror = () => {
-    img.onload = null;
-    img.onerror = null;
-  };
-  img.src = targetUrl;
-  if (img.complete && img.naturalWidth > 0) {
-    finalizeLoad();
-  }
+  const targetSize = size || getOptimalPosterSize(isLarge);
+  const targetUrl = tmdb.getImageUrl(posterPath, targetSize);
+  preloadImageUrl(targetUrl);
 }
 
 /**
@@ -272,7 +235,9 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
       : tmdb.getImageUrl(displayPosterPath, 'w780')
     : '';
 
-  const primarySrc = urlW500;
+  const optimalSize = getOptimalPosterSize(isLarge);
+  const primarySrc =
+    optimalSize === 'w342' ? urlW342 : optimalSize === 'w780' ? urlW780 : urlW500;
 
   const posterSizes = {
     fluid: 'w-full min-w-0',
@@ -344,9 +309,6 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
       setNearViewport(true);
       return;
     }
-    if (priority || eager || nearViewport) {
-      preloadPoster(displayPosterPath, undefined, isLarge);
-    }
     const onCached = () => {
       setIsLoaded(true);
       setNearViewport(true);
@@ -359,7 +321,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
       unsub500?.();
       unsub780?.();
     };
-  }, [isLoaded, displayPosterPath, urlW342, urlW500, urlW780, priority, eager, nearViewport, isLarge]);
+  }, [isLoaded, displayPosterPath, urlW342, urlW500, urlW780]);
 
   // Gatilho de pré-carregamento abaixo da dobra / fora do scroll horizontal (400px vertical, 200px horizontal)
   // Desconecta imediatamente (one-shot) assim que entra na margem para custo zero em scroll a 120Hz.
@@ -374,7 +336,6 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
       (entries) => {
         if (entries[0]?.isIntersecting) {
           observer.disconnect();
-          preloadPoster(displayPosterPath, undefined, isLarge);
           setNearViewport(true);
         }
       },
@@ -382,7 +343,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [priority, eager, isLoaded, nearViewport, displayPosterPath, isLarge]);
+  }, [priority, eager, isLoaded, nearViewport, displayPosterPath]);
 
   const activeSrc =
     retryCount === 0

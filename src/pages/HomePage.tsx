@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { tmdb, type TMDBMovie } from '../services/tmdb';
-import { tabDataCache } from '../services/tabDataCache';
-import { PosterCard, preloadPoster } from '../components/PosterCard';
+import { tabDataCache, prewarmHubPosters } from '../services/tabDataCache';
+import { PosterCard } from '../components/PosterCard';
 import { useApp } from '../context/AppContext';
 import { MobileCatalogSections } from '../components/mobile/MobileCatalogSections';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -35,36 +35,8 @@ export const HomePage: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const warmUpVisiblePosters = (
-      pop: TMDBMovie[],
-      rated: TMDBMovie[],
-      watched: TMDBMovie[],
-      anticipated: TMDBMovie[],
-    ) => {
-      const task = () => {
-        if (cancelled) return;
-        for (const m of pop.slice(0, 18)) preloadPoster(m.poster_path);
-        for (const m of rated.slice(0, 18)) preloadPoster(m.poster_path);
-        for (const m of watched.slice(0, 18)) preloadPoster(m.poster_path);
-        for (const m of anticipated.slice(0, 18)) preloadPoster(m.poster_path);
-      };
-      const win = window as Window & {
-        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-      };
-      if (typeof win.requestIdleCallback === 'function') {
-        win.requestIdleCallback(task, { timeout: 200 });
-      } else {
-        window.setTimeout(task, 50);
-      }
-    };
-
     if (cachedHub) {
-      warmUpVisiblePosters(
-        cachedHub.popular,
-        cachedHub.highestRated,
-        cachedHub.mostWatched,
-        cachedHub.mostAnticipated,
-      );
+      prewarmHubPosters(cachedHub);
     }
 
     async function loadData() {
@@ -77,12 +49,6 @@ export const HomePage: React.FC = () => {
         setNowPlayingFilms(hub.mostAnticipated.slice(0, 18));
         setMostWatchedFilms(hub.mostWatched.slice(0, 18));
         setFeaturedFilm(hub.popular[0] || null);
-        warmUpVisiblePosters(
-          hub.popular,
-          hub.highestRated,
-          hub.mostWatched,
-          hub.mostAnticipated,
-        );
       } catch (err) {
         console.error('Failed to load homepage movies:', err);
       } finally {

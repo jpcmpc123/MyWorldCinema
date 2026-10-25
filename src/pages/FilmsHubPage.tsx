@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Eye, Star, Heart, ChevronDown } from 'lucide-react';
 import { tmdb, type TMDBMovie } from '../services/tmdb';
-import { tabDataCache } from '../services/tabDataCache';
-import { PosterCard, preloadPoster } from '../components/PosterCard';
+import { tabDataCache, prewarmHubPosters } from '../services/tabDataCache';
+import { PosterCard } from '../components/PosterCard';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export const FilmsHubPage: React.FC = () => {
@@ -66,24 +66,8 @@ export const FilmsHubPage: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const warmUpFilmsPosters = (pop: TMDBMovie[], reviewed: TMDBMovie[]) => {
-      const task = () => {
-        if (cancelled) return;
-        for (const m of pop.slice(0, 16)) preloadPoster(m.poster_path);
-        for (const m of reviewed.slice(0, 12)) preloadPoster(m.poster_path);
-      };
-      const win = window as Window & {
-        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-      };
-      if (typeof win.requestIdleCallback === 'function') {
-        win.requestIdleCallback(task, { timeout: 200 });
-      } else {
-        window.setTimeout(task, 50);
-      }
-    };
-
     if (cachedHub) {
-      warmUpFilmsPosters(cachedHub.popular, cachedHub.mostAnticipated);
+      prewarmHubPosters(cachedHub);
     }
 
     async function loadData() {
@@ -97,7 +81,6 @@ export const FilmsHubPage: React.FC = () => {
         tabDataCache.setFilmsHub(hub);
         setPopularFilms(hub.popular.slice(0, 16));
         setJustReviewedFilms(hub.mostAnticipated.slice(0, 12));
-        warmUpFilmsPosters(hub.popular, hub.mostAnticipated);
       } catch (err) {
         console.error('Failed to load films hub:', err);
       } finally {

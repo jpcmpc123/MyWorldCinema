@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de correção para garantir que todos os pôsteres dos carrosséis e das abas (Filmes e Séries) já nasçam 100% carregados ao deslizar o carrossel ou trocar de aba, mantendo loading=\"eager\" nos carrosséis, aquecendo todos os itens das seções em background e sincronizando o estado isLoaded do PosterCard assim que o preload em memória terminar.",
-  "updatedAt":  "2026-10-24T22:13:36.861784048Z",
+  "summary":  "Plano cirúrgico para eliminar o Head-of-Line Blocking nos carrosséis da Home, alinhando primarySrc e preloadPoster para 100% de cache hit sem disparo duplo, calibrando priority/eager para os 8 pôsteres da primeira dobra e implementando fila de aquecimento em 2 ondas no serviço central de cache.",
+  "updatedAt":  "2026-10-24T23:58:15.923293779Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
