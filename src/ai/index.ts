@@ -5,6 +5,7 @@ export type {
   LayaDecade,
   LayaDecisions,
   LayaGenre,
+  LayaGuessTitle,
   LayaMood,
   LayaOrigin,
   LayaPacing,
@@ -36,13 +37,16 @@ export {
 } from './constants';
 
 export {
+  COMPILED_AKINATOR_PROFILES,
   COMPILED_CONTEXT_RULES,
   COMPILED_DECADE_RULES,
   COMPILED_GENRE_RULES,
   COMPILED_MOOD_RULES,
   COMPILED_ORIGIN_RULES,
   COMPILED_PACING_RULES,
+  GUESSING_INTENT_REGEX,
   compileTermListRegex,
+  matchAkinatorProfile,
   matchFirstRule,
   resolveContentRating,
   stripAccents,

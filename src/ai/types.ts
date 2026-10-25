@@ -1,16 +1,17 @@
 export interface AiMovie {
   id: number;
   title: string;
-  original_title: string;
+  original_title?: string;
   poster_path: string | null;
-  backdrop_path: string | null;
+  backdrop_path?: string | null;
   overview: string;
   release_date: string;
   vote_average: number;
-  vote_count: number;
+  vote_count?: number;
   genre_ids?: number[];
-  popularity: number;
+  popularity?: number;
   poster_url?: string | null;
+  backdrop_url?: string | null;
 }
 
 export type LayaGenre =
@@ -40,7 +41,10 @@ export type LayaMood =
   | 'dark'
   | 'mysterious'
   | 'mindbending'
-  | 'cozy';
+  | 'cozy'
+  | 'inspirational';
+
+export type LayaGuessTitle = string;
 
 export type LayaContentRating = 'L' | '10' | '12' | '14' | '16' | '18';
 
@@ -51,6 +55,11 @@ export type LayaOrigin =
   | 'korean'
   | 'national'
   | 'european'
+  | 'french'
+  | 'spanish'
+  | 'italian'
+  | 'british'
+  | 'german'
   | 'hollywood'
   | 'asian';
 
@@ -59,13 +68,18 @@ export type LayaPacing = 'fast' | 'slow';
 export type LayaViewingContext = 'solo' | 'couple' | 'family' | 'friends';
 
 export interface LayaDecisions {
+  is_guessing_movie?: string | boolean;
+  guess_title?: string | null;
   genre: LayaGenre | string;
+  genre_label?: string;
   mood: LayaMood | string;
   content_rating: LayaContentRating | string;
   decade: LayaDecade | string;
   origin: LayaOrigin | string;
-  pacing: LayaPacing | string;
-  viewing_context: LayaViewingContext | string;
+  origin_label?: string;
+  pacing?: LayaPacing | string;
+  viewing_context?: LayaViewingContext | string;
+  context?: LayaViewingContext | string;
 }
 
 export interface Weights5DModel {
@@ -76,6 +90,9 @@ export interface Weights5DModel {
 
 export interface RecommendResponse {
   query: string;
+  is_guessing_movie?: boolean;
+  guessed_title?: string | null;
+  guessed_movie?: AiMovie | null;
   reference_movie?: string | null;
   decisions: LayaDecisions;
   movies: AiMovie[];
@@ -99,6 +116,9 @@ export interface ChatTurn {
   id: string;
   query: string;
   loading: boolean;
+  isGuessingMovie?: boolean;
+  guessedTitle?: string | null;
+  guessedMovie?: AiMovie | null;
   decisions?: LayaDecisions;
   referenceMovie?: string | null;
   movies?: AiMovie[];

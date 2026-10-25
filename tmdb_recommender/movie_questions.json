@@ -1,4 +1,43 @@
 {
+  "is_guessing_movie": {
+    "type": "choice",
+    "instructions": "O usu\u00e1rio est\u00e1 tentando lembrar ou adivinhar o nome de um filme espec\u00edfico descrevendo cenas, enredo ou mem\u00f3rias vagas?",
+    "criteria": {
+      "yes": "Sim, a pessoa est\u00e1 descrevendo uma cena marcante, mem\u00f3ria de inf\u00e2ncia ou trama para descobrir o t\u00edtulo",
+      "no": "N\u00e3o, a pessoa est\u00e1 apenas explorando o cat\u00e1logo ou pedindo recomenda\u00e7\u00f5es gerais de temas ou estilos"
+    }
+  },
+  "guess_title": {
+    "type": "choice",
+    "instructions": "Se for uma adivinha\u00e7\u00e3o, qual \u00e9 o filme exato?",
+    "criteria": {
+      "Interestelar": "Interestelar (viagem espacial, buraco negro de gargantua, dilata\u00e7\u00e3o temporal no planeta de \u00e1gua, poeira na terra e rel\u00f3gio da murph no tesserato)",
+      "A Origem": "A Origem / Inception (invas\u00e3o de sonhos das pessoas, pi\u00e3o girando no final, arquiteto de sonhos, gravidade zero no hotel e totem)",
+      "Matrix": "Matrix (escolha da p\u00edlula vermelha ou azul, keanu reeves neo desviando de balas em c\u00e2mera lenta, realidade simulada de c\u00f3digo verde)",
+      "As Branquelas": "As Branquelas (dois policiais negros do fbi que colocam peruca loira e se fantasiam de patricinhas brancas socialites)",
+      "Clube da Luta": "Clube da Luta (narrador insone, porrada no por\u00e3o de bar, sab\u00e3o feito de gordura humana e tyler durden sendo a mesma pessoa)",
+      "Parasita": "Parasita (fam\u00edlia pobre coreana que se infiltra trabalhando na casa da fam\u00edlia rica at\u00e9 descobrir o bunker secreto no por\u00e3o)",
+      "Cidade de Deus": "Cidade de Deus (buscap\u00e9 querendo ser fot\u00f3grafo enquanto z\u00e9 pequeno domina a favela com o man\u00e9 galinha nos anos 60 e 70 no rio)",
+      "O Sexto Sentido": "O Sexto Sentido (menino que v\u00ea gente morta andando o tempo todo e no final o psic\u00f3logo descobre que ele mesmo estava morto)",
+      "Titanic": "Titanic (navio transatl\u00e2ntico gigante que bate no iceberg e afunda, jack desenhando a rose e a porta no oceano congelado)",
+      "Ilha do Medo": "Ilha do Medo / Shutter Island (detetive leonardo dicaprio investigando manic\u00f4mio numa ilha isolada e descobre que ele \u00e9 o paciente 67)",
+      "Tropa de Elite": "Tropa de Elite (capit\u00e3o nascimento no bope no morro do rio, pede pra sair, botando saco na cabe\u00e7a e treinamento r\u00edgido)",
+      "O Show de Truman": "O Show de Truman (homem que descobre que toda a sua cidade e vida \u00e9 um reality show televisivo falso transmitido ao vivo)",
+      "O Sil\u00eancio dos Inocentes": "O Sil\u00eancio dos Inocentes (agente clarice starling entrevistando hannibal lecter canibal preso em cela de vidro)",
+      "Pulp Fiction": "Pulp Fiction (dan\u00e7a cl\u00e1ssica na lanchonete retr\u00f4, maleta brilhante dourada, jules e vincent assassinos e rel\u00f3gio de ouro)",
+      "Brilho Eterno de uma Mente sem Lembran\u00e7as": "Brilho Eterno (casal apagando mem\u00f3rias do c\u00e9rebro numa cl\u00ednica especializada com a kate winslet de cabelo colorido)",
+      "O Auto da Compadecida": "O Auto da Compadecida (jo\u00e3o grilo e chic\u00f3 no sert\u00e3o enganando padre e padeiro, julgamento no c\u00e9u com nossa senhora e jesus)",
+      "John Wick": "John Wick (assassino aposentado de terno preto matando a m\u00e1fia toda por causa do cachorro deixado pela esposa falecida)",
+      "Bastardos Ingl\u00f3rios": "Bastardos Ingl\u00f3rios (soldados judeus ca\u00e7ando e escalpelando nazistas na fran\u00e7a ocupada na segunda guerra com cinema em chamas)",
+      "Gladiador": "Gladiador (general romano maximus tra\u00eddo que vira escravo gladiador no coliseu pra se vingar do imperador c\u00f4modo)",
+      "O Senhor dos An\u00e9is": "O Senhor dos An\u00e9is (hobbit com p\u00e9s peludos e sociedade do anel indo jogar o anel de poder na montanha da perdi\u00e7\u00e3o)",
+      "Vingadores: Ultimato": "Vingadores: Ultimato (viagem no tempo pra recuperar joias do infinito e derrotar o thanos com o estalo de dedos)",
+      "Coringa": "Coringa (arthur fleck palha\u00e7o pobre com transtorno de riso incontrol\u00e1vel em gotham que vira o l\u00edder dos protestos na tv)",
+      "De Volta para o Futuro": "De Volta para o Futuro (marty mcfly e dr brown viajando pros anos 50 no carro delorean a 88 milhas por hora com raio)",
+      "O Rei Le\u00e3o": "O Rei Le\u00e3o (filhote le\u00e3o simba foge ap\u00f3s a morte do pai mufasa na debandada armada pelo tio scar e canta hakuna matata)",
+      "none": "Nenhum filme espec\u00edfico detectado (pedido aberto de recomenda\u00e7\u00e3o ou navega\u00e7\u00e3o livre de cat\u00e1logo)"
+    }
+  },
   "genre": {
     "type": "choice",
     "instructions": "Qual \u00e9 o g\u00eanero principal do filme ou estilo solicitado?",
@@ -32,7 +71,8 @@
       "emotional": "Emocionante, tocante, de chorar, sens\u00edvel e reflexivo",
       "dark": "Sombrio, macabro, perturbador, assustador, melanc\u00f3lico e pesado",
       "mindbending": "Mente explodindo, confuso, reflexivo, paradoxos, reviravoltas na cabe\u00e7a",
-      "cozy": "Aconchegante, confort\u00e1vel, doce, quentinho para assistir a dois ou no cobertor"
+      "cozy": "Aconchegante, confort\u00e1vel, doce, quentinho para assistir a dois ou no cobertor",
+      "inspirational": "Inspirador, motivacional, supera\u00e7\u00e3o de vida, edificante e vitorioso"
     }
   },
   "content_rating": {
@@ -85,7 +125,7 @@
       "solo": "Sozinho, introspectivo, para refletir ou maratonar concentrado",
       "couple": "A dois, namorados, casal, romance aconchegante",
       "family": "Fam\u00edlia reunida com crian\u00e7as pequenas ou pais",
-      "friends": "Com amigos, galera, zoeira, cerveja e divers\u00e3o"
+      "friends": "Com a galera e amigos"
     }
   }
 }

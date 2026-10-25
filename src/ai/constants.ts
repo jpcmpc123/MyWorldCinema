@@ -33,6 +33,11 @@ export const ORIGIN_MAP: Record<string, Record<string, string>> = {
   japanese: { with_original_language: 'ja' },
   korean: { with_original_language: 'ko' },
   national: { with_origin_country: 'BR', with_original_language: 'pt' },
+  french: { with_origin_country: 'FR', with_original_language: 'fr' },
+  spanish: { with_origin_country: 'ES', with_original_language: 'es' },
+  italian: { with_origin_country: 'IT', with_original_language: 'it' },
+  british: { with_origin_country: 'GB', with_original_language: 'en' },
+  german: { with_origin_country: 'DE', with_original_language: 'de' },
   european: { with_origin_country: 'FR|IT|ES|GB|DE' },
   hollywood: { with_original_language: 'en' },
   asian: { with_original_language: 'zh|cn|th|hi|id' },
@@ -121,6 +126,11 @@ export const ORIGIN_LABELS_PT: Record<string, string> = {
   korean: 'Coreia do Sul',
   national: 'Brasil',
   european: 'Europa',
+  french: 'Francês / França',
+  spanish: 'Espanha',
+  italian: 'Itália',
+  british: 'Reino Unido',
+  german: 'Alemanha',
   hollywood: 'Hollywood',
   asian: 'Ásia',
 };
@@ -130,6 +140,11 @@ export const ORIGIN_LABELS_EN: Record<string, string> = {
   korean: 'Korean',
   national: 'Brazilian',
   european: 'European',
+  french: 'French / France',
+  spanish: 'Spanish',
+  italian: 'Italian',
+  british: 'British',
+  german: 'German',
   hollywood: 'Hollywood',
   asian: 'Asian',
 };
@@ -159,21 +174,21 @@ export const CONTEXT_LABELS_EN: Record<string, string> = {
 };
 
 export const SUGGESTIONS_PT: readonly string[] = [
+  'Dois policiais do FBI se vestem de patricinhas loiras',
+  'Pai fala com a filha pelo relógio no buraco negro',
+  'Eu quero filme de anime francês',
+  'Comédia nacional dos anos 80',
+  'Terror psicológico sombrio recente',
   'Dorama coreano de romance emocionante lançamento recente',
-  'Adorei Interestelar, quero algo parecido no espaço',
-  'Comédia brasileira recente para rir bastante',
-  'Suspense psicológico tenso dos anos 90 com reviravolta',
-  'Anime japonês emocionante aconchegante estilo Ghibli',
-  'Ação frenética moderna estilo John Wick',
 ];
 
 export const SUGGESTIONS_EN: readonly string[] = [
+  'Two FBI agents disguise themselves as rich blonde girls',
+  'Father communicates with his daughter through a watch in a black hole',
+  'I want a French animated film',
+  'Brazilian comedy from the 80s',
+  'Dark recent psychological horror',
   'Emotional recent Korean romance drama',
-  'I loved Interstellar, recommend something similar in space',
-  'Fun Brazilian comedy to laugh out loud',
-  'Intense 90s psychological thriller with mind-bending twist',
-  'Heartfelt cozy Japanese anime like Studio Ghibli',
-  'Fast-paced modern action like John Wick',
 ];
 
 export function formatDecisionLine(
@@ -186,19 +201,25 @@ export function formatDecisionLine(
   if (refMovie) {
     parts.push(isPt ? `Estilo ${refMovie}` : `Like ${refMovie}`);
   }
-  if (d.genre) {
-    parts.push((isPt ? GENRE_LABELS_PT : GENRE_LABELS_EN)[d.genre] || d.genre);
+  if (d.genre || d.genre_label) {
+    const label = isPt
+      ? d.genre_label || GENRE_LABELS_PT[d.genre] || d.genre
+      : GENRE_LABELS_EN[d.genre] || d.genre_label || d.genre;
+    if (label && label !== 'none') parts.push(label);
   }
-  if (d.mood) {
+  if (d.mood && d.mood !== 'none') {
     parts.push((isPt ? MOOD_LABELS_PT : MOOD_LABELS_EN)[d.mood] || d.mood);
   }
-  if (d.decade) {
+  if (d.decade && d.decade !== 'none') {
     parts.push((isPt ? DECADE_LABELS_PT : DECADE_LABELS_EN)[d.decade] || d.decade);
   }
-  if (d.origin) {
-    parts.push((isPt ? ORIGIN_LABELS_PT : ORIGIN_LABELS_EN)[d.origin] || d.origin);
+  if (d.origin || d.origin_label) {
+    const label = isPt
+      ? d.origin_label || ORIGIN_LABELS_PT[d.origin] || d.origin
+      : ORIGIN_LABELS_EN[d.origin] || d.origin_label || d.origin;
+    if (label && label !== 'none') parts.push(label);
   }
-  if (d.content_rating) {
+  if (d.content_rating && d.content_rating !== 'none') {
     parts.push(
       d.content_rating === 'L'
         ? isPt
@@ -207,14 +228,12 @@ export function formatDecisionLine(
         : `${d.content_rating}+`,
     );
   }
-  if (d.pacing) {
+  if (d.pacing && d.pacing !== 'none') {
     parts.push((isPt ? PACING_LABELS_PT : PACING_LABELS_EN)[d.pacing] || d.pacing);
   }
-  if (d.viewing_context) {
-    parts.push(
-      (isPt ? CONTEXT_LABELS_PT : CONTEXT_LABELS_EN)[d.viewing_context] ||
-        d.viewing_context,
-    );
+  const ctx = d.context || d.viewing_context;
+  if (ctx && ctx !== 'none') {
+    parts.push((isPt ? CONTEXT_LABELS_PT : CONTEXT_LABELS_EN)[ctx] || ctx);
   }
   return parts.join(' · ');
 }

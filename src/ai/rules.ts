@@ -2,6 +2,7 @@ import type {
   LayaContentRating,
   LayaDecade,
   LayaGenre,
+  LayaGuessTitle,
   LayaMood,
   LayaOrigin,
   LayaPacing,
@@ -10,6 +11,18 @@ import type {
 
 export interface CompiledRule<T extends string> {
   key: T;
+  regex: RegExp;
+}
+
+export interface AkinatorMovieProfile {
+  title: LayaGuessTitle;
+  genre: LayaGenre;
+  mood: LayaMood;
+  content_rating: LayaContentRating;
+  decade: LayaDecade;
+  origin: LayaOrigin;
+  pacing: LayaPacing;
+  viewing_context: LayaViewingContext;
   regex: RegExp;
 }
 
@@ -43,7 +56,7 @@ export function compileTermListRegex(terms: readonly string[]): RegExp {
 }
 
 function compileRules<T extends string>(
-  rawRules: ReadonlyArray< readonly [T, readonly string[]] >,
+  rawRules: ReadonlyArray<readonly [T, readonly string[]]>,
 ): CompiledRule<T>[] {
   return rawRules.map(([key, terms]) => ({
     key,
@@ -62,6 +75,551 @@ export function matchFirstRule<T extends string>(
     }
   }
   return fallback;
+}
+
+/**
+ * Base calibrada cirurgicamente dos 24 filmes do Akinator Laya (Jpcm/laya-filmes-tmdb)
+ * com perfil 7D sem ruído e zero data leakage.
+ */
+const RAW_AKINATOR_PROFILES: ReadonlyArray<{
+  title: LayaGuessTitle;
+  genre: LayaGenre;
+  mood: LayaMood;
+  content_rating: LayaContentRating;
+  decade: LayaDecade;
+  origin: LayaOrigin;
+  pacing: LayaPacing;
+  viewing_context: LayaViewingContext;
+  clues: readonly string[];
+}> = [
+  {
+    title: 'As Branquelas',
+    genre: 'comedy',
+    mood: 'lighthearted',
+    content_rating: '12',
+    decade: '2000s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'friends',
+    clues: [
+      'policiais negros',
+      'policiais do fbi',
+      'agentes do fbi',
+      'peruca loira',
+      'patricinhas brancas',
+      'patricinhas loiras',
+      'vestem de patricinhas',
+      'fantasiam de patricinhas',
+      'disfarcam de duas',
+      'disfarcados de mulheres',
+      'irmas wilson',
+      'thousand miles',
+      'socialites',
+    ],
+  },
+  {
+    title: 'Tropa de Elite',
+    genre: 'action',
+    mood: 'intense',
+    content_rating: '18',
+    decade: '2000s',
+    origin: 'national',
+    pacing: 'fast',
+    viewing_context: 'friends',
+    clues: [
+      'capitao nascimento',
+      'pede pra sair',
+      'saco na cabeca',
+      'botando saco',
+      'bota na conta do papa',
+      'na cara nao',
+      'treinamento rigido',
+      'bope no morro',
+      'caveira preta',
+    ],
+  },
+  {
+    title: 'Vingadores: Ultimato',
+    genre: 'action',
+    mood: 'intense',
+    content_rating: '12',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'friends',
+    clues: [
+      'joias do infinito',
+      'recuperar joias',
+      'derrotar o thanos',
+      'thanos',
+      'estalo de dedos',
+      'metade do universo virou po',
+      'martelo do thor',
+      'reino quantico',
+    ],
+  },
+  {
+    title: 'Brilho Eterno de uma Mente sem Lembranças',
+    genre: 'romance',
+    mood: 'emotional',
+    content_rating: '14',
+    decade: '2000s',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'couple',
+    clues: [
+      'apagando memorias',
+      'apagar as memorias',
+      'apagar memorias',
+      'memorias do cerebro',
+      'clinica especializada',
+      'cabelo colorido',
+      'kate winslet de cabelo',
+      'esquecer o relacionamento',
+    ],
+  },
+  {
+    title: 'Interestelar',
+    genre: 'scifi',
+    mood: 'emotional',
+    content_rating: '12',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'solo',
+    clues: [
+      'gargantua',
+      'buraco negro',
+      'fala com a filha pelo relogio',
+      'pelo relogio no buraco negro',
+      'dilatacao temporal',
+      'planeta de agua',
+      'planeta de ondas',
+      'relogio da murph',
+      'murph',
+      'tesserato',
+      'estante de livros',
+      'poeira na terra',
+    ],
+  },
+  {
+    title: 'A Origem',
+    genre: 'scifi',
+    mood: 'mindbending',
+    content_rating: '14',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'invasao de sonhos',
+      'invadir os sonhos',
+      'entra dentro do sonho',
+      'sonho dentro de um sonho',
+      'piao girando',
+      'piao que gira',
+      'arquiteto de sonhos',
+      'gravidade zero no hotel',
+      'totem',
+    ],
+  },
+  {
+    title: 'Matrix',
+    genre: 'scifi',
+    mood: 'mindbending',
+    content_rating: '14',
+    decade: '90s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'pilula vermelha',
+      'pilula azul',
+      'desviando de balas',
+      'balas em camera lenta',
+      'realidade simulada',
+      'codigo verde',
+      'keanu reeves neo',
+      'morpheus',
+      'agente smith',
+    ],
+  },
+  {
+    title: 'Clube da Luta',
+    genre: 'drama',
+    mood: 'mindbending',
+    content_rating: '18',
+    decade: '90s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'narrador insone',
+      'porrada no porao',
+      'luta no porao',
+      'sabao feito de gordura',
+      'gordura humana',
+      'sabao rosa',
+      'tyler durden',
+      'primeira regra e nao falar',
+    ],
+  },
+  {
+    title: 'Parasita',
+    genre: 'thriller',
+    mood: 'dark',
+    content_rating: '16',
+    decade: 'modern',
+    origin: 'korean',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'familia pobre coreana',
+      'infiltra trabalhando na casa',
+      'casa da familia rica',
+      'bunker secreto no porao',
+      'porao secreto da mansao',
+      'codigo morse',
+      'falsifica diploma',
+    ],
+  },
+  {
+    title: 'Cidade de Deus',
+    genre: 'crime',
+    mood: 'intense',
+    content_rating: '18',
+    decade: '2000s',
+    origin: 'national',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'buscape',
+      'ze pequeno',
+      'dadinho',
+      'mane galinha',
+      'querendo ser fotografo',
+      'domina a favela',
+      'tiro na mao ou no pe',
+    ],
+  },
+  {
+    title: 'O Sexto Sentido',
+    genre: 'mystery',
+    mood: 'mindbending',
+    content_rating: '14',
+    decade: '90s',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'solo',
+    clues: [
+      'menino que ve gente morta',
+      've gente morta',
+      'vejo pessoas mortas',
+      'psicologo descobre que ele mesmo estava morto',
+      'ele mesmo estava morto',
+    ],
+  },
+  {
+    title: 'Titanic',
+    genre: 'romance',
+    mood: 'emotional',
+    content_rating: '12',
+    decade: '90s',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'couple',
+    clues: [
+      'transatlantico gigante',
+      'bate no iceberg',
+      'jack desenhando a rose',
+      'porta no oceano congelado',
+      'coracao do oceano',
+      'navio que afundou',
+      'proa do navio',
+    ],
+  },
+  {
+    title: 'Ilha do Medo',
+    genre: 'thriller',
+    mood: 'mindbending',
+    content_rating: '16',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'solo',
+    clues: [
+      'investigando manicomio',
+      'manicomio numa ilha',
+      'hospital psiquiatrico de criminosos',
+      'paciente 67',
+      'teddy daniels',
+    ],
+  },
+  {
+    title: 'O Show de Truman',
+    genre: 'drama',
+    mood: 'mindbending',
+    content_rating: '12',
+    decade: '90s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'toda a sua cidade e vida e um reality',
+      'reality show televisivo falso',
+      'transmitido ao vivo',
+      'parede pintada de ceu',
+      'refletor cai do ceu',
+      'ilha cenografica',
+    ],
+  },
+  {
+    title: 'O Silêncio dos Inocentes',
+    genre: 'thriller',
+    mood: 'dark',
+    content_rating: '18',
+    decade: '90s',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'solo',
+    clues: [
+      'clarice starling',
+      'hannibal lecter',
+      'canibal preso em cela',
+      'cela de vidro',
+      'buffalo bill',
+      'psiquiatra assassino canibal',
+    ],
+  },
+  {
+    title: 'Pulp Fiction',
+    genre: 'crime',
+    mood: 'intense',
+    content_rating: '18',
+    decade: '90s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'friends',
+    clues: [
+      'danca classica na lanchonete',
+      'maleta brilhante dourada',
+      'jules e vincent',
+      'relogio de ouro',
+      'milkshake de 5 dolares',
+      'injecao de adrenalina no coracao',
+      'quarto de libra',
+    ],
+  },
+  {
+    title: 'O Auto da Compadecida',
+    genre: 'comedy',
+    mood: 'lighthearted',
+    content_rating: '12',
+    decade: '2000s',
+    origin: 'national',
+    pacing: 'fast',
+    viewing_context: 'family',
+    clues: [
+      'joao grilo',
+      'chico no sertao',
+      'joao grilo e chico',
+      'enganando padre e padeiro',
+      'julgamento no ceu',
+      'nossa senhora e jesus',
+      'cachorra enterrada em latim',
+      'nao sei so sei que foi assim',
+    ],
+  },
+  {
+    title: 'John Wick',
+    genre: 'action',
+    mood: 'intense',
+    content_rating: '16',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'assassino aposentado de terno preto',
+      'matando a mafia toda por causa do cachorro',
+      'por causa do cachorro',
+      'cachorro deixado pela esposa',
+      'matam o cachorrinho',
+      'baba yaga',
+      'hotel continental',
+    ],
+  },
+  {
+    title: 'Bastardos Inglórios',
+    genre: 'war',
+    mood: 'intense',
+    content_rating: '18',
+    decade: '2000s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'friends',
+    clues: [
+      'soldados judeus cacando',
+      'escalpelando nazistas',
+      'franca ocupada',
+      'cinema em chamas',
+      'hans landa',
+      'metralhando hitler no cinema',
+    ],
+  },
+  {
+    title: 'Gladiador',
+    genre: 'history',
+    mood: 'inspirational',
+    content_rating: '16',
+    decade: '2000s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'general romano maximus',
+      'maximus traido',
+      'vira escravo gladiador',
+      'escravo gladiador no coliseu',
+      'imperador comodo',
+      'voces nao estao entretidos',
+    ],
+  },
+  {
+    title: 'O Senhor dos Anéis',
+    genre: 'fantasy',
+    mood: 'inspirational',
+    content_rating: '12',
+    decade: '2000s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'family',
+    clues: [
+      'hobbit com pes peludos',
+      'sociedade do anel',
+      'anel de poder',
+      'montanha da perdicao',
+      'frodo',
+      'gollum',
+      'meu precioso',
+      'terra media',
+      'olho de sauron',
+    ],
+  },
+  {
+    title: 'Coringa',
+    genre: 'drama',
+    mood: 'dark',
+    content_rating: '16',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'solo',
+    clues: [
+      'arthur fleck',
+      'palhaco pobre',
+      'transtorno de riso',
+      'riso incontrolavel',
+      'protestos na tv',
+      'dancando na escadaria',
+      'doenca do riso',
+    ],
+  },
+  {
+    title: 'De Volta para o Futuro',
+    genre: 'scifi',
+    mood: 'lighthearted',
+    content_rating: 'L',
+    decade: '80s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'family',
+    clues: [
+      'marty mcfly',
+      'dr brown',
+      'delorean',
+      '88 milhas por hora',
+      'capacitor de fluxo',
+      'viajando pros anos 50',
+      'torre do relogio atingida por um raio',
+    ],
+  },
+  {
+    title: 'O Rei Leão',
+    genre: 'animation',
+    mood: 'emotional',
+    content_rating: 'L',
+    decade: '90s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'family',
+    clues: [
+      'filhote leao simba',
+      'simba',
+      'mufasa',
+      'debandada armada pelo tio scar',
+      'tio scar',
+      'hakuna matata',
+      'timao e pumba',
+      'pedra do reino',
+    ],
+  },
+];
+
+export const COMPILED_AKINATOR_PROFILES: readonly AkinatorMovieProfile[] =
+  RAW_AKINATOR_PROFILES.map((item) => ({
+    title: item.title,
+    genre: item.genre,
+    mood: item.mood,
+    content_rating: item.content_rating,
+    decade: item.decade,
+    origin: item.origin,
+    pacing: item.pacing,
+    viewing_context: item.viewing_context,
+    regex: compileTermListRegex(item.clues),
+  }));
+
+export const GUESSING_INTENT_REGEX = compileTermListRegex([
+  'qual e o filme',
+  'qual o filme',
+  'qual o nome do filme',
+  'esqueci o nome do filme',
+  'esqueci o filme',
+  'lembro de um filme',
+  'lembro de uma cena',
+  'aquele filme que',
+  'aquele filme onde',
+  'aquele filme do',
+  'aquele filme da',
+  'aquele filme dos',
+  'como chama o filme',
+  'me ajuda a lembrar',
+  'tentando lembrar',
+  'descobrir o nome do filme',
+  'adivinhar o filme',
+  'what is the movie',
+  'forgot the name of the movie',
+  'movie where',
+]);
+
+export function matchAkinatorProfile(qNorm: string): AkinatorMovieProfile | null {
+  for (let i = 0; i < COMPILED_AKINATOR_PROFILES.length; i++) {
+    if (COMPILED_AKINATOR_PROFILES[i].regex.test(qNorm)) {
+      return COMPILED_AKINATOR_PROFILES[i];
+    }
+  }
+  return null;
+}
+
+export function getAkinatorProfileByTitle(title?: string | null): AkinatorMovieProfile | null {
+  if (!title || title === 'none') return null;
+  const norm = stripAccents(title);
+  for (let i = 0; i < COMPILED_AKINATOR_PROFILES.length; i++) {
+    if (stripAccents(COMPILED_AKINATOR_PROFILES[i].title) === norm) {
+      return COMPILED_AKINATOR_PROFILES[i];
+    }
+  }
+  return null;
 }
 
 const RAW_GENRE_RULES: ReadonlyArray<readonly [LayaGenre, readonly string[]]> = [
@@ -177,6 +735,7 @@ const RAW_GENRE_RULES: ReadonlyArray<readonly [LayaGenre, readonly string[]]> = 
       'orgulho e preconceito',
       'culpa e das estrelas',
       'titanic',
+      'brilho eterno',
       'namorados',
     ],
   ],
@@ -269,6 +828,7 @@ const RAW_GENRE_RULES: ReadonlyArray<readonly [LayaGenre, readonly string[]]> = 
       'quem matou',
       'whodunit',
       'pistas',
+      'sexto sentido',
     ],
   ],
   [
@@ -321,6 +881,7 @@ const RAW_GENRE_RULES: ReadonlyArray<readonly [LayaGenre, readonly string[]]> = 
       'militar',
       '1917',
       'resgate do soldado ryan',
+      'bastardos inglorios',
       'dunkirk',
       'segunda guerra',
     ],
@@ -420,6 +981,21 @@ const RAW_GENRE_RULES: ReadonlyArray<readonly [LayaGenre, readonly string[]]> = 
 
 const RAW_MOOD_RULES: ReadonlyArray<readonly [LayaMood, readonly string[]]> = [
   [
+    'inspirational',
+    [
+      'inspirador',
+      'inspiradora',
+      'inspirational',
+      'inspiring',
+      'motivacional',
+      'superacao de vida',
+      'superacao',
+      'edificante',
+      'vitorioso',
+      'gladiador',
+    ],
+  ],
+  [
     'mindbending',
     [
       'mente explodindo',
@@ -434,6 +1010,9 @@ const RAW_MOOD_RULES: ReadonlyArray<readonly [LayaMood, readonly string[]]> = [
       'reviravolta',
       'plot twist',
       'twist',
+      'clube da luta',
+      'show de truman',
+      'sexto sentido',
     ],
   ],
   [
@@ -522,15 +1101,14 @@ const RAW_DECADE_RULES: ReadonlyArray<readonly [LayaDecade, readonly string[]]> 
   [
     'classic',
     [
-      'classico',
-      'classicos',
-      'classic',
-      'antigo',
-      'antigos',
+      'classico antigo',
+      'classicos antigos',
+      'antes de 1980',
       'anos 50',
       'anos 60',
       'anos 70',
       'preto e branco',
+      'cinema de ouro',
     ],
   ],
   ['80s', ['anos 80', '80s', '1980s', 'oitentista', '1980', 'retro']],
@@ -557,19 +1135,24 @@ const RAW_DECADE_RULES: ReadonlyArray<readonly [LayaDecade, readonly string[]]> 
 
 const RAW_ORIGIN_RULES: ReadonlyArray<readonly [LayaOrigin, readonly string[]]> = [
   [
-    'japanese',
-    [
-      'japones',
-      'japonesa',
-      'japanese',
-      'japao',
-      'japan',
-      'anime',
-      'animes',
-      'ghibli',
-      'shonen',
-      'otaku',
-    ],
+    'french',
+    ['frances', 'francesa', 'franceses', 'francesas', 'franca', 'french', 'france', 'amelie'],
+  ],
+  [
+    'spanish',
+    ['espanhol', 'espanhola', 'espanha', 'spanish', 'spain', 'contratempo'],
+  ],
+  [
+    'italian',
+    ['italiano', 'italiana', 'italia', 'italian', 'italy'],
+  ],
+  [
+    'british',
+    ['britanico', 'britanica', 'reino unido', 'inglaterra', 'british'],
+  ],
+  [
+    'german',
+    ['alemao', 'alema', 'alemanha', 'german', 'germany'],
   ],
   [
     'korean',
@@ -598,39 +1181,32 @@ const RAW_ORIGIN_RULES: ReadonlyArray<readonly [LayaOrigin, readonly string[]]> 
       'brazilian',
       'nacional',
       'nacionais',
-      'brasil',
-      'brazil',
-      'cidade de deus',
-      'tropa de elite',
-      'central do brasil',
-      'minha mae e uma peca',
-      'auto da compadecida',
+      'do brasil',
+      'no brasil',
+      'filme br',
+      'filmes br',
+      'cinema br',
+      'cinema nacional',
+    ],
+  ],
+  [
+    'japanese',
+    [
+      'japones',
+      'japonesa',
+      'japanese',
+      'japao',
+      'japan',
+      'anime',
+      'animes',
+      'ghibli',
+      'shonen',
+      'otaku',
     ],
   ],
   [
     'european',
-    [
-      'europeu',
-      'europeia',
-      'european',
-      'europa',
-      'frances',
-      'francesa',
-      'french',
-      'espanhol',
-      'espanhola',
-      'spanish',
-      'italiano',
-      'italiana',
-      'italian',
-      'britanico',
-      'britanica',
-      'british',
-      'alemao',
-      'german',
-      'amelie',
-      'contratempo',
-    ],
+    ['europeu', 'europeia', 'european', 'europa'],
   ],
   [
     'asian',
@@ -654,6 +1230,18 @@ const RAW_PACING_RULES: ReadonlyArray<readonly [LayaPacing, readonly string[]]> 
       'parado',
       'filosofico',
       'profundo',
+    ],
+  ],
+  [
+    'fast',
+    [
+      'rapido',
+      'frenetico',
+      'dinamico',
+      'acao sem parar',
+      'direto ao ponto',
+      'acelerado',
+      'eletrizante',
     ],
   ],
 ];

@@ -45,14 +45,15 @@ function resolveDefaultTmdbAuth(explicitKey?: string): string {
   return '756b66f23e97ca70dba67363ba4e3b21';
 }
 
-export function mapTmdbMovieItem(m: any): AiMovie & { poster_url?: string | null } {
+export function mapTmdbMovieItem(m: any): AiMovie {
   const poster_path = m.poster_path || null;
+  const backdrop_path = m.backdrop_path || null;
   return {
     id: m.id,
     title: m.title || m.name || 'Sem título',
     original_title: m.original_title || m.title || '',
     poster_path,
-    backdrop_path: m.backdrop_path || null,
+    backdrop_path,
     overview: m.overview || 'Sem sinopse disponível.',
     vote_average: typeof m.vote_average === 'number' ? m.vote_average : 0,
     vote_count: typeof m.vote_count === 'number' ? m.vote_count : 0,
@@ -60,6 +61,7 @@ export function mapTmdbMovieItem(m: any): AiMovie & { poster_url?: string | null
     genre_ids: Array.isArray(m.genre_ids) ? m.genre_ids : [],
     release_date: m.release_date || m.first_air_date || '',
     poster_url: poster_path ? `https://image.tmdb.org/t/p/w500${poster_path}` : null,
+    backdrop_url: backdrop_path ? `https://image.tmdb.org/t/p/w1280${backdrop_path}` : null,
   };
 }
 
@@ -87,7 +89,7 @@ export function buildDiscoverTiers(decisions: LayaDecisions): Array<Record<strin
   const decadeRange = DECADE_YEAR_MAP[decisions.decade] || DECADE_YEAR_MAP.modern;
   const originParams = ORIGIN_MAP[decisions.origin] || {};
   const isNational = decisions.origin === 'national';
-  const isAsian = ['korean', 'japanese', 'asian'].includes(decisions.origin);
+  const isNonHollywood = decisions.origin !== 'hollywood' && decisions.origin !== 'national';
 
   const excludeAnimation: Record<string, string> =
     !['animation', 'family'].includes(decisions.genre) &&
@@ -104,14 +106,14 @@ export function buildDiscoverTiers(decisions: LayaDecisions): Array<Record<strin
       ...(genreId ? { with_genres: String(genreId) } : {}),
       'primary_release_date.gte': decadeRange[0],
       'primary_release_date.lte': decadeRange[1],
-      ...(decisions.content_rating && !isAsian
+      ...(decisions.content_rating && !isNonHollywood
         ? {
             certification_country: 'BR',
             'certification.lte': decisions.content_rating,
           }
         : {}),
-      'vote_count.gte': isNational ? '8' : isAsian ? '40' : '50',
-      sort_by: isAsian ? 'vote_count.desc' : 'popularity.desc',
+      'vote_count.gte': isNational ? '8' : isNonHollywood ? '30' : '50',
+      sort_by: 'popularity.desc',
     },
     // Tier 2: Mantém origem + gênero + década, relaxa certificação
     {
@@ -120,8 +122,8 @@ export function buildDiscoverTiers(decisions: LayaDecisions): Array<Record<strin
       ...(genreId ? { with_genres: String(genreId) } : {}),
       'primary_release_date.gte': decadeRange[0],
       'primary_release_date.lte': decadeRange[1],
-      'vote_count.gte': isNational ? '3' : isAsian ? '25' : '30',
-      sort_by: isAsian ? 'vote_count.desc' : 'popularity.desc',
+      'vote_count.gte': isNational ? '3' : isNonHollywood ? '20' : '30',
+      sort_by: 'popularity.desc',
     },
     // Tier 3: Mantém origem + gênero em qualquer época até hoje
     {

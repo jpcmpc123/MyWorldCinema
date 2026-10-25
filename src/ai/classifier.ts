@@ -106,7 +106,7 @@ export function classifyLaya7D(
   const origin = matchFirstRule(
     qNorm,
     COMPILED_ORIGIN_RULES,
-    (weightPreds.origin as any) || 'hollywood',
+    'hollywood',
   );
 
   const content_rating = resolveContentRating(qNorm, genre, weightPreds.content_rating);
