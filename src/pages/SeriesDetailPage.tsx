@@ -8,7 +8,7 @@ import { Backdrop, preloadSingleImage } from '../components/Backdrop';
 import { openPersonProfile } from '../utils/personNav';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { getRequiredFilmImageUrls } from './FilmPage';
+import { getRequiredFilmImageUrls, isTitleUnreleased } from './FilmPage';
 
 // Página de série (/tv/:id) — versão simplificada da FilmPage:
 // navegação/leitura apenas (sem log/diário/rating; o app registra FILMES).
@@ -389,7 +389,7 @@ export const SeriesDetailPage: React.FC = () => {
 
             {/* Rating / seasons chips */}
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              {show.vote_average > 0 && (
+              {!isTitleUnreleased(show) && show.vote_average > 0 && (
                 <span className="flex items-center gap-1 text-lb-green font-semibold">
                   <Star className="w-3.5 h-3.5 fill-lb-green" />
                   {(show.vote_average / 2).toFixed(1)}

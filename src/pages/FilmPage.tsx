@@ -195,6 +195,32 @@ function preloadAndMarkImage(url: string): Promise<void> {
   });
 }
 
+export function isTitleUnreleased(details: TMDBMovieDetails | null | undefined): boolean {
+  if (!details) return false;
+  const detailsAny = details as unknown as Record<string, unknown>;
+  const rawDate = (details.release_date || (detailsAny.first_air_date as string) || '').trim();
+  const todayIso = new Date().toISOString().slice(0, 10);
+  if (rawDate && rawDate.slice(0, 10) > todayIso) {
+    return true;
+  }
+  const status = (details.status || '').toLowerCase();
+  if (
+    status === 'rumored' ||
+    status === 'planned' ||
+    status === 'in production' ||
+    status === 'post production'
+  ) {
+    return true;
+  }
+  if (!rawDate && (details.vote_count ?? 0) === 0 && (details.vote_average ?? 0) === 0) {
+    return true;
+  }
+  if (status && (details.vote_count ?? 0) === 0 && (details.vote_average ?? 0) === 0) {
+    return true;
+  }
+  return false;
+}
+
 interface InitialMoviePayload {
   id: number;
   title?: string;
@@ -336,7 +362,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       fromPersonProfilePath,
       extraAvatarsForMovie,
     );
-    const hasUnified = Boolean(getCachedUnifiedRatings(movieId, isTv));
+    const hasUnified =
+      isTitleUnreleased(cachedDetails) || Boolean(getCachedUnifiedRatings(movieId, isTv));
     return areAllUrlsLoaded(urls) && hasUnified;
   }, [
     isMobile,
@@ -393,6 +420,11 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
   useEffect(() => {
     if (!movieId) return;
+    if (movie && isTitleUnreleased(movie)) {
+      setUnifiedRatings(null);
+      setUnifiedLoading(false);
+      return;
+    }
     const cachedUnified = getCachedUnifiedRatings(movieId, isTv);
     if (cachedUnified) {
       setUnifiedRatings(cachedUnified);
@@ -580,6 +612,13 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     };
 
     const preloadUnifiedForMobile = async (details: TMDBMovieDetails) => {
+      if (isTitleUnreleased(details)) {
+        if (!cancelled) {
+          setUnifiedRatings(null);
+          setUnifiedLoading(false);
+        }
+        return;
+      }
       const existing = getCachedUnifiedRatings(movieId, isTv);
       if (existing) {
         if (!cancelled) {
@@ -632,8 +671,9 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
           }
 
           // No celular: verifica se todas as imagens e notas unificadas já estão prontas
-          const cachedUnified = getCachedUnifiedRatings(movieId, isTv);
-          if (areAllUrlsLoaded(urls) && cachedUnified) {
+          const cachedUnreleased = isTitleUnreleased(cached);
+          const cachedUnified = cachedUnreleased ? null : getCachedUnifiedRatings(movieId, isTv);
+          if (areAllUrlsLoaded(urls) && (cachedUnreleased || cachedUnified)) {
             urls.forEach((u) => markPosterUrlLoaded(u));
             setUnifiedRatings(cachedUnified);
             setUnifiedLoading(false);
@@ -897,6 +937,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
   const isOdyssey = movie.id === 1368337;
   const isPridePrejudice = movie.id === 4348;
+  const isUnreleased = isTitleUnreleased(movie);
 
   // Proportional MyWorld stats
   const watchedStat = isPridePrejudice ? 3300000 : isOdyssey ? 4800000 : Math.max(35000, (movie.vote_count || 100) * 350);
@@ -1016,22 +1057,28 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
               </button>
 
               {/* Production Statistics List — 10px below poster, 12px font, #667788 */}
-              <div className="flex w-[230px] items-center justify-between mt-2.5 py-1 letterboxd-stats-list select-none">
+              <div
+                className={`flex w-[230px] items-center ${
+                  isUnreleased ? 'justify-center gap-5' : 'justify-between'
+                } mt-2.5 py-1 letterboxd-stats-list select-none`}
+              >
                 <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${watchedStat.toLocaleString()} ${t('film_stat_watched')}`}>
                   <Eye className="w-4 h-4 text-lb-green" />
                   <span className="font-normal">{formatNumber(watchedStat)}</span>
                 </div>
-                <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${ratingsStat.toLocaleString()} ${t('film_stat_ratings')}`}>
-                  <BarChart2 className="w-4 h-4 text-lb-blue" />
-                  <span className="font-normal">{formatNumber(ratingsStat)}</span>
+                {!isUnreleased && (
+                  <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${ratingsStat.toLocaleString()} ${t('film_stat_ratings')}`}>
+                    <BarChart2 className="w-4 h-4 text-lb-blue" />
+                    <span className="font-normal">{formatNumber(ratingsStat)}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${listsStat.toLocaleString()} ${t('film_stat_lists')}`}>
+                  <Layers className="w-4 h-4 text-[#e5a00d]" />
+                  <span className="font-normal">{formatNumber(listsStat)}</span>
                 </div>
                 <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${likesStat.toLocaleString()} ${t('film_stat_likes')}`}>
                   <Heart className="w-4 h-4 text-lb-orange fill-lb-orange" />
                   <span className="font-normal">{formatNumber(likesStat)}</span>
-                </div>
-                <div className="flex items-center gap-1.5 hover:text-white transition-colors" title={`${listsStat.toLocaleString()} ${t('film_stat_lists')}`}>
-                  <Layers className="w-4 h-4 text-[#e5a00d]" />
-                  <span className="font-normal">{formatNumber(listsStat)}</span>
                 </div>
               </div>
 
@@ -1215,15 +1262,25 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             <div className="md:hidden border-t border-white/10 pt-3 pb-3 mt-4 -mx-4 px-4">
               <span className="text-[11px] uppercase tracking-wider text-[#9ab]">{t('ratings')}</span>
               {(() => {
-                const baseAvg = isOdyssey ? 4.01 : movie.vote_average ? movie.vote_average / 2 : 3.8;
-                const avg =
-                  unifiedRatings && unifiedRatings.unifiedStars5 > 0
+                const baseAvg = isUnreleased
+                  ? 0
+                  : isOdyssey
+                    ? 4.01
+                    : movie.vote_average
+                      ? movie.vote_average / 2
+                      : 0;
+                const avg = isUnreleased
+                  ? 0
+                  : unifiedRatings && unifiedRatings.unifiedStars5 > 0
                     ? unifiedRatings.unifiedStars5
                     : baseAvg;
+                const hasRating = !isUnreleased && avg > 0;
                 const scale = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
-                const dist = scale.map((r) => Math.max(0.06, Math.exp(-(((r - avg) ** 2)) / 0.75)));
-                const maxVal = Math.max(...dist);
-                const fullStars = Math.round(avg);
+                const dist = hasRating
+                  ? scale.map((r) => Math.max(0.06, Math.exp(-(((r - avg) ** 2)) / 0.75)))
+                  : scale.map(() => 0);
+                const maxVal = hasRating ? Math.max(...dist) : 1;
+                const fullStars = hasRating ? Math.round(avg) : 0;
                 return (
                   <>
                     <div className="flex items-end gap-3 mt-1.5">
@@ -1235,13 +1292,19 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                           <div
                             key={i}
                             className="flex-1 bg-[#556677] rounded-t-none"
-                            style={{ height: `${Math.max(8, Math.round((v / maxVal) * 100))}%` }}
+                            style={{
+                              height: hasRating
+                                ? `${Math.max(8, Math.round((v / maxVal) * 100))}%`
+                                : '2px',
+                            }}
                           />
                         ))}
                       </div>
                       {/* Média grande + 5 estrelinhas verdes */}
                       <div className="flex flex-col items-end pb-0.5 tabular-nums">
-                        <span className="text-2xl font-light text-[#9ab] leading-none">{avg.toFixed(1)}</span>
+                        {hasRating && (
+                          <span className="text-2xl font-light text-[#9ab] leading-none">{avg.toFixed(1)}</span>
+                        )}
                         <span className="text-xs leading-none mt-1">
                           {Array.from({ length: 5 }, (_, i) => (
                             <span key={i} className={i < fullStars ? 'text-[#00e054]' : 'text-[#3a4550]'}>★</span>
@@ -1249,10 +1312,12 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                         </span>
                       </div>
                     </div>
-                    <UnifiedPlatformBadges
-                      sources={unifiedRatings?.sources}
-                      loading={unifiedLoading}
-                    />
+                    {hasRating && (
+                      <UnifiedPlatformBadges
+                        sources={unifiedRatings?.sources}
+                        loading={unifiedLoading}
+                      />
+                    )}
                   </>
                 );
               })()}
@@ -1704,14 +1769,16 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                 </div>
               </div>
 
-              {/* Community & Unified Rating Histogram */}
-              <RatingHistogram
-                averageRating={isOdyssey ? 4.01 : (movie.vote_average ? movie.vote_average / 2 : 3.8)}
-                voteCount={isOdyssey ? 244000 : (movie.vote_count || 1420)}
-                unifiedStars5={unifiedRatings?.unifiedStars5}
-                unifiedSources={unifiedRatings?.sources}
-                unifiedLoading={unifiedLoading}
-              />
+              {/* Community & Unified Rating Histogram — oculto no PC enquanto o filme não tiver sido lançado */}
+              {!isUnreleased && (
+                <RatingHistogram
+                  averageRating={isOdyssey ? 4.01 : (movie.vote_average ? movie.vote_average / 2 : 3.8)}
+                  voteCount={isOdyssey ? 244000 : (movie.vote_count || 1420)}
+                  unifiedStars5={unifiedRatings?.unifiedStars5}
+                  unifiedSources={unifiedRatings?.sources}
+                  unifiedLoading={unifiedLoading}
+                />
+              )}
             </div>
           )}
           </div>
