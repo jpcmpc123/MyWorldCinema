@@ -195,12 +195,55 @@ function preloadAndMarkImage(url: string): Promise<void> {
   });
 }
 
-export function isTitleUnreleased(details: TMDBMovieDetails | null | undefined): boolean {
-  if (!details) return false;
+export function getEarliestReleaseDate(details: TMDBMovieDetails | null | undefined): string {
+  if (!details) return '';
   const detailsAny = details as unknown as Record<string, unknown>;
-  const rawDate = (details.release_date || (detailsAny.first_air_date as string) || '').trim();
+  const dates: string[] = [];
+  const primary = (details.release_date || (detailsAny.first_air_date as string) || '')
+    .trim()
+    .slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(primary)) {
+    dates.push(primary);
+  }
+  const relGroups = details.release_dates?.results;
+  if (Array.isArray(relGroups)) {
+    for (const group of relGroups) {
+      if (!Array.isArray(group?.release_dates)) continue;
+      for (const rd of group.release_dates) {
+        const d = (rd?.release_date || '').trim().slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+          dates.push(d);
+        }
+      }
+    }
+  }
+  if (dates.length === 0) return '';
+  dates.sort();
+  return dates[0];
+}
+
+export function isTitleUnreleased(
+  details: TMDBMovieDetails | null | undefined,
+  unified?: UnifiedRatingsPayload | null,
+): boolean {
+  if (!details) return false;
+  if (
+    unified &&
+    unified.unifiedStars5 > 0 &&
+    Array.isArray(unified.sources) &&
+    unified.sources.length > 0
+  ) {
+    return false;
+  }
+  if ((details.vote_average ?? 0) > 0 || (details.vote_count ?? 0) > 0) {
+    return false;
+  }
   const todayIso = new Date().toISOString().slice(0, 10);
-  if (rawDate && rawDate.slice(0, 10) > todayIso) {
+  const earliestDate = getEarliestReleaseDate(details);
+  if (earliestDate && earliestDate <= todayIso) {
+    return false;
+  }
+  if (earliestDate && earliestDate > todayIso) {
     return true;
   }
   const status = (details.status || '').toLowerCase();
@@ -212,10 +255,7 @@ export function isTitleUnreleased(details: TMDBMovieDetails | null | undefined):
   ) {
     return true;
   }
-  if (!rawDate && (details.vote_count ?? 0) === 0 && (details.vote_average ?? 0) === 0) {
-    return true;
-  }
-  if (status && (details.vote_count ?? 0) === 0 && (details.vote_average ?? 0) === 0) {
+  if (!earliestDate) {
     return true;
   }
   return false;
@@ -362,8 +402,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       fromPersonProfilePath,
       extraAvatarsForMovie,
     );
-    const hasUnified =
-      isTitleUnreleased(cachedDetails) || Boolean(getCachedUnifiedRatings(movieId, isTv));
+    const hasUnified = Boolean(getCachedUnifiedRatings(movieId, isTv));
     return areAllUrlsLoaded(urls) && hasUnified;
   }, [
     isMobile,
@@ -420,11 +459,6 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
   useEffect(() => {
     if (!movieId) return;
-    if (movie && isTitleUnreleased(movie)) {
-      setUnifiedRatings(null);
-      setUnifiedLoading(false);
-      return;
-    }
     const cachedUnified = getCachedUnifiedRatings(movieId, isTv);
     if (cachedUnified) {
       setUnifiedRatings(cachedUnified);
@@ -612,13 +646,6 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     };
 
     const preloadUnifiedForMobile = async (details: TMDBMovieDetails) => {
-      if (isTitleUnreleased(details)) {
-        if (!cancelled) {
-          setUnifiedRatings(null);
-          setUnifiedLoading(false);
-        }
-        return;
-      }
       const existing = getCachedUnifiedRatings(movieId, isTv);
       if (existing) {
         if (!cancelled) {
@@ -671,9 +698,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
           }
 
           // No celular: verifica se todas as imagens e notas unificadas já estão prontas
-          const cachedUnreleased = isTitleUnreleased(cached);
-          const cachedUnified = cachedUnreleased ? null : getCachedUnifiedRatings(movieId, isTv);
-          if (areAllUrlsLoaded(urls) && (cachedUnreleased || cachedUnified)) {
+          const cachedUnified = getCachedUnifiedRatings(movieId, isTv);
+          if (areAllUrlsLoaded(urls) && cachedUnified) {
             urls.forEach((u) => markPosterUrlLoaded(u));
             setUnifiedRatings(cachedUnified);
             setUnifiedLoading(false);
@@ -937,7 +963,15 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
   const isOdyssey = movie.id === 1368337;
   const isPridePrejudice = movie.id === 4348;
-  const isUnreleased = isTitleUnreleased(movie);
+  const hasUnifiedRating = Boolean(
+    unifiedRatings &&
+      unifiedRatings.unifiedStars5 > 0 &&
+      Array.isArray(unifiedRatings.sources) &&
+      unifiedRatings.sources.length > 0,
+  );
+  const hasTmdbRating = (movie.vote_average ?? 0) > 0 && (movie.vote_count ?? 0) > 0;
+  const isUnreleased = !hasUnifiedRating && !hasTmdbRating && isTitleUnreleased(movie, unifiedRatings);
+  const hasAnyRating = hasUnifiedRating || hasTmdbRating || (!isUnreleased && isOdyssey);
 
   // Proportional MyWorld stats
   const watchedStat = isPridePrejudice ? 3300000 : isOdyssey ? 4800000 : Math.max(35000, (movie.vote_count || 100) * 350);
@@ -1269,9 +1303,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     : movie.vote_average
                       ? movie.vote_average / 2
                       : 0;
-                const avg = isUnreleased
-                  ? 0
-                  : unifiedRatings && unifiedRatings.unifiedStars5 > 0
+                const avg =
+                  hasUnifiedRating && unifiedRatings
                     ? unifiedRatings.unifiedStars5
                     : baseAvg;
                 const hasRating = !isUnreleased && avg > 0;
@@ -1769,10 +1802,18 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                 </div>
               </div>
 
-              {/* Community & Unified Rating Histogram — oculto no PC enquanto o filme não tiver sido lançado */}
-              {!isUnreleased && (
+              {/* Community & Unified Rating Histogram — oculto no PC enquanto o filme não tiver sido lançado / avaliado */}
+              {!isUnreleased && (hasAnyRating || unifiedLoading) && (
                 <RatingHistogram
-                  averageRating={isOdyssey ? 4.01 : (movie.vote_average ? movie.vote_average / 2 : 3.8)}
+                  averageRating={
+                    hasUnifiedRating && unifiedRatings
+                      ? unifiedRatings.unifiedStars5
+                      : isOdyssey
+                        ? 4.01
+                        : movie.vote_average
+                          ? movie.vote_average / 2
+                          : 3.8
+                  }
                   voteCount={isOdyssey ? 244000 : (movie.vote_count || 1420)}
                   unifiedStars5={unifiedRatings?.unifiedStars5}
                   unifiedSources={unifiedRatings?.sources}
