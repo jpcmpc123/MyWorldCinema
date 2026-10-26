@@ -108,13 +108,14 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
 
     const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
     const detailPosterSize = isMob ? 'w342' : 'w500';
+    const detailBackdropSize = isMob ? 'w780' : 'w1280';
     if (film.poster_path) {
       const dpUrl = tmdb.getImageUrl(film.poster_path, detailPosterSize);
       preloadImageUrl(dpUrl);
       void preloadSingleImage(dpUrl);
     }
     if (film.backdrop_path) {
-      void preloadSingleImage(tmdb.getBackdropUrl(film.backdrop_path, 'w1280'));
+      void preloadSingleImage(tmdb.getBackdropUrl(film.backdrop_path, detailBackdropSize));
     }
     const req =
       film.media_type === 'tv'
@@ -124,7 +125,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
       .then((details) => {
         const bp = details.backdrop_path || details.poster_path;
         if (bp) {
-          void preloadSingleImage(tmdb.getBackdropUrl(bp, 'w1280'));
+          void preloadSingleImage(tmdb.getBackdropUrl(bp, detailBackdropSize));
         }
         if (details.poster_path) {
           const dpUrl = tmdb.getImageUrl(details.poster_path, detailPosterSize);
@@ -138,9 +139,8 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
   // Card de pôster (grade de 4 colunas e lista compacta).
   // Série (media_type 'tv') abre /tv/{id}; filme abre /film/{id}.
   const posterCard = (film: TMDBPersonMovieCredit, idx: number, className = '') => {
+    const p185 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w185') : '';
     const p342 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w342') : '';
-    const p500 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w500') : '';
-    const p780 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w780') : '';
     return (
       <Link
         key={`${film.media_type ?? 'movie'}-${film.id}`}
@@ -154,9 +154,9 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
           <img
             ref={smartImgRef}
             onLoad={smartImgOnLoad}
-            src={p500}
-            srcSet={`${p342} 342w, ${p500} 500w, ${p780} 780w`}
-            sizes="(max-width: 640px) 26vw, (max-width: 1024px) 18vw, 185px"
+            src={p185}
+            srcSet={`${p185} 185w, ${p342} 342w`}
+            sizes="(max-width: 640px) 24vw, (max-width: 1024px) 18vw, 185px"
             alt={film.title}
             loading={idx < 8 ? 'eager' : 'lazy'}
             fetchPriority={idx < 4 ? 'high' : 'auto'}
@@ -182,15 +182,21 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
 
   // ---- Aba Bio: foto + biografia completa ---------------------------------
   if (tabKey === 'Bio') {
+    const bioImgW185 = personProfilePath
+      ? tmdb.getImageUrl(personProfilePath, 'w185')
+      : profileImg;
+    const bioImgW342 = personProfilePath
+      ? tmdb.getImageUrl(personProfilePath, 'w342')
+      : null;
     return (
       <div
         className={
-          profileImg
+          bioImgW185
             ? 'w-full max-w-full box-border overflow-hidden px-3.5 py-4 flex items-start gap-4'
             : 'w-full max-w-full box-border overflow-hidden px-3.5 py-4'
         }
       >
-        {profileImg && (
+        {bioImgW185 && (
           <button
             type="button"
             onClick={onOpenPhoto}
@@ -200,7 +206,8 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
             <img
               ref={smartImgRef}
               onLoad={smartImgOnLoad}
-              src={profileImg}
+              src={bioImgW185}
+              srcSet={bioImgW185 && bioImgW342 ? `${bioImgW185} 1x, ${bioImgW342} 2x` : undefined}
               alt={personName}
               loading="eager"
               fetchPriority="high"

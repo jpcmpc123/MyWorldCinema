@@ -1,112 +1,106 @@
-# Abertura Instantânea de Detalhes (0ms), Busca Blindada e Restauração de Scroll ao Voltar
+# Otimização Cirúrgica de Performance Mobile (Rede, VRAM e Fluidez 60fps)
 
-Este plano implementa a renderização imediata no primeiro frame (0ms) ao abrir filmes e séries a partir de qualquer pôster ou busca, blinda a busca contra condições de corrida com cache em memória instantâneo ao apagar/repetir termos e preserva tanto os dados quanto a posição exata de rolagem ao voltar da página de detalhes para a listagem anterior.
+Plano de engenharia focado em acelerar o carregamento de pôsteres e backdrops do TMDB, reduzir drasticamente o consumo de memória de vídeo (VRAM) e garantir rolagem e transições de abas a 60fps constantes em dispositivos móveis, mantendo a experiência Desktop (`!isMobile`) 100% intacta.
 
-## User Review & Critical Decisions
+## Revisão e Decisões Confirmadas
 
 > [!IMPORTANT]
-> **Trava de Regressão (Guardrail Crítico)**:
-> - Os módulos de pôsteres, carrosséis mobile, cache de abas da Home e as regras CSS de 120Hz (`.poster-card-optimized` e `[data-h-scroll="true"]`) permanecem **100% intactos**.
-> - Nenhuma alteração em cores, fontes, espaçamentos ou estrutura visual das páginas.
+> **Garantia de Não-Regressão no Desktop**: Todas as restrições de resolução de imagem, desativação da camada 4K, contenção de DOM e remoção de animações por card serão aplicadas estritamente no contexto Mobile (`isMobile` ou `@media (max-width: 767px)`). O layout, as animações, os tamanhos de imagem e o upgrade 4K do Desktop permanecem 100% preservados.
 
-- **Decisão Confirmada 1 — Renderização 0ms na Página de Detalhes (`/film/:id` e `/tv/:id`)**: Inicializar o estado `movie` sincronamente com `cachedDetails` (se já visitado na sessão) ou com um objeto parcial derivado de `location.state.initialMovie` (quando `Number(initialMovie.id) === movieId`), liberando a renderização do cabeçalho, pôster, backdrop, nota, ano e sinopse imediatamente no frame zero sem tela de carregamento bloqueante enquanto `getMovieDetails` / `getTVDetails` completa elenco, vídeos e streaming em segundo plano.
-- **Decisão Confirmada 2 — Transição Direta entre Filmes (`PUSH` de `/film/A` para `/film/B`)**: Ao clicar em um filme relacionado/similar dentro da própria página de detalhes (mudando de `movieId` via `PUSH`), a página rola imediatamente para o topo (`window.scrollTo(0, 0)`), passa `state={{ initialMovie: item, fromPoster: true }}` nos cards de coleção/similares e atualiza o estado `movie` sincronamente no mesmo ciclo de renderização com o novo `cachedDetails ?? initialPartialMovie`.
-- **Decisão Confirmada 3 — Busca sem Race Conditions + Cache Instantâneo ao Apagar/Repetir**: Controlar todas as buscas por `latestRequestIdRef` + `AbortController` e manter um `Map` em memória de resultados por termo e aba (`idioma + filtro + termo`). Se o usuário apagar uma letra, alternar abas ou repetir um termo já consultado, o resultado aparece em 0ms (pulando inclusive o debounce de 300ms quando o termo já está no cache).
-- **Decisão Confirmada 4 — Captura Protegida de `scrollY` e Restauração no Botão Voltar (`POP`)**: Registrar continuamente a posição de rolagem da rota ativa em um listener `scroll` (`{ passive: true }`) indexado por chave de rota (`pathname + search`) usando uma trava (`isNavigatingOrRestoringRef`) e ref da rota ativa atual para garantir que o `window.scrollTo(0, 0)` da nova página nunca sobrescreva o `scrollY` salvo da página anterior.
+- **Decisão Confirmada 1 — Camada Única de Backdrop no Mobile**: Telas mobile (até `767px`) utilizarão exclusivamente a camada rápida em resolução `w780` (`decoding="async"` e `fetchPriority="high"`), desativando o download, o `img.decode()` e a retenção em memória (`pinnedDecodedImages`) da segunda camada `original` (4K). O Desktop manterá a camada rápida em `w1280` seguida do upgrade para `original` 4K.
+- **Decisão Confirmada 2 — Montagem Sob Demanda e em Idle no Paginador Mobile**: O carrossel de abas principais montará inicialmente apenas a aba ativa no boot (eliminando a montagem simultânea das 4 abas e o pré-carregamento concorrente aos 180ms). Após `2500ms` de inatividade (`requestIdleCallback` / `setTimeout`), apenas a aba vizinha imediata será pré-montada de forma silenciosa, e qualquer outra aba será montada instantaneamente no início de um gesto de swipe (`onTouchStart`) ou toque na barra de navegação.
+- **Decisão Confirmada 3 — Renderização Instantânea na Grade de Resultados Mobile**: Os cards da grade de exploração e resultados no mobile serão renderizados instantaneamente sem animação escalonada por card (`.mw-poster-in`), eliminando gargalos de composição durante o scroll infinito.
 
 ---
 
-## 1. Overview & Core Concept
+## 1. Visão Geral e Conceito Central
 
-- **What It Does**:
-  1. **Detalhes em 0ms (inclusive de Filme A → Filme B)**: Ao tocar em qualquer pôster, resultado de busca ou card de filme similar/coleção, a página do filme/série abre já desenhada com capa, backdrop, título, ano, avaliação e sinopse usando `initialMovie`, rolando para o topo em navegações `PUSH`.
-  2. **Busca Instantânea**: Digitações rápidas nunca exibem resultados atrasados de letras anteriores, e apagar caracteres ou repetir buscas exibe a lista imediatamente da memória RAM.
-  3. **Navegação "Voltar" Nativa**: Voltar de um filme para a Home, Busca, Perfil de Ator ou Resultados de Filtro mantém a lista já carregada e restaura a altura exata da página onde o usuário estava.
-- **Target Audience / Persona**: Usuários navegando rapidamente entre catálogos, buscas, filmografias de atores e páginas de filmes/séries no mobile e no desktop.
-- **Key Value**: Sensação de aplicativo nativo com transição instantânea na ida e na volta, sem telas de loading repetitivas nem perda de posição na lista.
+- **O Que Faz**: Elimina o desperdício de banda com imagens superdimensionadas no celular, corrige divergências de cache entre pré-carregamento e exibição (`cache miss`), reduz a sobrecarga de camadas de textura na GPU mobile e evita que árvores DOM ocultas (abas fora de tela ou layouts exclusivos de Desktop) consumam CPU e memória durante a navegação no celular.
+- **Público-Alvo / Contexto**: Usuários acessando o catálogo em smartphones (telas `<= 767px`), onde a largura de banda móvel, a concorrência de conexões HTTP e o limite de VRAM da GPU exigem gerenciamento rigoroso de recursos.
+- **Valor Principal**: Pôsteres carregando quase instantaneamente ao abrir o app ou rolar listas, redução drástica no uso de memória gráfica e navegação fluida a 60fps reais na rolagem vertical e no swipe horizontal entre abas.
 
 ---
 
-## 2. User Experience & Visual Design
+## 2. Experiência do Usuário e Comportamento Visual
 
-- **Key User Flows**:
-  1. **Toque no Pôster, Resultado de Busca ou Similar → Página do Filme (0ms)**:
-     - Se o filme já foi aberto antes na sessão, 100% dos dados (incluindo elenco, coleção e similares) vêm do cache em memória em 0ms.
-     - Se é a primeira abertura (ou clique em um filme similar de `/film/A` para `/film/B`), a página vai para o topo (`window.scrollTo(0, 0)`), exibe cabeçalho, backdrop, pôster, nota e sinopse imediatamente via `location.state.initialMovie`, e preenche elenco, equipe e provedores assim que a requisição em background conclui.
-  2. **Digitação e Backspace na Busca**:
-     - Ao digitar um termo inédito, o debounce de 300ms dispara a busca identificada por `requestId` e `AbortSignal`.
-     - Ao apagar letras (voltando a um prefixo já buscado) ou revisitar a página de busca pelo botão Voltar, o cache em memória entrega a lista em 0ms sem piscar.
-  3. **Botão Voltar (`←` ou Gesto Nativo)**:
-     - Ao sair de `/film/:id` ou `/tv/:id` de volta para Home, Busca, Ator ou Browse Results, a página anterior já possui seus itens no estado inicial (via cache em memória) e restaura exatamente o `window.scrollY` salvo antes da saída.
-- **Visual Identity & Theme**: Nenhuma mudança estética; toda a identidade visual Letterboxd Dark permanece inalterada.
-
----
-
-## 3. Key Product Decisions & Trade-Offs
-
-- **Decisão 1: Hidratação Progressiva via `initialMovie` + Suporte a `/film/A` → `/film/B`**
-  - *Abordagem Escolhida*: Quando `movie?.id !== movieId` (troca de filme na mesma rota `/film/:id` ou `/tv/:id`), atualizar sincronamente `setMovie(cachedDetails ?? initialPartialMovie)`, `setLoading(!(cachedDetails || initialPartialMovie))` e `setAssetsReady(Boolean(cachedDetails || initialPartialMovie))`, além de executar `window.scrollTo(0, 0)` na transição `PUSH`. Nos carrosséis de "Filmes Relacionados" e "Filmes Semelhantes" dentro da própria página de detalhes, passar `state={{ initialMovie: item, fromPoster: true }}` para que clicar em um similar também seja 0ms.
-  - *Por quê*: Garante que tanto a entrada vinda da Home/Busca quanto a navegação encadeada entre filmes similares abram no frame zero e no topo da página.
-- **Decisão 2: Bypass de Debounce em Cache Hit na Busca**
-  - *Abordagem Escolhida*: Quando o termo digitado (ou resultante de um Backspace) já existir no `Map` em memória para a aba ativa, atualizar `debouncedQuery` imediatamente em 0ms em vez de esperar 300ms.
-  - *Por quê*: Ao apagar letras ou clicar num termo recente, o usuário percebe resposta instantânea sem tráfego de rede.
-- **Decisão 3: Captura Blindada de `scrollY` com Listener Passivo e Lock de Transição**
-  - *Abordagem Escolhida*: Manter um listener `window.addEventListener('scroll', ..., { passive: true })` que grava `routeScrollMap.set(activeRouteKeyRef.current, window.scrollY)` somente quando `location.pathname + location.search === activeRouteKeyRef.current` e `!isTransitioningRouteRef.current`. Antes de aplicar `window.scrollTo(0, 0)` para a nova rota `PUSH`, travamos a gravação e atualizamos `activeRouteKeyRef.current` para a nova rota, impedindo que o `scrollY = 0` da nova página sobrescreva o valor salvo da página anterior.
-  - *Por quê*: Elimina o bug clássico em que o evento `scroll` disparado por `window.scrollTo(0, 0)` durante a troca de rota zera o `scrollY` salvo da listagem anterior.
+- **Fluxos de Experiência Otimizados**:
+  1. **Abertura Instantânea da Home**: Ao abrir o aplicativo no celular, toda a prioridade de rede e CPU é dedicada exclusivamente aos pôsteres visíveis da aba ativa, sem competir com requisições de fundo de outras 3 abas ou dezenas de imagens ocultas.
+  2. **Navegação para Detalhes de Filme/Série**: O backdrop no topo carrega imediatamente em `w780`, o pôster compacto ao lado da sinopse carrega em tamanho proporcional (`w342` com `srcSet` enxuto `185w, 342w, 500w` e `sizes="110px"`), e os carrosséis de títulos relacionados/semelhantes aproveitam 100% do pré-carregamento em `w185` sem *cache miss*.
+  3. **Busca e Perfil de Atores**: As miniaturas de `52px` na busca passam a baixar arquivos ultraleves (`w92` / `w185 2x` em vez de `w500` / `w780`), e a rolagem vertical das listas de busca corre livre de recalculos de `transform` em abas ocultas.
+- **Identidade Visual e Tema**:
+  - *Preservação Visual Completa*: A paleta escura cinematográfica (`#14181c`, superfícies `#232a31`), tipografia, placeholders de título durante o carregamento e proporções `2:3` permanecem idênticos.
+- **Feedback Interativo e Movimento**:
+  - No Desktop (`!isMobile`), todas as micro-interações de hover, sombras, escalonamento de entrada (`.mw-poster-in`) e transições 4K continuam inalteradas.
+  - No Mobile (`isMobile`), as entradas de grade em scroll infinito são imediatas e livres de atrasos artificiais, enquanto os carrosséis e abas respondem imediatamente ao toque.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+## 3. Decisões Técnicas e Trade-Offs
 
-### Arquitetura de Navegação Instantânea, Busca e Restauração
+- **Decisão 1: Dimensionamento de Imagens do TMDB e Alinhamento de Preload no Mobile**
+  - *Abordagem Escolhida*:
+    - Cards padrão (`!isLarge`) em telas até `640px`: `w185` como `src` padrão, `srcSet` restrito a `185w, 342w, 500w` (sem `w780` em cards pequenos no mobile) e `sizes="(max-width: 640px) 24vw, (max-width: 1024px) 18vw, 185px"`.
+    - Carrosséis de Filmes Relacionados e Semelhantes (`92px`): `src` em `w185` e `srcSet` com `w185 1x, w342 2x`, casando exatamente com a URL pré-carregada.
+    - Pôster do cabeçalho mobile (`86px`): `src` em `w342`, `srcSet` com `185w, 342w, 500w` e `sizes="110px"`.
+    - Miniaturas da busca mobile (`52px`): `src` em `w92` e `srcSet` com `w92 1x, w185 2x`.
+    - Grade mobile de atores (4 colunas) e foto da aba Bio (`92x138px`): `src` em `w185` com `srcSet` `185w, 342w` na grade e `w185 1x, w342 2x` na Bio no mobile.
+  - *Por quê*: Reduz em até 75% o peso em bytes de cada pôster baixado em redes móveis e garante acerto de cache (`cache hit`) imediato ao abrir a página de um filme.
+  - *Alternativas Consideradas*: Manter `w500`/`w780` no `srcSet` mobile foi descartado porque telas com `devicePixelRatio` 3x selecionavam arquivos de alta resolução para áreas visuais minúsculas de 52px a 92px.
+
+- **Decisão 2: Lazy Loading Nativo Sem Observers por Card e Despromoção de Camadas GPU no Mobile**
+  - *Abordagem Escolhida*: Remover o `new IntersectionObserver` individual de cada card que alternava o estado React `nearViewport` e confiar diretamente em `loading={priority || eager ? "eager" : "lazy"}` + `decoding="async"`. Em paralelo, desativar `transform: translateZ(0)` e `will-change: transform` em `@media (max-width: 767px)`.
+  - *Por quê*: Elimina centenas de instâncias de observers e re-renderizações de estado React durante a rolagem, além de liberar dezenas de megabytes de texturas compostas na GPU do celular.
+
+- **Decisão 3: Contenção de DOM (`content-visibility: hidden`), Desmontagem de Árvores Desktop Ocultas e Scroll Passivo Limpo**
+  - *Abordagem Escolhida*:
+    - Aplicar `content-visibility: hidden` e `contain-intrinsic-size: 100vw 100vh` em painéis colapsados (`.tab-panel-collapsed`) e no contêiner do paginador quando oculto por rotas secundárias no mobile.
+    - Condicionar com `{!isMobile && (...)}` todo o bloco de duas colunas do modo "Títulos Semelhantes" (`isSimilarMode`) e bloquear a execução dos seus efeitos de busca de temas/nanogêneros quando `isMobile` for verdadeiro.
+    - Remover a chamada de sincronização de `transform` (`querySelectorAll('.tab-panel')`) de dentro do listener de `scroll` vertical na página de busca, executando-a apenas no início do gesto de swipe horizontal (`onTouchStart`) ou na troca de aba.
+  - *Por quê*: Garante que o navegador mobile nunca gaste tempo de layout, pintura, rede ou JavaScript por frame em elementos que não estão visíveis na tela do celular.
+
+---
+
+## 4. Arquitetura Técnica e Estratégia de Dados *(Referência Técnica)*
+
+### Diagrama de Arquitetura e Fluxo de Renderização Condicional
 
 ```
-┌────────────────────────────────────────────────────────────────────────────┐
-│            ORIGEM: PosterCard / Search / Actor / Browse / Similar          │
-│         Passa state={{ initialMovie, fromPoster: true }} no <Link>         │
-│    Listener passivo grava scrollY da rota ativa (protegido contra 0)       │
-└───────────────────┬────────────────────────────────────────▲───────────────┘
-                    │ Clique (PUSH -> scrollTo(0,0))         │ Voltar (POP)
-                    ▼                                        │ (0ms + ScrollY)
-┌───────────────────────────────────────────┐                │
-│     PÁGINA DE DETALHES (/film | /tv)      │                │
-│  1. Frame 0 (0ms):                        │                │
-│     • Usa cachedDetails (se existir)      │                │
-│     • Ou hidrata de state.initialMovie    │────────────────┘
-│     • De /film/A -> /film/B: scrollTo(0,0)│
-│       + hidrata novo initialMovie na hora │
-│  2. Background Fetch:                     │
-│     • getMovieDetails / getTVDetails      │
-│     • Salva em mediaDetailsCache (30 min) │
-│     • Atualiza elenco, vídeos e streaming │
-└───────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────────────────┐
-│                     PIPELINE DE BUSCA BLINDADO (/search)                   │
-├────────────────────────────────────────────────────────────────────────────┤
-│  Input (?q=) ──► Cache Hit no Map<string, PanelCacheEntry>?                │
-│                    ├─► SIM: Bypass debounce (0ms) -> Renderiza imediato    │
-│                    └─► NÃO: Debounce 300ms -> Incrementa latestRequestId   │
-│                             + AbortController.abort() da anterior          │
-│                             -> Salva no Map se reqId === latestRequestId   │
-└────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────┐
+│                        Detecção de Contexto Viewport                      │
+│            useIsMobile() / matchMedia('(max-width: 767px)')               │
+└───────────────────┬───────────────────────────────────┬───────────────────┘
+                    │ isMobile === true                 │ isMobile === false
+                    ▼                                   ▼
+┌───────────────────────────────────────┐ ┌─────────────────────────────────┐
+│         Pipeline Mobile (60fps)       │ │   Pipeline Desktop (Intacto)    │
+├───────────────────────────────────────┤ ├─────────────────────────────────┤
+│ • Paginador de Abas:                  │ │ • Árvore de Rotas Direta        │
+│   - Boot: monta apenas aba ativa      │ │ • Backdrop Dupla Camada:        │
+│   - Idle (2500ms): monta aba vizinha  │ │   - fastSrc (w1280) +           │
+│   - Ocultos: content-visibility:hidden│ │   - hdSrc (original 4K decode)  │
+│ • Imagens TMDB Enxutas:               │ │ • Pôsteres Alta Resolução:      │
+│   - Cards: w185 (185w, 342w, 500w)    │ │   - w342 / w500 / w780          │
+│   - Busca (52px): w92 (1x) / w185 (2x)│ │ • Modo Similares Duas Colunas:  │
+│   - Backdrop: camada única w780       │ │   - Abas Themes & Nanogenres    │
+│ • GPU & Scroll Leves:                 │ │ • Animações e GPU:              │
+│   - Sem Observer individual por card  │ │   - translateZ(0) e .mw-poster  │
+│   - Sem translateZ(0) em massa        │ │     com delay escalonado        │
+│   - Sync de abas só no início do swipe│ │                                 │
+└───────────────────────────────────────┘ └─────────────────────────────────┘
 ```
 
-### Detalhamento Técnico
+### Mapeamento Interativo de Componentes e Estado
 
-1. **Abertura Instantânea na Página de Detalhes (Incluindo `/film/A` → `/film/B`)**:
-   - Criar helper `buildInitialMovieDetails(initial, movieId)` que converte `location.state?.initialMovie` (quando `Number(initial.id) === movieId`) em um `TMDBMovieDetails` parcial válido.
-   - Inicializar `movie` com `cachedDetails ?? initialPartialMovie`, `loading` com `!(cachedDetails || initialPartialMovie)` e `assetsReady` com `Boolean(cachedDetails || initialPartialMovie)`.
-   - Quando `movie?.id !== movieId` (ex.: usuário clicou em um filme similar/recomendado indo de `/film/A` para `/film/B`), atualizar sincronamente `movie` com `cachedDetails ?? initialPartialMovie`, rolar para o topo (`window.scrollTo(0, 0)`) e buscar os detalhes completos em background sem limpar a tela para um spinner.
-   - Adicionar `state={{ initialMovie: item, fromPoster: true }}` nos links de filmes relacionados/similares da página de detalhes, nas linhas de busca (`ResultRow` e `MobileMovieRow`) e nos dropdowns rápidos ("Find a film/series").
-   - Expandir o cache em memória de `getMovieDetails`, `getTVDetails`, `getPersonDetails` e `getCollectionDetails` no serviço TMDB para 30 minutos de TTL.
-
-2. **Busca Instantânea e Blindada contra Race Conditions**:
-   - Criar cache em nível de módulo `searchMemoryCache = new Map<string, PanelCacheEntry>()` indexado por `${language}:${filter}:${term.toLowerCase()}` e cache de enriquecimento `searchEnrichCache` no serviço TMDB.
-   - Adicionar `latestRequestIdRef` e `AbortController` na busca principal, no `prefetchFilter` de abas vizinhas e nas barras rápidas de busca de Filmes/Séries, descartando qualquer resposta cujo `requestId !== latestRequestIdRef.current`.
-   - Inicializar o estado da página de busca já hidratado a partir de `searchMemoryCache` quando o usuário voltar da página de um filme ou repetir uma busca recente.
-
-3. **Captura Protegida de `scrollY` e Restauração ao Voltar (Back Navigation)**:
-   - No `AppShell`, manter `routeScrollPositions = new Map<string, number>()` com listener `scroll` passivo associado à chave da rota comprometida (`committedRouteKeyRef.current`) e bloqueio `isProgrammaticScrollRef.current` durante a troca de rotas, garantindo que o `window.scrollTo(0, 0)` da nova página nunca sobrescreva o `scrollY` salvo da rota que está saindo.
-   - Ao detectar retorno (`navigationType === 'POP'`), restaurar o `scrollY` salvo em `useLayoutEffect` (e confirmar no próximo `requestAnimationFrame`) em vez de chamar `window.scrollTo(0, 0)`.
-   - Nas páginas de listagem (`BrowseResults`, `Actor`, `Collection`, `Films`, `Series`), manter cache em memória dos itens carregados (`items`, `page`, `hasMore`, `person`, `collection`) por chave de rota/parâmetros e preservar o scroll salvo quando os dados vierem do cache no retorno.
+1. **Componente de Pôster Padrão**:
+   - Na inicialização e renderização: avalia o tamanho ótimo considerando `w185` para viewports `<= 640px` em cards padrão (`!isLarge`), gera `srcSet` com `185w, 342w, 500w` no mobile e aplica `loading={priority || eager ? 'eager' : 'lazy'}` nativo sem instanciar `IntersectionObserver` por card.
+2. **Componente de Backdrop**:
+   - Quando `isMobile` é verdadeiro: resolve `fastSrc` para `w780`, ignora o agendamento do timer de upgrade para `original` 4K e não retém elementos `HTMLImageElement` no buffer global `pinnedDecodedImages`.
+3. **Paginador de Abas Mobile (`TabViewPager`)**:
+   - No mount inicial: inicializa o vetor `mounted` apenas com `true` no índice da aba ativa (`activeIndex`).
+   - Em inatividade (`2500ms` após a montagem da aba ativa): monta silenciosamente apenas a aba vizinha imediata sem disparar pré-carregamento em massa de imagens.
+   - Na interação do usuário (`onTouchStart` do swipe ou clique em aba): marca imediatamente a aba de destino/adjacente como montada antes da transição visual.
+   - Quando oculto por navegação secundária: aplica contenção `content-visibility: hidden` para zerar o custo de layout das abas em segundo plano.
+4. **Página de Vitrines e Similares**:
+   - Quando `isSimilarMode` está ativo no mobile: curto-circuita os hooks que buscam seções de temas e nanogêneros do Desktop, desmonta a árvore Desktop via `{!isMobile && (...)}` e renderiza os cards da grade mobile instantaneamente (sem classe `.mw-poster-in` e sem `animationDelay`).
+5. **Página de Busca Mobile**:
+   - Durante a rolagem vertical (`window.scroll`): atualiza apenas a referência de posição em memória, deixando a sincronização de `transform` das abas inativas (`syncInactivePanelsOffset`) exclusivamente para o início do gesto de swipe horizontal ou mudança de aba ativa.

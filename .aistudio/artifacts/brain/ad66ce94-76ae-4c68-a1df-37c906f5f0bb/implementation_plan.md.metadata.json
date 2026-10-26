@@ -1,6 +1,6 @@
 {
-  "summary":  "Atualiza o plano de implementação com os 2 detalhes de borda: (1) transição PUSH entre /film/A e /film/B rolando para o topo (window.scrollTo(0, 0)) e hidratando imediatamente o novo initialMovie, e (2) captura exata de scrollY via listener passivo protegido contra sobrescrita por 0 na troca de rota.",
-  "updatedAt":  "2026-10-25T00:20:26.513063458Z",
+  "summary":  "Plano de otimizacao cirurgica de performance mobile (rede, consumo de VRAM e fluidez de 60fps) preservando 100% da experiencia Desktop.",
+  "updatedAt":  "2026-10-25T18:13:26.523391122Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

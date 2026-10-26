@@ -93,6 +93,7 @@ export interface RecommendResponse {
   is_guessing_movie?: boolean;
   guessed_title?: string | null;
   guessed_movie?: AiMovie | null;
+  guess_explanation?: string | null;
   reference_movie?: string | null;
   decisions: LayaDecisions;
   movies: AiMovie[];
@@ -115,10 +116,12 @@ export interface RecommendOptions {
 export interface ChatTurn {
   id: string;
   query: string;
+  mode?: 'discover' | 'guess';
   loading: boolean;
   isGuessingMovie?: boolean;
   guessedTitle?: string | null;
   guessedMovie?: AiMovie | null;
+  guessExplanation?: string | null;
   decisions?: LayaDecisions;
   referenceMovie?: string | null;
   movies?: AiMovie[];

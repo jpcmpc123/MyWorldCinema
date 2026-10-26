@@ -181,18 +181,25 @@ export const CineIaPage: React.FC = () => {
     const q = rawText.trim();
     if (!q) return;
 
+    const currentMode = mode;
     const turnId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setInput('');
-    setTurns((prev) => [...prev, { id: turnId, query: q, loading: true }]);
+    setTurns((prev) => [
+      ...prev,
+      { id: turnId, query: q, mode: currentMode, loading: true },
+    ]);
 
     try {
+      const lang = isPt ? 'pt-BR' : 'en-US';
       const qNorm = stripAccents(q);
       const akinatorMatch = matchAkinatorProfile(qNorm);
 
+      // Remove "filme " duplicado do início (ex: "filme onde..." -> "Qual é o nome daquele filme onde...")
+      const cleanedGuessPrompt = q.replace(/^(?:um\s+|o\s+)?filme\s+/i, '');
       const apiQuery =
-        mode === 'guess' &&
+        currentMode === 'guess' &&
         !/^(qual\s+|aquele\s+filme|esqueci\s+o\s+nome|lembro\s+de)/i.test(q)
-          ? `Qual é o nome daquele filme ${q}`
+          ? `Qual é o nome daquele filme ${cleanedGuessPrompt}`
           : q;
 
       const response = await fetch(
@@ -203,15 +210,16 @@ export const CineIaPage: React.FC = () => {
       }
       const data: RecommendResponse = await response.json();
 
-      let isGuessing = Boolean(
-        data.is_guessing_movie ||
+      const isGuessing = Boolean(
+        currentMode === 'guess' ||
+          data.is_guessing_movie ||
           data.decisions?.is_guessing_movie === 'yes' ||
-          (mode === 'guess' && akinatorMatch),
+          akinatorMatch,
       );
       let guessedMovie = data.guessed_movie
         ? normalizeApiMovie(data.guessed_movie)
         : null;
-      let guessedTitle =
+      const guessedTitle =
         data.guessed_title ||
         (data.decisions?.guess_title && data.decisions.guess_title !== 'none'
           ? data.decisions.guess_title
@@ -228,7 +236,6 @@ export const CineIaPage: React.FC = () => {
       // Se estamos no modo Adivinhar (ou a pista Akinator casou) mas a API não trouxe o objeto guessed_movie,
       // busca os dados completos do filme identificado + 3 similares para renderizar o Card de Destaque
       if (isGuessing && !guessedMovie && guessedTitle) {
-        const lang = isPt ? 'pt-BR' : 'en-US';
         const tmdbKey = '756b66f23e97ca70dba67363ba4e3b21';
         const searchRes = await fetch(
           `https://api.themoviedb.org/3/search/movie?api_key=${tmdbKey}&language=${lang}&query=${encodeURIComponent(
@@ -305,7 +312,7 @@ export const CineIaPage: React.FC = () => {
 
       if (needsCatalogRefresh) {
         const refined = await recommendMovies(q, {
-          language: isPt ? 'pt-BR' : 'en-US',
+          language: lang,
           bypassCache: true,
         });
         if (refined.movies && refined.movies.length > 0) {
@@ -324,6 +331,7 @@ export const CineIaPage: React.FC = () => {
             ? {
                 ...t,
                 loading: false,
+                mode: currentMode,
                 isGuessingMovie: Boolean(isGuessing && guessedMovie),
                 guessedTitle,
                 guessedMovie,
@@ -525,20 +533,32 @@ export const CineIaPage: React.FC = () => {
 
                   {/* Resposta da IA */}
                   {turn.loading ? (
-                    <section className="space-y-3">
-                      <div className="h-5 w-48 bg-lb-surface animate-pulse rounded-[4px]" />
-                      <div className="grid grid-cols-4 gap-2 md:gap-2.5">
-                        {[0, 1, 2, 3].map((i) => (
-                          <div
-                            key={i}
-                            className="aspect-[2/3] bg-lb-surface animate-pulse rounded-[4px] ring-1 ring-white/15"
-                          />
-                        ))}
-                      </div>
-                    </section>
+                    turn.mode === 'guess' ? (
+                      <section className="rounded-[6px] bg-[#1b2228] border border-lb-green/25 p-4 flex gap-4 items-start animate-pulse">
+                        <div className="w-24 sm:w-32 aspect-[2/3] bg-lb-surface rounded-[4px] shrink-0" />
+                        <div className="flex-1 space-y-3 py-1">
+                          <div className="h-4 w-32 bg-lb-surface rounded" />
+                          <div className="h-6 w-56 bg-lb-surface rounded" />
+                          <div className="h-3 w-full bg-lb-surface rounded" />
+                          <div className="h-3 w-4/5 bg-lb-surface rounded" />
+                        </div>
+                      </section>
+                    ) : (
+                      <section className="space-y-3">
+                        <div className="h-5 w-48 bg-lb-surface animate-pulse rounded-[4px]" />
+                        <div className="grid grid-cols-4 gap-2 md:gap-2.5">
+                          {[0, 1, 2, 3].map((i) => (
+                            <div
+                              key={i}
+                              className="aspect-[2/3] bg-lb-surface animate-pulse rounded-[4px] ring-1 ring-white/15"
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    )
                   ) : turn.error ? (
                     <p className="text-xs text-red-400 py-2">{turn.error}</p>
-                  ) : turn.isGuessingMovie && turn.guessedMovie ? (
+                  ) : (turn.isGuessingMovie || turn.mode === 'guess') && turn.guessedMovie ? (
                     <div className="space-y-5">
                       {/* Card de Destaque do Filme Adivinhado (Modo Akinator) */}
                       <div className="relative overflow-hidden rounded-[6px] bg-[#1b2228] border border-lb-green/35 shadow-xl">
@@ -575,7 +595,7 @@ export const CineIaPage: React.FC = () => {
 
                             <div>
                               <Link
-                                to={`/movie/${turn.guessedMovie.id}`}
+                                to={`/film/${turn.guessedMovie.id}`}
                                 className="text-base sm:text-lg md:text-xl font-bold text-white hover:text-lb-green transition-colors leading-snug inline-block"
                               >
                                 {turn.guessedMovie.title || turn.guessedTitle}
@@ -588,11 +608,14 @@ export const CineIaPage: React.FC = () => {
                                     {turn.guessedMovie.vote_average.toFixed(1)}
                                   </span>
                                 )}
-                                {decisionLine && (
-                                  <span className="text-[#789]">· {decisionLine}</span>
-                                )}
                               </div>
                             </div>
+
+                            {turn.guessExplanation && (
+                              <p className="text-xs sm:text-sm text-lb-green/95 bg-lb-green/10 border border-lb-green/25 rounded-[4px] px-2.5 py-1.5 leading-relaxed">
+                                {turn.guessExplanation}
+                              </p>
+                            )}
 
                             {turn.guessedMovie.overview && (
                               <p className="text-xs sm:text-sm text-[#bbccdd] line-clamp-3 sm:line-clamp-4 leading-relaxed">
@@ -602,7 +625,7 @@ export const CineIaPage: React.FC = () => {
 
                             <div className="pt-1">
                               <Link
-                                to={`/movie/${turn.guessedMovie.id}`}
+                                to={`/film/${turn.guessedMovie.id}`}
                                 className="inline-flex items-center gap-1 text-xs font-bold text-lb-green hover:underline"
                               >
                                 <span>
@@ -647,6 +670,19 @@ export const CineIaPage: React.FC = () => {
                           </div>
                         </section>
                       )}
+                    </div>
+                  ) : turn.mode === 'guess' ? (
+                    <div className="rounded-[6px] bg-[#1b2228] border border-white/10 p-4 space-y-1.5">
+                      <p className="text-sm font-bold text-white">
+                        {isPt
+                          ? 'Não conseguimos cravar o filme apenas com essa pista'
+                          : 'Could not pinpoint the exact film from this clue alone'}
+                      </p>
+                      <p className="text-xs text-[#99aabb] leading-relaxed">
+                        {isPt
+                          ? 'Tente acrescentar mais um detalhe da história (como um personagem, ator, final do filme ou época aproximada) para identificarmos o título exato.'
+                          : 'Try adding one more plot detail (such as a character, actor, ending, or approximate era) so we can identify the exact title.'}
+                      </p>
                     </div>
                   ) : (
                     /* Descoberta de Catálogo 7D: 4 Pôsteres */

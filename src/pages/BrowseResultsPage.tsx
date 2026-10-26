@@ -17,6 +17,7 @@ import { useApp } from '../context/AppContext';
 import { FiltersModal, type FiltersDraft } from '../components/mobile/FiltersModal';
 import { PosterCarouselModal } from '../components/mobile/PosterCarouselModal';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface GridItem {
   movie: TMDBMovie;
@@ -124,6 +125,7 @@ export const BrowseResultsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { isMovieWatched, isMovieInWatchlist, movieOverrides } = useApp();
   const { language, t } = useLanguage();
+  const isMobile = useIsMobile();
 
   const title = searchParams.get('title') || 'Browse';
   const type = searchParams.get('type') || 'any';
@@ -210,10 +212,10 @@ export const BrowseResultsPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
-  // Carrega metadados completos da obra de origem (título, ano, pôster, backdrop, gêneros e keywords)
+  // Carrega metadados completos da obra de origem (exclusivo para Desktop ou filtro de serviço)
   useEffect(() => {
-    if (!similarTo || Number.isNaN(similarTo)) {
-      setSourceDetails(null);
+    if ((isMobile && !service) || !similarTo || Number.isNaN(similarTo)) {
+      if (!similarTo || Number.isNaN(similarTo)) setSourceDetails(null);
       return;
     }
     let cancelled = false;
@@ -236,11 +238,11 @@ export const BrowseResultsPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [similarTo, type, language]);
+  }, [isMobile, service, similarTo, type, language]);
 
-  // Constrói e popula as abas THEMES (8x2) e NANOGENRES (8x2) a partir da obra de origem
+  // Constrói e popula as abas THEMES (8x2) e NANOGENRES (8x2) a partir da obra de origem (exclusivo Desktop)
   useEffect(() => {
-    if (!isSimilarMode || !sourceDetails) return;
+    if (isMobile || !isSimilarMode || !sourceDetails) return;
     let cancelled = false;
     const mediaType: 'movie' | 'tv' = type === 'tv' ? 'tv' : 'movie';
     const genres = sourceDetails.genres || [];
@@ -428,7 +430,7 @@ export const BrowseResultsPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [isSimilarMode, sourceDetails, type, similarTo, decade, service, language]);
+  }, [isMobile, isSimilarMode, sourceDetails, type, similarTo, decade, service, language]);
 
   const loadReqIdRef = useRef(0);
   const inFlightRef = useRef(false);
@@ -756,7 +758,7 @@ export const BrowseResultsPage: React.FC = () => {
           - Coluna direita (230px): Pôster 230x345 sobre o backdrop + Stats
             (👁 / ⊞ / 🧡) + "Browse all similar films ›" + "POWERED BY Nanocrowd"
           ===================================================================== */}
-      {isSimilarMode && (
+      {!isMobile && isSimilarMode && (
         <div className="hidden md:block relative overflow-x-clip">
           <div className="max-w-[950px] mx-auto relative">
             {/* Grade principal de 2 colunas: 670px (esquerda) + 50px gap + 230px (sidebar direita) */}
@@ -1332,8 +1334,8 @@ export const BrowseResultsPage: React.FC = () => {
               return (
                 <div
                   key={`${tv ? 'tv' : 'm'}-${movie.id}`}
-                  className="mw-poster-in"
-                  style={{ animationDelay: `${stagger}ms` }}
+                  className={isMobile ? undefined : 'mw-poster-in'}
+                  style={isMobile ? undefined : { animationDelay: `${stagger}ms` }}
                 >
                   <PosterCard
                     movie={movie}

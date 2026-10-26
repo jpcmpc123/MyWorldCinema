@@ -48,23 +48,24 @@ export function isPosterUrlLoaded(url: string | null | undefined): boolean {
 }
 
 /**
- * Calcula o degrau exato do srcSet (w342, w500 ou w780) que o navegador
- * selecionará com base na largura CSS do card e no devicePixelRatio atual.
- * Em telas de 390px com DPR 3x, 26vw = ~101.4px CSS (~304px físicos <= 342w) -> 'w342'.
+ * Calcula o degrau exato do srcSet que o navegador selecionará com base na largura CSS do card.
+ * Em telas até 640px (mobile), cards padrão (!isLarge) usam 'w185' como src padrão.
+ * No Desktop (!isMobile), mantém a seleção de alta densidade (w342, w500 ou w780).
  */
-export function getOptimalPosterSize(isLarge = false): 'w342' | 'w500' | 'w780' {
+export function getOptimalPosterSize(isLarge = false): 'w185' | 'w342' | 'w500' | 'w780' {
   if (typeof window === 'undefined') return 'w500';
   const vw = window.innerWidth || 390;
+  if (!isLarge && vw <= 640) {
+    return 'w185';
+  }
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = isLarge
     ? vw <= 768
       ? vw * 0.45
       : 300
-    : vw <= 640
-      ? vw * 0.26
-      : vw <= 1024
-        ? vw * 0.18
-        : 185;
+    : vw <= 1024
+      ? vw * 0.18
+      : 185;
   const physicalWidth = cssWidth * dpr;
   if (physicalWidth <= 342) return 'w342';
   if (physicalWidth <= 500) return 'w500';
@@ -102,12 +103,10 @@ export function preloadImageUrl(url?: string | null): void {
 
 /**
  * Pré-carrega um pôster do TMDB com 100% de Cache Hit em relação ao <img srcSet>.
- * Quando `size` não é forçado, usa a mesma regra de largura física (26vw * dpr <= 342 ? 'w342' : 'w500')
- * e espelha `sizes` + `srcset` na instância `new Image()`.
  */
 export function preloadPoster(
   posterPath?: string | null,
-  size?: 'w342' | 'w500' | 'w780',
+  size?: 'w185' | 'w342' | 'w500' | 'w780',
   isLarge = false,
 ): void {
   if (!posterPath || typeof Image === 'undefined') return;
@@ -217,8 +216,14 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const displayPosterPath = overridePoster || movie.poster_path;
   const isCustomUrl = Boolean(displayPosterPath && displayPosterPath.startsWith('http'));
   const isLarge = size === 'lg';
+  const isSmallViewport = typeof window !== 'undefined' && window.innerWidth <= 640;
 
-  // Pipeline de 3 degraus de alta densidade (w342, w500, w780) com src base em w500
+  // URLs de pôsteres do TMDB (incluindo w185 para mobile e w342/w500/w780)
+  const urlW185 = displayPosterPath
+    ? isCustomUrl
+      ? displayPosterPath
+      : tmdb.getImageUrl(displayPosterPath, 'w185')
+    : '';
   const urlW342 = displayPosterPath
     ? isCustomUrl
       ? displayPosterPath
@@ -237,7 +242,13 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
 
   const optimalSize = getOptimalPosterSize(isLarge);
   const primarySrc =
-    optimalSize === 'w342' ? urlW342 : optimalSize === 'w780' ? urlW780 : urlW500;
+    optimalSize === 'w185'
+      ? urlW185
+      : optimalSize === 'w342'
+        ? urlW342
+        : optimalSize === 'w780'
+          ? urlW780
+          : urlW500;
 
   const posterSizes = {
     fluid: 'w-full min-w-0',
@@ -252,19 +263,17 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
   const year = rawDate ? rawDate.slice(0, 4) : '';
   const tooltipLabel = year ? `${displayTitle} (${year})` : displayTitle;
 
-  const isAnyVariantCached = (u342: string, u500: string, u780: string): boolean =>
+  const isAnyVariantCached = (u185: string, u342: string, u500: string, u780: string): boolean =>
     Boolean(
-      (u342 && (loadedPosterUrls.has(u342) || isImageUrlPreloaded(u342))) ||
+      (u185 && (loadedPosterUrls.has(u185) || isImageUrlPreloaded(u185))) ||
+        (u342 && (loadedPosterUrls.has(u342) || isImageUrlPreloaded(u342))) ||
         (u500 && (loadedPosterUrls.has(u500) || isImageUrlPreloaded(u500))) ||
         (u780 && (loadedPosterUrls.has(u780) || isImageUrlPreloaded(u780))),
     );
 
   // Estado de carregamento do pôster: se já estiver no cache em memória, nasce carregado (sem piscar)
   const [isLoaded, setIsLoaded] = useState<boolean>(() =>
-    isAnyVariantCached(urlW342, urlW500, urlW780),
-  );
-  const [nearViewport, setNearViewport] = useState<boolean>(() =>
-    Boolean(priority || eager || isAnyVariantCached(urlW342, urlW500, urlW780)),
+    isAnyVariantCached(urlW185, urlW342, urlW500, urlW780),
   );
   const [retryCount, setRetryCount] = useState(0);
   const [hasError, setHasError] = useState(false);
@@ -276,10 +285,9 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
       setRetryCount(0);
       return;
     }
-    if (isAnyVariantCached(urlW342, urlW500, urlW780)) {
+    if (isAnyVariantCached(urlW185, urlW342, urlW500, urlW780)) {
       markPosterUrlLoaded(primarySrc);
       setIsLoaded(true);
-      setNearViewport(true);
       setHasError(false);
       return;
     }
@@ -289,61 +297,37 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
       if (el.currentSrc) markPosterUrlLoaded(el.currentSrc);
       markPosterUrlLoaded(primarySrc);
       setIsLoaded(true);
-      setNearViewport(true);
       setHasError(false);
       return;
     }
 
     setIsLoaded(false);
-    setNearViewport(Boolean(priority || eager));
     setHasError(false);
     setRetryCount(0);
-  }, [displayPosterPath, primarySrc, urlW342, urlW500, urlW780, priority, eager]);
+  }, [displayPosterPath, primarySrc, urlW185, urlW342, urlW500, urlW780]);
 
   // Se este card estiver montado em uma aba colapsada/lateral ou carrossel e o preloadPoster
   // terminar em segundo plano, atualiza isLoaded imediatamente para que já apareça 100% pronto ao deslizar.
   useEffect(() => {
     if (isLoaded || !displayPosterPath) return;
-    if (isAnyVariantCached(urlW342, urlW500, urlW780)) {
+    if (isAnyVariantCached(urlW185, urlW342, urlW500, urlW780)) {
       setIsLoaded(true);
-      setNearViewport(true);
       return;
     }
     const onCached = () => {
       setIsLoaded(true);
-      setNearViewport(true);
     };
+    const unsub185 = urlW185 ? subscribePosterUrlLoaded(urlW185, onCached) : undefined;
     const unsub342 = urlW342 ? subscribePosterUrlLoaded(urlW342, onCached) : undefined;
     const unsub500 = urlW500 ? subscribePosterUrlLoaded(urlW500, onCached) : undefined;
     const unsub780 = urlW780 ? subscribePosterUrlLoaded(urlW780, onCached) : undefined;
     return () => {
+      unsub185?.();
       unsub342?.();
       unsub500?.();
       unsub780?.();
     };
-  }, [isLoaded, displayPosterPath, urlW342, urlW500, urlW780]);
-
-  // Gatilho de pré-carregamento abaixo da dobra / fora do scroll horizontal (400px vertical, 200px horizontal)
-  // Desconecta imediatamente (one-shot) assim que entra na margem para custo zero em scroll a 120Hz.
-  useEffect(() => {
-    if (priority || eager || isLoaded || nearViewport || !displayPosterPath) return;
-    const el = cardRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') {
-      setNearViewport(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          observer.disconnect();
-          setNearViewport(true);
-        }
-      },
-      { rootMargin: '400px 200px' },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [priority, eager, isLoaded, nearViewport, displayPosterPath]);
+  }, [isLoaded, displayPosterPath, urlW185, urlW342, urlW500, urlW780]);
 
   const activeSrc =
     retryCount === 0
@@ -380,6 +364,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
 
     const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
     const detailPosterSize = isMob ? 'w342' : 'w500';
+    const detailBackdropSize = isMob ? 'w780' : 'w1280';
 
     if (displayPosterPath) {
       const detailPosterUrl = isCustomUrl
@@ -393,7 +378,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
     }
 
     if (movie.backdrop_path) {
-      void preloadSingleImage(tmdb.getBackdropUrl(movie.backdrop_path, 'w1280'));
+      void preloadSingleImage(tmdb.getBackdropUrl(movie.backdrop_path, detailBackdropSize));
     }
 
     const req = tv ? tmdb.getTVDetails(movie.id) : tmdb.getMovieDetails(movie.id);
@@ -401,7 +386,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
       .then((details) => {
         const bp = details.backdrop_path || details.poster_path;
         if (bp) {
-          void preloadSingleImage(tmdb.getBackdropUrl(bp, 'w1280'));
+          void preloadSingleImage(tmdb.getBackdropUrl(bp, detailBackdropSize));
         }
         if (details.poster_path) {
           const dpUrl = tmdb.getImageUrl(details.poster_path, detailPosterSize);
@@ -494,6 +479,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
                 if (el && el.complete && el.naturalWidth > 0 && !isLoaded) {
                   if (el.currentSrc) markPosterUrlLoaded(el.currentSrc);
                   markPosterUrlLoaded(primarySrc);
+                  if (urlW185) markPosterUrlLoaded(urlW185);
                   if (urlW342) markPosterUrlLoaded(urlW342);
                   if (urlW500) markPosterUrlLoaded(urlW500);
                   setIsLoaded(true);
@@ -502,7 +488,9 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
               src={activeSrc}
               srcSet={
                 retryCount === 0 && !isCustomUrl
-                  ? `${urlW342} 342w, ${urlW500} 500w, ${urlW780} 780w`
+                  ? !isLarge && isSmallViewport
+                    ? `${urlW185} 185w, ${urlW342} 342w, ${urlW500} 500w`
+                    : `${urlW342} 342w, ${urlW500} 500w, ${urlW780} 780w`
                   : undefined
               }
               sizes={
@@ -510,13 +498,14 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
                   ? '(max-width: 768px) 45vw, 300px'
                   : size === 'sm'
                     ? '120px'
-                    : '(max-width: 640px) 26vw, (max-width: 1024px) 18vw, 185px'
+                    : '(max-width: 640px) 24vw, (max-width: 1024px) 18vw, 185px'
               }
               alt={displayTitle}
               onLoad={(e) => {
                 const current = e.currentTarget.currentSrc;
                 if (current) markPosterUrlLoaded(current);
                 markPosterUrlLoaded(primarySrc);
+                if (urlW185) markPosterUrlLoaded(urlW185);
                 if (urlW342) markPosterUrlLoaded(urlW342);
                 if (urlW500) markPosterUrlLoaded(urlW500);
                 setIsLoaded(true);
@@ -531,7 +520,7 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
               className={`relative z-10 w-full h-full object-cover aspect-[2/3] transition-opacity duration-300 ease-out ${
                 isLoaded ? 'opacity-100' : 'opacity-0'
               }`}
-              loading={priority || eager || nearViewport ? 'eager' : 'lazy'}
+              loading={priority || eager ? 'eager' : 'lazy'}
               fetchPriority={priority ? 'high' : 'auto'}
               decoding="async"
             />

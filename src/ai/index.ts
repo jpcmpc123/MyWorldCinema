@@ -48,6 +48,7 @@ export {
   compileTermListRegex,
   matchAkinatorProfile,
   matchFirstRule,
+  normalizeGuessTypos,
   resolveContentRating,
   stripAccents,
 } from './rules';

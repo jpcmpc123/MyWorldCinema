@@ -322,8 +322,8 @@ const MobilePoster: React.FC<{ path?: string | null; alt: string }> = React.memo
     setErrored(false);
   }, [path]);
 
-  const p500 = path ? tmdb.getImageUrl(path, 'w500') : '';
-  const p780 = path ? tmdb.getImageUrl(path, 'w780') : '';
+  const p92 = path ? tmdb.getImageUrl(path, 'w92') : '';
+  const p185 = path ? tmdb.getImageUrl(path, 'w185') : '';
 
   return (
     <div className="relative w-[52px] h-[78px] rounded-[4px] overflow-hidden border border-white/15 bg-[#232a31] flex-shrink-0">
@@ -339,8 +339,8 @@ const MobilePoster: React.FC<{ path?: string | null; alt: string }> = React.memo
       )}
       {path && !errored && (
         <img
-          src={p500}
-          srcSet={`${p500} 1x, ${p780} 2x`}
+          src={p92}
+          srcSet={`${p92} 1x, ${p185} 2x`}
           alt={alt}
           onLoad={() => setLoaded(true)}
           onError={() => setErrored(true)}
@@ -367,7 +367,7 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
   const href = item.media_type === 'tv' ? `/tv/${item.id}` : `/film/${item.id}`;
   const handlePrefetch = () => {
     if (item.poster_path) {
-      preloadPoster(item.poster_path, 'w500', true);
+      preloadPoster(item.poster_path, 'w342');
     }
     if (item.media_type === 'tv') {
       tmdb.getTVDetails(item.id).catch(() => {});
@@ -632,6 +632,7 @@ export const SearchPage: React.FC = () => {
       if (next) setFilter(next);
     },
     onPeekIndex: (neighborIdx) => {
+      syncInactivePanelsOffset(prevFilterRef.current, window.scrollY);
       const neighbor = MOBILE_FILTER_IDS[neighborIdx];
       if (neighbor) prefetchFilter(neighbor);
     },
@@ -642,7 +643,7 @@ export const SearchPage: React.FC = () => {
   });
 
   // Alinha visualmente as abas vizinhas na sua própria posição de scroll (0 se nunca visitada)
-  // durante o arrasto/transição lateral quando a janela está rolada em outra posição
+  // apenas no início do arrasto lateral ou na troca de aba (nunca a cada frame do scroll vertical)
   const syncInactivePanelsOffset = (activeTab: SearchFilter, activeY: number) => {
     const track = mobileSwipe.trackRef.current;
     if (!track) return;
@@ -666,14 +667,12 @@ export const SearchPage: React.FC = () => {
     syncInactivePanelsOffset(prevFilterRef.current, 0);
   };
 
-  // Salva continuamente onde o usuário parou na aba atual
+  // Salva apenas em memória onde o usuário parou na aba atual (zero querySelectorAll/transform no scroll)
   useEffect(() => {
     const onScroll = () => {
       if (isRestoringScrollRef.current) return;
       if (mobileMode === 'typing' || !isMobile) {
-        const y = window.scrollY;
-        tabScrollRef.current[prevFilterRef.current] = y;
-        syncInactivePanelsOffset(prevFilterRef.current, y);
+        tabScrollRef.current[prevFilterRef.current] = window.scrollY;
       }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -1261,6 +1260,11 @@ export const SearchPage: React.FC = () => {
             <nav
               ref={mobileSwipe.tabsContainerRef}
               {...(mode === 'typing' ? mobileSwipe.barHandlers : {})}
+              onTouchStart={() => {
+                if (mode === 'typing') {
+                  syncInactivePanelsOffset(prevFilterRef.current, window.scrollY);
+                }
+              }}
               className="relative flex overflow-x-auto no-scrollbar border-b border-white/10 bg-black"
               aria-label={t('search_show_results_for')}
             >
@@ -1299,6 +1303,7 @@ export const SearchPage: React.FC = () => {
           <div
             ref={mobileSwipe.viewportRef}
             {...mobileSwipe.viewportHandlers}
+            onTouchStart={() => syncInactivePanelsOffset(prevFilterRef.current, window.scrollY)}
             className="tab-viewport"
           >
             <div

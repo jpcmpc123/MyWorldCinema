@@ -37,6 +37,7 @@ if (typeof window !== 'undefined') {
 
 export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>): void {
   if (typeof window === 'undefined' || typeof Image === 'undefined') return;
+  if (window.innerWidth <= 767) return;
   const firstFoldLists = [data.popular, data.highestRated];
 
   // Onda 1 (Imediata): Aquece apenas os 4 primeiros itens das 2 primeiras listas (8 pôsteres visíveis na tela)

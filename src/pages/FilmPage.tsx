@@ -85,10 +85,14 @@ export function getRequiredFilmImageUrls(
     (effectiveBackdropPath ? tmdb.getBackdropUrl(effectiveBackdropPath, 'original') : null);
 
   if (rawBackdrop) {
-    const hdBackdrop = getHdBackdropUrl(rawBackdrop);
-    const fastBackdrop = getFastBackdropUrl(rawBackdrop);
-    const activeBackdrop = isImageUrlPreloaded(hdBackdrop) ? hdBackdrop : fastBackdrop;
-    if (activeBackdrop) urls.add(activeBackdrop);
+    const fastBackdrop = getFastBackdropUrl(rawBackdrop, isMobile);
+    if (isMobile) {
+      if (fastBackdrop) urls.add(fastBackdrop);
+    } else {
+      const hdBackdrop = getHdBackdropUrl(rawBackdrop);
+      const activeBackdrop = isImageUrlPreloaded(hdBackdrop) ? hdBackdrop : fastBackdrop;
+      if (activeBackdrop) urls.add(activeBackdrop);
+    }
   }
 
   const posterUrl =
@@ -695,10 +699,14 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     tmdb.getImageUrl(movie.poster_path, 'w780');
   const posterMobileUrl =
     override?.poster ||
-    tmdb.getImageUrl(movie.poster_path, 'w500');
+    tmdb.getImageUrl(movie.poster_path, 'w342');
   const posterSrcSet =
     posterPath && !isCustomFullPoster
       ? `${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w`
+      : undefined;
+  const posterMobileSrcSet =
+    posterPath && !isCustomFullPoster
+      ? `${tmdb.getImageUrl(posterPath, 'w185')} 185w, ${tmdb.getImageUrl(posterPath, 'w342')} 342w, ${tmdb.getImageUrl(posterPath, 'w500')} 500w`
       : undefined;
 
   const handleCopyLink = () => {
@@ -941,8 +949,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                   fetchPriority="high"
                   decoding="async"
                   src={posterMobileUrl}
-                  srcSet={posterSrcSet}
-                  sizes="380px"
+                  srcSet={posterMobileSrcSet}
+                  sizes="110px"
                   alt={movie.title}
                   className="w-full h-full object-cover mw-img-fade"
                 />
@@ -1495,11 +1503,11 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                   </Link>
                   <div data-h-scroll="true" className="similar-carousel">
                     {relatedFilms.map((item) => {
-                      const p500 = tmdb.getImageUrl(item.poster_path, 'w500');
-                      const p780 = tmdb.getImageUrl(item.poster_path, 'w780');
+                      const p185 = tmdb.getImageUrl(item.poster_path, 'w185');
+                      const p342 = tmdb.getImageUrl(item.poster_path, 'w342');
                       const prefetchRelated = () => {
                         if (item.backdrop_path) {
-                          void preloadSingleImage(tmdb.getBackdropUrl(item.backdrop_path, 'w1280'));
+                          void preloadSingleImage(tmdb.getBackdropUrl(item.backdrop_path, 'w780'));
                         }
                         void tmdb.getMovieDetails(item.id).catch(() => {});
                       };
@@ -1516,9 +1524,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                           <img
                             ref={smartImgRef}
                             onLoad={smartImgOnLoad}
-                            src={p500}
-                            srcSet={`${p500} 500w, ${p780} 780w`}
-                            sizes="(max-width: 640px) 380px, 500px"
+                            src={p185}
+                            srcSet={`${p185} 1x, ${p342} 2x`}
                             alt={item.title}
                             loading="lazy"
                             decoding="async"
@@ -1578,11 +1585,11 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                   </Link>
                   <div data-h-scroll="true" className="similar-carousel">
                     {displaySimilar.map((item) => {
-                      const p500 = tmdb.getImageUrl(item.poster_path, 'w500');
-                      const p780 = tmdb.getImageUrl(item.poster_path, 'w780');
+                      const p185 = tmdb.getImageUrl(item.poster_path, 'w185');
+                      const p342 = tmdb.getImageUrl(item.poster_path, 'w342');
                       const prefetchSimilar = () => {
                         if (item.backdrop_path) {
-                          void preloadSingleImage(tmdb.getBackdropUrl(item.backdrop_path, 'w1280'));
+                          void preloadSingleImage(tmdb.getBackdropUrl(item.backdrop_path, 'w780'));
                         }
                         const req = isTv ? tmdb.getTVDetails(item.id) : tmdb.getMovieDetails(item.id);
                         void req.catch(() => {});
@@ -1600,9 +1607,8 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                           <img
                             ref={smartImgRef}
                             onLoad={smartImgOnLoad}
-                            src={p500}
-                            srcSet={`${p500} 500w, ${p780} 780w`}
-                            sizes="(max-width: 640px) 380px, 500px"
+                            src={p185}
+                            srcSet={`${p185} 1x, ${p342} 2x`}
                             alt={item.title}
                             loading="lazy"
                             decoding="async"

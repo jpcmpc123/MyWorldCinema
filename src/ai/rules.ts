@@ -24,6 +24,7 @@ export interface AkinatorMovieProfile {
   pacing: LayaPacing;
   viewing_context: LayaViewingContext;
   regex: RegExp;
+  keywordGroups?: ReadonlyArray<RegExp>;
 }
 
 /**
@@ -78,8 +79,8 @@ export function matchFirstRule<T extends string>(
 }
 
 /**
- * Base calibrada cirurgicamente dos 24 filmes do Akinator Laya (Jpcm/laya-filmes-tmdb)
- * com perfil 7D sem ruído e zero data leakage.
+ * Base calibrada cirurgicamente dos filmes do Akinator Laya (Jpcm/laya-filmes-tmdb)
+ * com perfil 7D sem ruído e suporte a grupos de palavras-chave combinadas.
  */
 const RAW_AKINATOR_PROFILES: ReadonlyArray<{
   title: LayaGuessTitle;
@@ -91,6 +92,7 @@ const RAW_AKINATOR_PROFILES: ReadonlyArray<{
   pacing: LayaPacing;
   viewing_context: LayaViewingContext;
   clues: readonly string[];
+  keywordGroups?: ReadonlyArray<readonly string[]>;
 }> = [
   {
     title: 'As Branquelas',
@@ -564,6 +566,240 @@ const RAW_AKINATOR_PROFILES: ReadonlyArray<{
       'pedra do reino',
     ],
   },
+  {
+    title: 'O Castelo de Vidro',
+    genre: 'drama',
+    mood: 'emotional',
+    content_rating: '14',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'solo',
+    clues: [
+      'castelo de vidro',
+      'glass castle',
+      'jeannette walls',
+      'rex walls',
+      'casa de vidro transparente',
+      'construir um castelo de vidro',
+      'construir algo transparente',
+      'construir aogo tranparente',
+      'pais nomades',
+    ],
+    keywordGroups: [
+      ['pai', 'pais', 'mae', 'mao', 'familia', 'filhos'],
+      ['construir', 'desejo', 'desenjo', 'sonho', 'planta', 'projeto'],
+      ['transparente', 'tranparente', 'vidro', 'castelo'],
+    ],
+  },
+  {
+    title: '13 Fantasmas',
+    genre: 'horror',
+    mood: 'dark',
+    content_rating: '18',
+    decade: '2000s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'friends',
+    clues: [
+      '13 fantasmas',
+      'treze fantasmas',
+      'thirteen ghosts',
+      'mansao de vidro com fantasmas',
+      'oculos especiais para ver fantasmas',
+    ],
+    keywordGroups: [
+      ['casa', 'mansao'],
+      ['vidro', 'transparente', 'tranparente'],
+      ['fantasma', 'fantasmas', 'espiritos'],
+    ],
+  },
+  {
+    title: 'A Casa de Vidro',
+    genre: 'thriller',
+    mood: 'dark',
+    content_rating: '14',
+    decade: '2000s',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'casa de vidro',
+      'the glass house',
+      'irmaos orfaos adotados por casal',
+      'adotados pelos vizinhos ricos numa mansao de vidro',
+    ],
+    keywordGroups: [
+      ['orfaos', 'adotivos', 'adotados', 'tutores'],
+      ['mansao', 'casa'],
+      ['vidro', 'transparente'],
+    ],
+  },
+  {
+    title: 'Dente Canino',
+    genre: 'drama',
+    mood: 'dark',
+    content_rating: '18',
+    decade: '2000s',
+    origin: 'european',
+    pacing: 'slow',
+    viewing_context: 'solo',
+    clues: [
+      'dente canino',
+      'dogtooth',
+      'kynodontas',
+      'pais trancam os filhos em casa',
+      'so podem sair quando o dente canino cair',
+      'ensinam palavras erradas aos filhos',
+    ],
+  },
+  {
+    title: 'O Quarto de Jack',
+    genre: 'drama',
+    mood: 'emotional',
+    content_rating: '14',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'solo',
+    clues: [
+      'quarto de jack',
+      'mae e filho presos num cativeiro',
+      'menino nasceu num quarto fechado',
+      'nunca viu o mundo la fora',
+      'enrolado no tapete para fugir',
+    ],
+  },
+  {
+    title: 'Capitão Fantástico',
+    genre: 'drama',
+    mood: 'inspirational',
+    content_rating: '14',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'family',
+    clues: [
+      'capitao fantastico',
+      'captain fantastic',
+      'pai cria os seis filhos na floresta',
+      'pai cria os filhos isolados no mato',
+    ],
+  },
+  {
+    title: 'Corra!',
+    genre: 'horror',
+    mood: 'dark',
+    content_rating: '16',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'conhecer os pais da namorada branca',
+      'hipnose com xicara de cha',
+      'zona de afundamento',
+      'transplante de cerebro na familia',
+    ],
+  },
+  {
+    title: 'Hereditário',
+    genre: 'horror',
+    mood: 'dark',
+    content_rating: '18',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'slow',
+    viewing_context: 'solo',
+    clues: [
+      'menina perde a cabeca no poste',
+      'estalo com a lingua',
+      'maquetes em miniatura',
+      'rei paimon',
+      'seita da avo morta',
+    ],
+  },
+  {
+    title: 'Garota Exemplar',
+    genre: 'thriller',
+    mood: 'dark',
+    content_rating: '16',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'couple',
+    clues: [
+      'esposa forja o proprio desaparecimento',
+      'forja o proprio sequestro e morte',
+      'incriminar o marido infiel',
+      'amy dunne',
+    ],
+  },
+  {
+    title: 'O Poço',
+    genre: 'thriller',
+    mood: 'dark',
+    content_rating: '18',
+    decade: 'modern',
+    origin: 'spanish',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'prisao vertical com plataforma de comida',
+      'mesa de comida que desce pelos andares',
+      'quem esta em cima come tudo',
+      'el hoyo',
+    ],
+  },
+  {
+    title: 'Whiplash: Em Busca da Perfeição',
+    genre: 'music',
+    mood: 'intense',
+    content_rating: '14',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'baterista de jazz',
+      'professor de musica abusivo careca',
+      'joga cadeira no baterista',
+      'nao e o meu tempo',
+      'maos sangrando na bateria',
+    ],
+  },
+  {
+    title: 'Tudo em Todo o Lugar ao Mesmo Tempo',
+    genre: 'scifi',
+    mood: 'mindbending',
+    content_rating: '14',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'family',
+    clues: [
+      'dona de lavanderia no multiverso',
+      'dedos de salsicha',
+      'bagel preto com tudo dentro',
+      'declarando imposto de renda no multiverso',
+    ],
+  },
+  {
+    title: 'A Substância',
+    genre: 'horror',
+    mood: 'dark',
+    content_rating: '18',
+    decade: 'modern',
+    origin: 'hollywood',
+    pacing: 'fast',
+    viewing_context: 'solo',
+    clues: [
+      'soro verde do mercado negro',
+      'versao mais jovem sai das costas',
+      'revezar a cada sete dias',
+      'apresentadora de ginastica demitida',
+    ],
+  },
 ];
 
 export const COMPILED_AKINATOR_PROFILES: readonly AkinatorMovieProfile[] =
@@ -577,6 +813,9 @@ export const COMPILED_AKINATOR_PROFILES: readonly AkinatorMovieProfile[] =
     pacing: item.pacing,
     viewing_context: item.viewing_context,
     regex: compileTermListRegex(item.clues),
+    keywordGroups: item.keywordGroups
+      ? item.keywordGroups.map((group) => compileTermListRegex(group))
+      : undefined,
   }));
 
 export const GUESSING_INTENT_REGEX = compileTermListRegex([
@@ -592,6 +831,10 @@ export const GUESSING_INTENT_REGEX = compileTermListRegex([
   'aquele filme do',
   'aquele filme da',
   'aquele filme dos',
+  'filme onde',
+  'filme em que',
+  'filme sobre um',
+  'filme sobre uma',
   'como chama o filme',
   'me ajuda a lembrar',
   'tentando lembrar',
@@ -602,10 +845,27 @@ export const GUESSING_INTENT_REGEX = compileTermListRegex([
   'movie where',
 ]);
 
+export function normalizeGuessTypos(qNorm: string): string {
+  return qNorm
+    .replace(/\btranparente\b/g, 'transparente')
+    .replace(/\bdesenjo\b/g, 'desejo')
+    .replace(/\baogo\b/g, 'algo')
+    .replace(/\buma mao\b/g, 'uma mae');
+}
+
 export function matchAkinatorProfile(qNorm: string): AkinatorMovieProfile | null {
+  const cleaned = normalizeGuessTypos(qNorm);
   for (let i = 0; i < COMPILED_AKINATOR_PROFILES.length; i++) {
-    if (COMPILED_AKINATOR_PROFILES[i].regex.test(qNorm)) {
-      return COMPILED_AKINATOR_PROFILES[i];
+    const profile = COMPILED_AKINATOR_PROFILES[i];
+    if (profile.regex.test(cleaned)) {
+      return profile;
+    }
+    if (
+      profile.keywordGroups &&
+      profile.keywordGroups.length > 0 &&
+      profile.keywordGroups.every((groupRegex) => groupRegex.test(cleaned))
+    ) {
+      return profile;
     }
   }
   return null;

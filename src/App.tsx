@@ -435,9 +435,15 @@ function AppShell() {
                 ? 'w-full flex-1 flex flex-col'
                 : outgoingIsMainTab
                   ? 'fixed inset-x-0 top-[100px] bottom-0 z-20 overflow-hidden pointer-events-none bg-lb-bg mw-gpu-layer'
-                  : 'hidden'
+                  : 'hidden tab-pager-hidden'
             }
-            style={outgoingIsMainTab ? outgoingTransformStyle : undefined}
+            style={
+              outgoingIsMainTab
+                ? outgoingTransformStyle
+                : !isMainTab
+                  ? { contentVisibility: 'hidden' }
+                  : undefined
+            }
             aria-hidden={!isMainTab}
           >
             <div

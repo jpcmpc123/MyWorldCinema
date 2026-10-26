@@ -759,6 +759,19 @@ a,
   }
 }
 
+@media (max-width: 767px) {
+  .poster-card-optimized {
+    transform: none;
+    will-change: auto;
+  }
+
+  .tab-panel-collapsed,
+  .tab-pager-hidden {
+    content-visibility: hidden;
+    contain-intrinsic-size: 100vw 100vh;
+  }
+}
+
 .diary-row-optimized {
   content-visibility: auto;
   contain-intrinsic-size: auto 72px;

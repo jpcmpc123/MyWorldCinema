@@ -16,7 +16,6 @@ import {
   type TabSwipeFinishDetail,
   type TabSwipeMoveDetail,
 } from '../utils/tabSwipe';
-import { tabDataCache } from '../services/tabDataCache';
 import { ErrorBoundary } from './ErrorBoundary';
 
 function lazyWithRetry<T extends React.ComponentType<any>>(
@@ -255,32 +254,41 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
     return () => window.clearTimeout(id);
   }, [pager.leavingRange, pager.active]);
 
-  const prefetchedRef = useRef(false);
   useEffect(() => {
-    if (prefetchedRef.current) return;
-    prefetchedRef.current = true;
-    let mountTimer: number | undefined;
-    const run = () => {
-      PANELS.forEach((panel) => {
-        if ('preload' in panel && typeof panel.preload === 'function') {
-          panel.preload();
-        }
+    let idleId: number | undefined;
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const mountImmediateNeighbor = () => {
+      setPager((prev) => {
+        const nextNeighbor =
+          prev.active + 1 < PANELS.length
+            ? prev.active + 1
+            : prev.active - 1 >= 0
+              ? prev.active - 1
+              : -1;
+        if (nextNeighbor < 0 || prev.mounted[nextNeighbor]) return prev;
+        return {
+          ...prev,
+          mounted: prev.mounted.map((wasMounted, i) => wasMounted || i === nextNeighbor),
+        };
       });
-      void tabDataCache.preloadAll();
-      mountTimer = window.setTimeout(() => {
-        setPager((prev) =>
-          prev.mounted.every(Boolean)
-            ? prev
-            : { ...prev, mounted: PANELS.map(() => true) },
-        );
-      }, 120);
     };
-    const id = window.setTimeout(run, 60);
+    const timerId = window.setTimeout(() => {
+      if (typeof win.requestIdleCallback === 'function') {
+        idleId = win.requestIdleCallback(mountImmediateNeighbor, { timeout: 1500 });
+      } else {
+        mountImmediateNeighbor();
+      }
+    }, 2500);
     return () => {
-      window.clearTimeout(id);
-      if (mountTimer) window.clearTimeout(mountTimer);
+      window.clearTimeout(timerId);
+      if (idleId !== undefined && typeof win.cancelIdleCallback === 'function') {
+        win.cancelIdleCallback(idleId);
+      }
     };
-  }, []);
+  }, [PANELS.length]);
 
   const endSlide = () =>
     setPager((prev) => (prev.leavingRange === null ? prev : { ...prev, leavingRange: null }));
@@ -734,8 +742,8 @@ export const TabViewPager: React.FC<TabViewPagerProps> = ({
             pager.leavingRange !== null &&
             i >= pager.leavingRange[0] &&
             i <= pager.leavingRange[1];
-          const expanded = isActive || isAdjacent || inLeavingRange || peek === i;
           const isMounted = pager.mounted[i] || isActive;
+          const expanded = isMounted && (isActive || isAdjacent || inLeavingRange || peek === i);
           return (
             <div
               key={panel.key}
