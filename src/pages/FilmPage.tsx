@@ -31,7 +31,7 @@ import {
   type UnifiedRatingsPayload,
 } from '../services/unifiedRatings';
 import { WhereToWatch } from '../components/WhereToWatch';
-import { PosterCard, smartImgRef, smartImgOnLoad } from '../components/PosterCard';
+import { PosterCard, smartImgRef, smartImgOnLoad, markPosterUrlLoaded } from '../components/PosterCard';
 import {
   Backdrop,
   preloadSingleImage,
@@ -105,6 +105,10 @@ export function getRequiredFilmImageUrls(
     (movie.poster_path ? tmdb.getImageUrl(movie.poster_path, isMobile ? 'w342' : 'w500') : '');
   if (posterUrl) urls.add(posterUrl);
 
+  if (isMobile && !override?.poster && movie.poster_path) {
+    urls.add(tmdb.getImageUrl(movie.poster_path, 'w185'));
+  }
+
   if (isMobile) {
     if (fromPersonProfilePath) {
       urls.add(tmdb.getProfileUrl(fromPersonProfilePath, 'w185'));
@@ -114,6 +118,16 @@ export function getRequiredFilmImageUrls(
       for (const actor of initialCast) {
         if (actor.profile_path) {
           urls.add(tmdb.getProfileUrl(actor.profile_path, 'w185'));
+        }
+      }
+    }
+    if (movie.credits?.crew?.length) {
+      let crewCount = 0;
+      for (const member of movie.credits.crew) {
+        if (member.profile_path) {
+          urls.add(tmdb.getProfileUrl(member.profile_path, 'w185'));
+          crewCount++;
+          if (crewCount >= 10) break;
         }
       }
     }
@@ -134,13 +148,17 @@ export function getRequiredFilmImageUrls(
   }
 
   // Pôsteres de Filmes Relacionados (coleção) e Semelhantes visíveis na tela
-  const posterSize = isMobile ? 'w185' : 'w342';
   const related = (movie.collection_parts || [])
     .filter((item) => item.poster_path && item.id !== movie.id)
     .slice(0, isMobile ? 10 : 6);
   for (const item of related) {
     if (item.poster_path) {
-      urls.add(tmdb.getImageUrl(item.poster_path, posterSize));
+      if (isMobile) {
+        urls.add(tmdb.getImageUrl(item.poster_path, 'w185'));
+        urls.add(tmdb.getImageUrl(item.poster_path, 'w342'));
+      } else {
+        urls.add(tmdb.getImageUrl(item.poster_path, 'w342'));
+      }
     }
   }
 
@@ -149,7 +167,12 @@ export function getRequiredFilmImageUrls(
     .slice(0, isMobile ? 10 : 6);
   for (const item of similar) {
     if (item.poster_path) {
-      urls.add(tmdb.getImageUrl(item.poster_path, posterSize));
+      if (isMobile) {
+        urls.add(tmdb.getImageUrl(item.poster_path, 'w185'));
+        urls.add(tmdb.getImageUrl(item.poster_path, 'w342'));
+      } else {
+        urls.add(tmdb.getImageUrl(item.poster_path, 'w342'));
+      }
     }
   }
 
@@ -164,6 +187,12 @@ export function getRequiredFilmImageUrls(
 
 function areAllUrlsLoaded(urls: string[]): boolean {
   return urls.every((u) => isImageUrlPreloaded(u));
+}
+
+function preloadAndMarkImage(url: string): Promise<void> {
+  return preloadSingleImage(url).then(() => {
+    markPosterUrlLoaded(url);
+  });
 }
 
 interface InitialMoviePayload {
@@ -265,6 +294,16 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
 
   const fromPersonProfilePath = locationState?.fromPerson?.profile_path;
 
+  const extraAvatarsForMovie = useMemo(() => {
+    const list: (string | null | undefined)[] = [profile?.avatar_url];
+    for (const r of reviews) {
+      if (r.movieId === movieId && r.author.avatarUrl) {
+        list.push(r.author.avatarUrl);
+      }
+    }
+    return list;
+  }, [profile?.avatar_url, reviews, movieId]);
+
   const cachedDetails = useMemo<TMDBMovieDetails | null>(() => {
     if (!movieId) return null;
     const cached = tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie');
@@ -275,25 +314,53 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   }, [movieId, isTv]);
 
   const initialPartialMovie = useMemo<TMDBMovieDetails | null>(() => {
-    if (!movieId) return null;
+    if (!movieId || isMobile) return null;
     return buildPartialMovieDetails(
       locationState?.initialMovie ?? locationState?.previewMovie,
       movieId,
       isTv,
     );
-  }, [locationState?.initialMovie, locationState?.previewMovie, movieId, isTv]);
+  }, [locationState?.initialMovie, locationState?.previewMovie, movieId, isTv, isMobile]);
 
-  const seedMovie = cachedDetails ?? initialPartialMovie;
+  // No celular (isMobile), NÃO usamos initialPartialMovie para pular o carregamento:
+  // aguardamos que os detalhes completos, imagens e notas unificadas estejam 100% carregados.
+  const seedMovie = isMobile ? cachedDetails : (cachedDetails ?? initialPartialMovie);
+
+  const isMobileFullyCached = useMemo<boolean>(() => {
+    if (!isMobile) return Boolean(seedMovie);
+    if (!cachedDetails) return false;
+    const urls = getRequiredFilmImageUrls(
+      cachedDetails,
+      true,
+      movieOverrides[movieId],
+      fromPersonProfilePath,
+      extraAvatarsForMovie,
+    );
+    const hasUnified = Boolean(getCachedUnifiedRatings(movieId, isTv));
+    return areAllUrlsLoaded(urls) && hasUnified;
+  }, [
+    isMobile,
+    seedMovie,
+    cachedDetails,
+    movieOverrides,
+    movieId,
+    fromPersonProfilePath,
+    extraAvatarsForMovie,
+    isTv,
+  ]);
 
   const [movie, setMovie] = useState<TMDBMovieDetails | null>(() => seedMovie);
   const [loading, setLoading] = useState<boolean>(() => !seedMovie);
-  const [assetsReady, setAssetsReady] = useState<boolean>(() => Boolean(seedMovie));
+  const [assetsReady, setAssetsReady] = useState<boolean>(() =>
+    isMobile ? isMobileFullyCached : Boolean(seedMovie),
+  );
 
   if (movie?.id !== movieId) {
     if (seedMovie) {
       setMovie(seedMovie);
       if (loading) setLoading(false);
-      if (!assetsReady) setAssetsReady(true);
+      const nextReady = isMobile ? isMobileFullyCached : true;
+      if (assetsReady !== nextReady) setAssetsReady(nextReady);
     } else {
       if (movie !== null) setMovie(null);
       if (!loading) setLoading(true);
@@ -333,6 +400,9 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       return;
     }
 
+    // No celular, o carregamento da Nota Unificada já acontece dentro de loadFilm antes de abrir a página
+    if (isMobile && (!assetsReady || loading)) return;
+
     let cancelled = false;
     setUnifiedLoading(true);
 
@@ -356,7 +426,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
     return () => {
       cancelled = true;
     };
-  }, [movieId, isTv, movieImdbId, movieVoteAvg]);
+  }, [movieId, isTv, movieImdbId, movieVoteAvg, isMobile, assetsReady, loading]);
 
   // Elastic green indicator refs for mobile tabs
   const filmTabsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -498,6 +568,45 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   useEffect(() => {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const mountTime = performance.now();
+
+    const waitSlideIfMobile = async () => {
+      if (!isMobile || disableSlideAnimation) return;
+      const elapsed = performance.now() - mountTime;
+      const remaining = Math.max(0, 355 - elapsed);
+      if (remaining > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+      }
+    };
+
+    const preloadUnifiedForMobile = async (details: TMDBMovieDetails) => {
+      const existing = getCachedUnifiedRatings(movieId, isTv);
+      if (existing) {
+        if (!cancelled) {
+          setUnifiedRatings(existing);
+          setUnifiedLoading(false);
+        }
+        return;
+      }
+      const detailsImdbId =
+        details.external_ids?.imdb_id ||
+        ((details as unknown as { imdb_id?: string }).imdb_id ?? null);
+      const res = await Promise.race([
+        fetchUnifiedRatings({
+          tmdbId: movieId,
+          isTv,
+          imdbId: detailsImdbId,
+          tmdbVoteAverage: details.vote_average ?? 0,
+        }).catch(() => null),
+        new Promise<UnifiedRatingsPayload | null>((resolve) =>
+          setTimeout(() => resolve(null), 4500),
+        ),
+      ]);
+      if (!cancelled) {
+        if (res) setUnifiedRatings(res);
+        setUnifiedLoading(false);
+      }
+    };
 
     async function loadFilm(attempt = 1) {
       if (!movieId) return;
@@ -505,21 +614,54 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
         const cached = tmdb.getCachedDetails(movieId, isTv ? 'tv' : 'movie');
         if (cached && Array.isArray(cached.credits?.cast) && Array.isArray(cached.similar?.results)) {
           setMovie(cached);
-          setLoading(false);
-          setAssetsReady(true);
           const urls = getRequiredFilmImageUrls(
             cached,
             isMobile,
             movieOverrides[movieId],
             fromPersonProfilePath,
+            extraAvatarsForMovie,
           );
-          urls.forEach((u) => {
-            void preloadSingleImage(u);
-          });
+
+          if (!isMobile) {
+            setLoading(false);
+            setAssetsReady(true);
+            urls.forEach((u) => {
+              void preloadAndMarkImage(u);
+            });
+            return;
+          }
+
+          // No celular: verifica se todas as imagens e notas unificadas já estão prontas
+          const cachedUnified = getCachedUnifiedRatings(movieId, isTv);
+          if (areAllUrlsLoaded(urls) && cachedUnified) {
+            urls.forEach((u) => markPosterUrlLoaded(u));
+            setUnifiedRatings(cachedUnified);
+            setUnifiedLoading(false);
+            setLoading(false);
+            setAssetsReady(true);
+            return;
+          }
+
+          setLoading(false);
+          setAssetsReady(false);
+          await Promise.all([
+            areAllUrlsLoaded(urls)
+              ? Promise.resolve()
+              : Promise.race([
+                  Promise.all(urls.map(preloadAndMarkImage)),
+                  new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+                ]),
+            preloadUnifiedForMobile(cached),
+            document.fonts?.ready ? document.fonts.ready.catch(() => {}) : Promise.resolve(),
+            waitSlideIfMobile(),
+          ]);
+          if (!cancelled) {
+            setAssetsReady(true);
+          }
           return;
         }
 
-        if (initialPartialMovie && initialPartialMovie.id === movieId) {
+        if (!isMobile && initialPartialMovie && initialPartialMovie.id === movieId) {
           setMovie((prev) => (prev && prev.id === movieId ? prev : initialPartialMovie));
           setLoading(false);
           setAssetsReady(true);
@@ -533,30 +675,50 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
       try {
         const details = isTv ? await tmdb.getTVDetails(movieId) : await tmdb.getMovieDetails(movieId);
         if (cancelled) return;
-        setMovie((prev) => {
-          // Preserva overview/poster/backdrop do initialMovie caso a API retorne algum campo vazio
-          if (prev && prev.id === details.id) {
-            return {
-              ...details,
-              overview: details.overview || prev.overview || '',
-              poster_path: details.poster_path || prev.poster_path,
-              backdrop_path: details.backdrop_path || prev.backdrop_path,
-            };
-          }
-          return details;
-        });
-        setAssetsReady(true);
-        setLoading(false);
 
         const urls = getRequiredFilmImageUrls(
           details,
           isMobile,
           movieOverrides[movieId],
           fromPersonProfilePath,
+          extraAvatarsForMovie,
         );
-        urls.forEach((u) => {
-          void preloadSingleImage(u);
-        });
+
+        if (isMobile) {
+          // No celular: aguarda imagens + nota unificada + fontes + término do slide antes de abrir a página
+          await Promise.all([
+            areAllUrlsLoaded(urls)
+              ? Promise.resolve()
+              : Promise.race([
+                  Promise.all(urls.map(preloadAndMarkImage)),
+                  new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+                ]),
+            preloadUnifiedForMobile(details),
+            document.fonts?.ready ? document.fonts.ready.catch(() => {}) : Promise.resolve(),
+            waitSlideIfMobile(),
+          ]);
+          if (cancelled) return;
+          setMovie(details);
+          setAssetsReady(true);
+          setLoading(false);
+        } else {
+          setMovie((prev) => {
+            if (prev && prev.id === details.id) {
+              return {
+                ...details,
+                overview: details.overview || prev.overview || '',
+                poster_path: details.poster_path || prev.poster_path,
+                backdrop_path: details.backdrop_path || prev.backdrop_path,
+              };
+            }
+            return details;
+          });
+          setAssetsReady(true);
+          setLoading(false);
+          urls.forEach((u) => {
+            void preloadAndMarkImage(u);
+          });
+        }
       } catch (err) {
         if (cancelled) return;
         console.error('Failed to load movie details (attempt ' + attempt + '):', err);
@@ -1575,7 +1737,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
                   </Link>
                   <div data-h-scroll="true" className="similar-carousel">
-                    {relatedFilms.map((item) => {
+                    {relatedFilms.map((item, idx) => {
                       const p185 = tmdb.getImageUrl(item.poster_path, 'w185');
                       const p342 = tmdb.getImageUrl(item.poster_path, 'w342');
                       const prefetchRelated = () => {
@@ -1600,7 +1762,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                             src={p185}
                             srcSet={`${p185} 1x, ${p342} 2x`}
                             alt={item.title}
-                            loading="lazy"
+                            loading={idx < 10 ? 'eager' : 'lazy'}
                             decoding="async"
                             className="mw-img-fade"
                           />
@@ -1657,7 +1819,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                     <ChevronRight className="w-4 h-4 text-[#89a] group-active:text-lb-green group-hover:text-white transition-colors" />
                   </Link>
                   <div data-h-scroll="true" className="similar-carousel">
-                    {displaySimilar.map((item) => {
+                    {displaySimilar.map((item, idx) => {
                       const p185 = tmdb.getImageUrl(item.poster_path, 'w185');
                       const p342 = tmdb.getImageUrl(item.poster_path, 'w342');
                       const prefetchSimilar = () => {
@@ -1683,7 +1845,7 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                             src={p185}
                             srcSet={`${p185} 1x, ${p342} 2x`}
                             alt={item.title}
-                            loading="lazy"
+                            loading={idx < 10 ? 'eager' : 'lazy'}
                             decoding="async"
                             className="mw-img-fade"
                           />

@@ -32,19 +32,15 @@ export function preloadSingleImage(url: string): Promise<void> {
         if (oldest) loadedImageUrls.delete(oldest);
       }
       loadedImageUrls.add(url);
-      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth <= 767;
-      if (!isMobileViewport) {
-        pinnedDecodedImages.push(img);
-        if (pinnedDecodedImages.length > MAX_PINNED_DECODED_IMAGES) {
-          pinnedDecodedImages.shift();
-        }
+      pinnedDecodedImages.push(img);
+      if (pinnedDecodedImages.length > MAX_PINNED_DECODED_IMAGES) {
+        pinnedDecodedImages.shift();
       }
       resolve();
     };
 
     img.onload = () => {
-      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth <= 767;
-      if (!isMobileViewport && typeof img.decode === 'function') {
+      if (typeof img.decode === 'function') {
         img.decode().then(finish).catch(finish);
       } else {
         finish();
@@ -54,8 +50,7 @@ export function preloadSingleImage(url: string): Promise<void> {
     img.src = url;
 
     if (img.complete && img.naturalWidth > 0) {
-      const isMobileViewport = typeof window !== 'undefined' && window.innerWidth <= 767;
-      if (!isMobileViewport && typeof img.decode === 'function') {
+      if (typeof img.decode === 'function') {
         img.decode().then(finish).catch(finish);
       } else {
         finish();

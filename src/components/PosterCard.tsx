@@ -126,7 +126,14 @@ export function preloadPoster(
  */
 export function smartImgRef(el: HTMLImageElement | null): void {
   if (!el) return;
-  if ((el.complete && el.naturalWidth > 0) || loadedPosterUrls.has(el.currentSrc || el.src)) {
+  const currentUrl = el.currentSrc || el.src;
+  if (
+    (el.complete && el.naturalWidth > 0) ||
+    loadedPosterUrls.has(currentUrl) ||
+    loadedPosterUrls.has(el.src) ||
+    isImageUrlPreloaded(currentUrl) ||
+    isImageUrlPreloaded(el.src)
+  ) {
     if (el.src) markPosterUrlLoaded(el.src);
     if (el.currentSrc) markPosterUrlLoaded(el.currentSrc);
     el.style.transition = 'none';

@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams, Link, useLocation } from 'react-router-dom';
-import { Star, Play, X, Tv } from 'lucide-react';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Star, Play, X, Tv, ArrowLeft, Loader2 } from 'lucide-react';
 import { tmdb, type TMDBMovieDetails } from '../services/tmdb';
 import { WhereToWatch } from '../components/WhereToWatch';
 import { PosterCard } from '../components/PosterCard';
-import { Backdrop } from '../components/Backdrop';
+import { Backdrop, preloadSingleImage } from '../components/Backdrop';
 import { openPersonProfile } from '../utils/personNav';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { getRequiredFilmImageUrls } from './FilmPage';
 
 // Página de série (/tv/:id) — versão simplificada da FilmPage:
 // navegação/leitura apenas (sem log/diário/rating; o app registra FILMES).
@@ -15,6 +17,8 @@ export const SeriesDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const tvId = Number(id);
   const location = useLocation();
+  const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const locationState = location.state as {
     initialMovie?: {
@@ -35,6 +39,7 @@ export const SeriesDetailPage: React.FC = () => {
   } | null;
 
   const previewShow = useMemo<TMDBMovieDetails | null>(() => {
+    if (isMobile) return null;
     const init = locationState?.initialMovie;
     if (!init || Number(init.id) !== tvId) return null;
     const title = init.title || init.name || init.original_title || init.original_name || '';
@@ -63,7 +68,7 @@ export const SeriesDetailPage: React.FC = () => {
       similar: { results: [] },
       recommendations: { results: [] },
     };
-  }, [locationState?.initialMovie, tvId]);
+  }, [locationState?.initialMovie, tvId, isMobile]);
 
   const cachedShow = useMemo<TMDBMovieDetails | null>(() => {
     if (!tvId) return null;
@@ -74,7 +79,7 @@ export const SeriesDetailPage: React.FC = () => {
     return null;
   }, [tvId]);
 
-  const seedShow = cachedShow ?? previewShow;
+  const seedShow = isMobile ? cachedShow : (cachedShow ?? previewShow);
   const [show, setShow] = useState<TMDBMovieDetails | null>(() => seedShow);
   const [loading, setLoading] = useState<boolean>(() => !seedShow);
   const [showTrailerModal, setShowTrailerModal] = useState(false);
@@ -112,12 +117,21 @@ export const SeriesDetailPage: React.FC = () => {
 
       const cached = tmdb.getCachedDetails(tvId, 'tv');
       if (cached && Array.isArray(cached.credits?.cast)) {
-        setShow(cached);
-        setLoading(false);
+        if (isMobile) {
+          const urls = getRequiredFilmImageUrls(cached, true);
+          await Promise.race([
+            Promise.all(urls.map(preloadSingleImage)),
+            new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+          ]);
+        }
+        if (!cancelled) {
+          setShow(cached);
+          setLoading(false);
+        }
         return;
       }
 
-      if (previewShow && previewShow.id === tvId) {
+      if (!isMobile && previewShow && previewShow.id === tvId) {
         setShow((prev) => (prev && prev.id === tvId ? prev : previewShow));
         setLoading(false);
       } else {
@@ -127,6 +141,14 @@ export const SeriesDetailPage: React.FC = () => {
 
       try {
         const details = await tmdb.getTVDetails(tvId);
+        if (cancelled) return;
+        if (isMobile) {
+          const urls = getRequiredFilmImageUrls(details, true);
+          await Promise.race([
+            Promise.all(urls.map(preloadSingleImage)),
+            new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+          ]);
+        }
         if (!cancelled) setShow(details);
       } catch (err) {
         console.error('Failed to load series details:', err);
@@ -138,20 +160,25 @@ export const SeriesDetailPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tvId, previewShow]);
+  }, [tvId, previewShow, isMobile]);
 
   if (!show || show.id !== tvId || loading) {
     if (loading) {
       return (
-        <div className="relative min-h-screen text-lb-text mw-slide-in-left max-w-[950px] mx-auto px-4 md:px-0 pt-16 md:pt-20">
-          <div className="flex flex-col md:flex-row gap-6 items-start animate-pulse">
-            <div className="w-[120px] md:w-[230px] aspect-[2/3] rounded bg-[#1c2228] flex-shrink-0" />
-            <div className="flex-1 w-full space-y-3 pt-2">
-              <div className="h-7 w-2/3 bg-[#1c2228] rounded" />
-              <div className="h-4 w-1/3 bg-[#1c2228] rounded" />
-              <div className="h-24 w-full bg-[#1c2228] rounded mt-4" />
-            </div>
+        <div
+          key="series-loading"
+          className="relative min-h-[calc(100dvh-60px)] md:min-h-screen bg-lb-bg flex items-center justify-center"
+        >
+          <div className="md:hidden absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 pt-2.5">
+            <button
+              onClick={() => navigate(-1)}
+              aria-label={t('film_back')}
+              className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center text-white shadow-md active:scale-95 transition-transform"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
           </div>
+          <Loader2 className="w-9 h-9 animate-spin text-lb-green" />
         </div>
       );
     }
