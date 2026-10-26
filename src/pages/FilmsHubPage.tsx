@@ -504,11 +504,11 @@ export const FilmsHubPage: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. JUST REVIEWED... Section */}
+      {/* 3. MOST ANTICIPATED Section */}
       <section className="space-y-3">
         <div className="flex items-center justify-between border-b border-lb-elevated pb-1.5">
           <h2 className="text-[11px] uppercase tracking-widest font-bold text-lb-muted">
-            {t('hub_just_reviewed')}
+            {t('sec_most_anticipated')}
           </h2>
           <span className="text-[10px] text-lb-muted font-mono">
             4.027.046.426 {t('hub_films_watched')}

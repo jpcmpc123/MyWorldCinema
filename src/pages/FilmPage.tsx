@@ -2148,7 +2148,10 @@ const CastTab: React.FC<{ movie: TMDBMovieDetails; mobile?: boolean }> = ({ movi
     if (
       fromPerson &&
       fromPerson.id &&
-      (fromPerson.role === 'Actor' || typeof fromPerson.character === 'string')
+      (fromPerson.role === 'Actor' ||
+        (typeof fromPerson.character === 'string' &&
+          fromPerson.character.trim().length > 0 &&
+          !fromPerson.job))
     ) {
       const existingIdx = base.findIndex((c) => c.id === fromPerson.id);
       if (existingIdx === -1) {

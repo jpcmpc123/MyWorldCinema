@@ -131,7 +131,7 @@ export const MobileCatalogSections: React.FC<MobileCatalogSectionsProps> = ({
     popular: browse('popular_week', 'popularity.desc', t('sec_popular_week')),
     rated: browse('highest_rated', 'vote_average.desc', t('sec_highest_rated')),
     watched: browse('most_watched', 'vote_count.desc', t('sec_most_watched')),
-    anticipated: browse('most_anticipated', 'popularity.desc', isSeries ? t('sec_just_reviewed') : t('sec_most_anticipated')),
+    anticipated: browse('most_anticipated', 'popularity.desc', t('sec_most_anticipated')),
   };
 
   return (
@@ -159,8 +159,8 @@ export const MobileCatalogSections: React.FC<MobileCatalogSectionsProps> = ({
         )}
       </SectionShell>
 
-      {/* 4. Most anticipated (films) / Just reviewed (series) — pôsteres limpos */}
-      <SectionShell title={isSeries ? t('sec_just_reviewed') : t('sec_most_anticipated')} to={routes.anticipated} state={{ initialItems: anticipated.slice(0, 18) }}>
+      {/* 4. Most anticipated — pôsteres limpos */}
+      <SectionShell title={t('sec_most_anticipated')} to={routes.anticipated} state={{ initialItems: anticipated.slice(0, 18) }}>
         {loading ? <SkeletonRow /> : <PosterRail movies={anticipated} isSeries={isSeries} sectionIndex={3} />}
       </SectionShell>
     </div>

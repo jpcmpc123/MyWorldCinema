@@ -543,11 +543,61 @@ const isReleasedWithVotes = (m: TMDBMovie, minVotes: number) => {
   return Boolean(d) && d <= TMDB_TODAY && m.vote_count >= minVotes;
 };
 
-/** Estritamente inédito/futuro (estreia > hoje) */
+/** Estritamente inédito/futuro (estreia > hoje e sem votos registrados) */
 const isFuture = (m: TMDBMovie) => {
   const d = itemDate(m);
-  return Boolean(d) && d > TMDB_TODAY;
+  return Boolean(d) && d > TMDB_TODAY && (m.vote_count || 0) === 0 && (m.vote_average || 0) === 0;
 };
+
+const movieHasPastReleaseCache = new Map<number, boolean>();
+
+async function hasMovieReleasedInAnyCountry(movieId: number): Promise<boolean> {
+  const cached = movieHasPastReleaseCache.get(movieId);
+  if (cached !== undefined) return cached;
+
+  for (const lang of ['pt-BR', 'en-US']) {
+    const det = mediaDetailsCache.get(`movie:${movieId}:${lang}`);
+    if (det && det.expires > Date.now() && det.data.release_dates?.results) {
+      const hasPast = det.data.release_dates.results.some((g) =>
+        (g.release_dates || []).some((r) => {
+          const d = (r.release_date || '').slice(0, 10);
+          return Boolean(d) && d <= TMDB_TODAY;
+        }),
+      );
+      movieHasPastReleaseCache.set(movieId, hasPast);
+      return hasPast;
+    }
+  }
+
+  try {
+    const rd = await fetchFromTMDB<{
+      id: number;
+      results?: { iso_3166_1: string; release_dates?: { release_date?: string }[] }[];
+    }>(`/movie/${movieId}/release_dates`);
+    const hasPast = (rd.results || []).some((g) =>
+      (g.release_dates || []).some((r) => {
+        const d = (r.release_date || '').slice(0, 10);
+        return Boolean(d) && d <= TMDB_TODAY;
+      }),
+    );
+    movieHasPastReleaseCache.set(movieId, hasPast);
+    return hasPast;
+  } catch {
+    return false;
+  }
+}
+
+async function filterStrictlyUnreleasedMovies(movies: TMDBMovie[]): Promise<TMDBMovie[]> {
+  const baseCandidates = movies.filter(isFuture);
+  if (baseCandidates.length === 0) return [];
+  const checks = await Promise.all(
+    baseCandidates.map(async (m) => ({
+      movie: m,
+      alreadyReleasedAbroad: await hasMovieReleasedInAnyCountry(m.id),
+    })),
+  );
+  return checks.filter((c) => !c.alreadyReleasedAbroad).map((c) => c.movie);
+}
 
 // ---------------------------------------------------------------------------
 // Motor Inteligente "Popular da Semana" (Filmes & Séries)
@@ -2047,9 +2097,13 @@ export const tmdb = {
     });
 
     const firstRes = responses[0] || { total_results: 0, total_pages: 1 };
+    const isUpcomingQuery = Boolean(params.releaseDateGte && params.releaseDateGte > TMDB_TODAY);
+    const filteredResults = isUpcomingQuery
+      ? await filterStrictlyUnreleasedMovies(unique)
+      : unique;
 
     return {
-      results: unique,
+      results: filteredResults,
       total_results: firstRes.total_results,
       total_pages: Math.ceil(firstRes.total_pages / count),
     };
@@ -2353,16 +2407,22 @@ export const tmdb = {
       ...extraFilters,
       ...presetParams,
       page,
-      pagesToFetch: 1,
+      pagesToFetch: preset === 'most_anticipated' ? 2 : 1,
     });
+
+    if (preset === 'most_anticipated') {
+      const results =
+        type === 'movie'
+          ? await filterStrictlyUnreleasedMovies(res.results)
+          : res.results.filter(isFuture);
+      return { ...res, results };
+    }
 
     // Pós-filtro JS obrigatório por preset
     const gate: (m: TMDBMovie) => boolean =
-      preset === 'most_anticipated'
-        ? isFuture
-        : preset === 'highest_rated'
-          ? (m) => isReleasedWithVotes(m, type === 'tv' ? 1500 : 10000)
-          : (m) => isReleasedWithVotes(m, preset === 'most_watched' ? 1 : minVotesPopular);
+      preset === 'highest_rated'
+        ? (m) => isReleasedWithVotes(m, type === 'tv' ? 1500 : 10000)
+        : (m) => isReleasedWithVotes(m, preset === 'most_watched' ? 1 : minVotesPopular);
 
     return { ...res, results: res.results.filter(gate) };
   },

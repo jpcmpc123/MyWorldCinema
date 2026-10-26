@@ -530,12 +530,12 @@ export const SeriesHubPage: React.FC = () => {
       </section>
       )}
 
-      {/* 3. JUST REVIEWED... Section — desktop only */}
+      {/* 3. MOST ANTICIPATED Section — desktop only */}
       {!isMobile && (
       <section className="hidden md:block space-y-3">
         <div className="flex items-center justify-between border-b border-lb-elevated pb-1.5">
           <h2 className="text-[11px] uppercase tracking-widest font-bold text-lb-muted">
-            {t('hub_just_reviewed')}
+            {t('sec_most_anticipated')}
           </h2>
           <span className="text-[10px] text-lb-muted font-mono">
             1.204.375.912 {t('hub_series_watched')}
