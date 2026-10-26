@@ -24,7 +24,12 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage, formatMoneyUSD, formatDatePt, regionNames, languageNames, type TranslationKey } from '../i18n/LanguageContext';
 import { StarRating } from '../components/StarRating';
-import { RatingHistogram } from '../components/RatingHistogram';
+import { RatingHistogram, UnifiedPlatformBadges } from '../components/RatingHistogram';
+import {
+  fetchUnifiedRatings,
+  getCachedUnifiedRatings,
+  type UnifiedRatingsPayload,
+} from '../services/unifiedRatings';
 import { WhereToWatch } from '../components/WhereToWatch';
 import { PosterCard, smartImgRef, smartImgOnLoad } from '../components/PosterCard';
 import {
@@ -297,6 +302,61 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
   }
   const [activeTab, setActiveTab] = useState<TabKey>('cast');
   const [hasChangedTab, setHasChangedTab] = useState<boolean>(false);
+
+  // Nota Unificada (Letterboxd, IMDb, Metacritic, Rotten Tomatoes e TMDb)
+  const [unifiedRatings, setUnifiedRatings] = useState<UnifiedRatingsPayload | null>(() =>
+    getCachedUnifiedRatings(movieId, isTv),
+  );
+  const [unifiedLoading, setUnifiedLoading] = useState<boolean>(
+    () => Boolean(movieId) && !getCachedUnifiedRatings(movieId, isTv),
+  );
+
+  // Sincroniza imediatamente o cache do localStorage ao trocar de filme/série
+  useLayoutEffect(() => {
+    const cachedUnified = getCachedUnifiedRatings(movieId, isTv);
+    setUnifiedRatings(cachedUnified);
+    setUnifiedLoading(Boolean(movieId) && !cachedUnified);
+  }, [movieId, isTv]);
+
+  // Busca assíncrona na MDBList (principal) / OMDb (fallback) apenas na página de detalhes
+  const movieImdbId =
+    movie?.external_ids?.imdb_id ||
+    ((movie as unknown as { imdb_id?: string } | null)?.imdb_id ?? null);
+  const movieVoteAvg = movie?.vote_average ?? 0;
+
+  useEffect(() => {
+    if (!movieId) return;
+    const cachedUnified = getCachedUnifiedRatings(movieId, isTv);
+    if (cachedUnified) {
+      setUnifiedRatings(cachedUnified);
+      setUnifiedLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setUnifiedLoading(true);
+
+    fetchUnifiedRatings({
+      tmdbId: movieId,
+      isTv,
+      imdbId: movieImdbId,
+      tmdbVoteAverage: movieVoteAvg,
+    })
+      .then((res) => {
+        if (cancelled) return;
+        if (res) {
+          setUnifiedRatings(res);
+        }
+        setUnifiedLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setUnifiedLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [movieId, isTv, movieImdbId, movieVoteAvg]);
 
   // Elastic green indicator refs for mobile tabs
   const filmTabsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -989,39 +1049,49 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
             </div>
 
             {/* RATINGS — mobile only: label à esquerda, estrela verde na base,
-                barras verticais cinzas no meio, média grande + 5 estrelas à direita */}
+                barras verticais cinzas no meio, média grande + 5 estrelas à direita + badges das plataformas */}
             <div className="md:hidden border-t border-white/10 pt-3 pb-3 mt-4 -mx-4 px-4">
               <span className="text-[11px] uppercase tracking-wider text-[#9ab]">{t('ratings')}</span>
               {(() => {
-                const avg = isOdyssey ? 4.01 : movie.vote_average ? movie.vote_average / 2 : 3.8;
+                const baseAvg = isOdyssey ? 4.01 : movie.vote_average ? movie.vote_average / 2 : 3.8;
+                const avg =
+                  unifiedRatings && unifiedRatings.unifiedStars5 > 0
+                    ? unifiedRatings.unifiedStars5
+                    : baseAvg;
                 const scale = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
                 const dist = scale.map((r) => Math.max(0.06, Math.exp(-(((r - avg) ** 2)) / 0.75)));
                 const maxVal = Math.max(...dist);
                 const fullStars = Math.round(avg);
                 return (
-                  <div className="flex items-end gap-3 mt-1.5">
-                    {/* Estrela verde pequena à esquerda da base */}
-                    <span className="text-[#00e054] text-sm leading-none pb-0.5">★</span>
-                    {/* Histograma de barras cinzas */}
-                    <div className="flex-1 flex items-end gap-1 h-12 border-b border-[#2c3440]">
-                      {dist.map((v, i) => (
-                        <div
-                          key={i}
-                          className="flex-1 bg-[#556677] rounded-t-none"
-                          style={{ height: `${Math.max(8, Math.round((v / maxVal) * 100))}%` }}
-                        />
-                      ))}
-                    </div>
-                    {/* Média grande + 5 estrelinhas verdes */}
-                    <div className="flex flex-col items-end pb-0.5 tabular-nums">
-                      <span className="text-2xl font-light text-[#9ab] leading-none">{avg.toFixed(1)}</span>
-                      <span className="text-xs leading-none mt-1">
-                        {Array.from({ length: 5 }, (_, i) => (
-                          <span key={i} className={i < fullStars ? 'text-[#00e054]' : 'text-[#3a4550]'}>★</span>
+                  <>
+                    <div className="flex items-end gap-3 mt-1.5">
+                      {/* Estrela verde pequena à esquerda da base */}
+                      <span className="text-[#00e054] text-sm leading-none pb-0.5">★</span>
+                      {/* Histograma de barras cinzas */}
+                      <div className="flex-1 flex items-end gap-1 h-12 border-b border-[#2c3440]">
+                        {dist.map((v, i) => (
+                          <div
+                            key={i}
+                            className="flex-1 bg-[#556677] rounded-t-none"
+                            style={{ height: `${Math.max(8, Math.round((v / maxVal) * 100))}%` }}
+                          />
                         ))}
-                      </span>
+                      </div>
+                      {/* Média grande + 5 estrelinhas verdes */}
+                      <div className="flex flex-col items-end pb-0.5 tabular-nums">
+                        <span className="text-2xl font-light text-[#9ab] leading-none">{avg.toFixed(1)}</span>
+                        <span className="text-xs leading-none mt-1">
+                          {Array.from({ length: 5 }, (_, i) => (
+                            <span key={i} className={i < fullStars ? 'text-[#00e054]' : 'text-[#3a4550]'}>★</span>
+                          ))}
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                    <UnifiedPlatformBadges
+                      sources={unifiedRatings?.sources}
+                      loading={unifiedLoading}
+                    />
+                  </>
                 );
               })()}
             </div>
@@ -1472,10 +1542,13 @@ export const FilmPage: React.FC<{ isTvRoute?: boolean; disableSlideAnimation?: b
                 </div>
               </div>
 
-              {/* Community Rating Histogram */}
+              {/* Community & Unified Rating Histogram */}
               <RatingHistogram
                 averageRating={isOdyssey ? 4.01 : (movie.vote_average ? movie.vote_average / 2 : 3.8)}
                 voteCount={isOdyssey ? 244000 : (movie.vote_count || 1420)}
+                unifiedStars5={unifiedRatings?.unifiedStars5}
+                unifiedSources={unifiedRatings?.sources}
+                unifiedLoading={unifiedLoading}
               />
             </div>
           )}

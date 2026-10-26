@@ -1,106 +1,125 @@
-# Otimização Cirúrgica de Performance Mobile (Rede, VRAM e Fluidez 60fps)
+# Sistema de Nota Unificada (Letterboxd, IMDb, Metacritic, Rotten Tomatoes e TMDb)
 
-Plano de engenharia focado em acelerar o carregamento de pôsteres e backdrops do TMDB, reduzir drasticamente o consumo de memória de vídeo (VRAM) e garantir rolagem e transições de abas a 60fps constantes em dispositivos móveis, mantendo a experiência Desktop (`!isMobile`) 100% intacta.
+Implementação de um motor de agregação ponderada de notas críticas e de público diretamente na página de detalhes de filmes e séries, combinando dados da MDBList API (principal) e OMDb API (fallback) com persistência instantânea em `localStorage` e integração nativa ao bloco de avaliações tanto no Mobile quanto no Desktop.
 
-## Revisão e Decisões Confirmadas
+## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> **Garantia de Não-Regressão no Desktop**: Todas as restrições de resolução de imagem, desativação da camada 4K, contenção de DOM e remoção de animações por card serão aplicadas estritamente no contexto Mobile (`isMobile` ou `@media (max-width: 767px)`). O layout, as animações, os tamanhos de imagem e o upgrade 4K do Desktop permanecem 100% preservados.
+> As decisões abaixo foram alinhadas e confirmadas na etapa de esclarecimento e guiam toda a arquitetura desta entrega:
 
-- **Decisão Confirmada 1 — Camada Única de Backdrop no Mobile**: Telas mobile (até `767px`) utilizarão exclusivamente a camada rápida em resolução `w780` (`decoding="async"` e `fetchPriority="high"`), desativando o download, o `img.decode()` e a retenção em memória (`pinnedDecodedImages`) da segunda camada `original` (4K). O Desktop manterá a camada rápida em `w1280` seguida do upgrade para `original` 4K.
-- **Decisão Confirmada 2 — Montagem Sob Demanda e em Idle no Paginador Mobile**: O carrossel de abas principais montará inicialmente apenas a aba ativa no boot (eliminando a montagem simultânea das 4 abas e o pré-carregamento concorrente aos 180ms). Após `2500ms` de inatividade (`requestIdleCallback` / `setTimeout`), apenas a aba vizinha imediata será pré-montada de forma silenciosa, e qualquer outra aba será montada instantaneamente no início de um gesto de swipe (`onTouchStart`) ou toque na barra de navegação.
-- **Decisão Confirmada 3 — Renderização Instantânea na Grade de Resultados Mobile**: Os cards da grade de exploração e resultados no mobile serão renderizados instantaneamente sem animação escalonada por card (`.mw-poster-in`), eliminando gargalos de composição durante o scroll infinito.
-
----
-
-## 1. Visão Geral e Conceito Central
-
-- **O Que Faz**: Elimina o desperdício de banda com imagens superdimensionadas no celular, corrige divergências de cache entre pré-carregamento e exibição (`cache miss`), reduz a sobrecarga de camadas de textura na GPU mobile e evita que árvores DOM ocultas (abas fora de tela ou layouts exclusivos de Desktop) consumam CPU e memória durante a navegação no celular.
-- **Público-Alvo / Contexto**: Usuários acessando o catálogo em smartphones (telas `<= 767px`), onde a largura de banda móvel, a concorrência de conexões HTTP e o limite de VRAM da GPU exigem gerenciamento rigoroso de recursos.
-- **Valor Principal**: Pôsteres carregando quase instantaneamente ao abrir o app ou rolar listas, redução drástica no uso de memória gráfica e navegação fluida a 60fps reais na rolagem vertical e no swipe horizontal entre abas.
+- **Decisão Confirmada 1 (Posicionamento na Interface)**: A **Nota Unificada** será integrada diretamente ao bloco principal de `Ratings` (tanto na seção de histograma mobile quanto no painel lateral direito do desktop), exibindo os indicadores individuais das 5 plataformas logo abaixo do histograma.
+- **Decisão Confirmada 2 (Escala Principal em Destaque)**: O destaque principal da Nota Unificada utilizará exclusivamente a **escala de 0 a 5 estrelas** no padrão Letterboxd (ex.: `4.2 ★`, calculada convertendo o score ponderado de `0–100` para `score / 20`), preservando a identidade visual do app.
+- **Decisão Confirmada 3 (Cobertura de Filmes e Séries)**: O agregador funcionará tanto para **Filmes** (`/tmdb/movie/${tmdbId}`) quanto para **Séries** (`/tmdb/show/${tmdbId}`), com fallback automático para a OMDb API via `imdb_id` e para a nota nativa do TMDb.
+- **Configuração de Secrets (`.env.example`)**: As variáveis `VITE_MDBLIST_API_KEY` e `VITE_OMDB_API_KEY` serão registradas no `.env.example` (habilitando o painel de Secrets do AI Studio), mantendo fallback seguro em código para as chaves fornecidas para que a funcionalidade opere imediatamente.
 
 ---
 
-## 2. Experiência do Usuário e Comportamento Visual
+## 1. Overview & Core Concept
 
-- **Fluxos de Experiência Otimizados**:
-  1. **Abertura Instantânea da Home**: Ao abrir o aplicativo no celular, toda a prioridade de rede e CPU é dedicada exclusivamente aos pôsteres visíveis da aba ativa, sem competir com requisições de fundo de outras 3 abas ou dezenas de imagens ocultas.
-  2. **Navegação para Detalhes de Filme/Série**: O backdrop no topo carrega imediatamente em `w780`, o pôster compacto ao lado da sinopse carrega em tamanho proporcional (`w342` com `srcSet` enxuto `185w, 342w, 500w` e `sizes="110px"`), e os carrosséis de títulos relacionados/semelhantes aproveitam 100% do pré-carregamento em `w185` sem *cache miss*.
-  3. **Busca e Perfil de Atores**: As miniaturas de `52px` na busca passam a baixar arquivos ultraleves (`w92` / `w185 2x` em vez de `w500` / `w780`), e a rolagem vertical das listas de busca corre livre de recalculos de `transform` em abas ocultas.
-- **Identidade Visual e Tema**:
-  - *Preservação Visual Completa*: A paleta escura cinematográfica (`#14181c`, superfícies `#232a31`), tipografia, placeholders de título durante o carregamento e proporções `2:3` permanecem idênticos.
-- **Feedback Interativo e Movimento**:
-  - No Desktop (`!isMobile`), todas as micro-interações de hover, sombras, escalonamento de entrada (`.mw-poster-in`) e transições 4K continuam inalteradas.
-  - No Mobile (`isMobile`), as entradas de grade em scroll infinito são imediatas e livres de atrasos artificiais, enquanto os carrosséis e abas respondem imediatamente ao toque.
+- **O que faz**: Quando o usuário abre a tela de detalhes de um filme ou série, o sistema consulta o cache local (`notas_unificadas_v1_${tmdbId}` ou `notas_unificadas_v1_tv_${tmdbId}` para séries, mantendo `notas_unificadas_v1_${tmdbId}` para filmes conforme especificado) e, caso ainda não esteja salvo, busca em segundo plano as avaliações do **Letterboxd**, **IMDb**, **Metacritic**, **Rotten Tomatoes** e **TMDb**.
+- **Cálculo da Média Ponderada**:
+  - Cada fonte disponível na MDBList (`data.ratings`) fornece `score` (0 a 100) e `value` (valor original na escala de cada plataforma).
+  - Pesos aplicados exclusivamente sobre as fontes que possuem nota válida (`score > 0`):
+    - **Letterboxd** (`letterboxd`): peso `3.0`
+    - **IMDb** (`imdb`): peso `2.5`
+    - **Metacritic** (`metacritic`): peso `2.5`
+    - **Rotten Tomatoes** (`tomatoes`): peso `1.5`
+    - **TMDb** (`tmdb`): peso `1.0`
+  - A média ponderada resultante (`0 a 100`) é convertida para a escala Letterboxd de **0 a 5 estrelas** (`unifiedScore100 / 20`) para alimentar a nota de destaque e a curva do histograma.
+- **Valor Principal**: Oferece ao usuário um consenso real e imediato entre crítica e público sem sair do aplicativo, sem impactar a fluidez de 60fps das grades de pôsteres e sem desperdiçar franquia de requisições das APIs.
 
 ---
 
-## 3. Decisões Técnicas e Trade-Offs
+## 2. User Experience & Visual Design
 
-- **Decisão 1: Dimensionamento de Imagens do TMDB e Alinhamento de Preload no Mobile**
+- **Fluxo do Usuário e Estados de Carregamento**:
+  1. **Zero chamadas fora da página de detalhes**: Nenhuma requisição para MDBList ou OMDb é disparada na Home, Busca ou Grades de navegação.
+  2. **Abertura da Página de Detalhes**:
+     - Se o filme/série já estiver salvo em `localStorage` (`notas_unificadas_v1_${tmdbId}`), a Nota Unificada em escala 0–5 e as notas das 5 plataformas são renderizadas **instantaneamente no primeiro frame**, sem skeleton.
+     - Se for a primeira abertura daquele título, o histograma exibe imediatamente a estimativa inicial e, logo abaixo, uma linha de placeholders com pulso suave (`animate-pulse`) reserva o espaço exato das plataformas (zero *Cumulative Layout Shift*).
+     - Assim que a resposta da MDBList (ou fallback OMDb) retorna, a nota principal em escala 0–5 atualiza suavemente e as notas originais de cada plataforma aparecem com transição de opacidade (`150ms`).
+- **Identidade Visual & Tema**:
+  - *Direção Estética*: Editorial cinematográfico escuro fiel ao Letterboxd (`#14181c` no mobile, `#202830` no card lateral do desktop, divisórias sutis `#2c3440` e destaque verde `#00e054`).
+  - *Tipografia e Alinhamento Numérico*: Uso rigoroso de `tabular-nums` em todas as notas (`4.3`, `8.6/10`, `92%`, `84`) para alinhamento vertical perfeito.
+  - *Exibição das Plataformas (Clean Unboxed Row / Micro-Grid)*: Logo abaixo das barras do histograma, uma grade compacta e limpa exibe cada fonte disponível com seu identificador visual/sigla e o valor original formatado (`value`):
+    - **Letterboxd**: ex. `4.1 ★` (ou `4.1/5`)
+    - **IMDb**: ex. `8.3`
+    - **Rotten Tomatoes**: ex. `91%`
+    - **Metacritic**: ex. `82`
+    - **TMDb**: ex. `79%` ou `7.9`
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decisão 1: Disparo Exclusivo na Página de Detalhes + Cancelamento de Requisição**
+  - *Abordagem Escolhida*: O hook/serviço de Nota Unificada roda apenas dentro da visualização de detalhes do título ativo, utilizando `AbortController` caso o usuário volte rapidamente ou troque de filme.
+  - *Por quê*: Garante consumo mínimo da cota diária da MDBList/OMDb e mantém zero impacto de CPU/rede durante a rolagem de listas e carrosséis no celular.
+- **Decisão 2: Estratégia de Resiliência em 3 Níveis (MDBList → OMDb → TMDb Nativo)**
   - *Abordagem Escolhida*:
-    - Cards padrão (`!isLarge`) em telas até `640px`: `w185` como `src` padrão, `srcSet` restrito a `185w, 342w, 500w` (sem `w780` em cards pequenos no mobile) e `sizes="(max-width: 640px) 24vw, (max-width: 1024px) 18vw, 185px"`.
-    - Carrosséis de Filmes Relacionados e Semelhantes (`92px`): `src` em `w185` e `srcSet` com `w185 1x, w342 2x`, casando exatamente com a URL pré-carregada.
-    - Pôster do cabeçalho mobile (`86px`): `src` em `w342`, `srcSet` com `185w, 342w, 500w` e `sizes="110px"`.
-    - Miniaturas da busca mobile (`52px`): `src` em `w92` e `srcSet` com `w92 1x, w185 2x`.
-    - Grade mobile de atores (4 colunas) e foto da aba Bio (`92x138px`): `src` em `w185` com `srcSet` `185w, 342w` na grade e `w185 1x, w342 2x` na Bio no mobile.
-  - *Por quê*: Reduz em até 75% o peso em bytes de cada pôster baixado em redes móveis e garante acerto de cache (`cache hit`) imediato ao abrir a página de um filme.
-  - *Alternativas Consideradas*: Manter `w500`/`w780` no `srcSet` mobile foi descartado porque telas com `devicePixelRatio` 3x selecionavam arquivos de alta resolução para áreas visuais minúsculas de 52px a 92px.
-
-- **Decisão 2: Lazy Loading Nativo Sem Observers por Card e Despromoção de Camadas GPU no Mobile**
-  - *Abordagem Escolhida*: Remover o `new IntersectionObserver` individual de cada card que alternava o estado React `nearViewport` e confiar diretamente em `loading={priority || eager ? "eager" : "lazy"}` + `decoding="async"`. Em paralelo, desativar `transform: translateZ(0)` e `will-change: transform` em `@media (max-width: 767px)`.
-  - *Por quê*: Elimina centenas de instâncias de observers e re-renderizações de estado React durante a rolagem, além de liberar dezenas de megabytes de texturas compostas na GPU do celular.
-
-- **Decisão 3: Contenção de DOM (`content-visibility: hidden`), Desmontagem de Árvores Desktop Ocultas e Scroll Passivo Limpo**
-  - *Abordagem Escolhida*:
-    - Aplicar `content-visibility: hidden` e `contain-intrinsic-size: 100vw 100vh` em painéis colapsados (`.tab-panel-collapsed`) e no contêiner do paginador quando oculto por rotas secundárias no mobile.
-    - Condicionar com `{!isMobile && (...)}` todo o bloco de duas colunas do modo "Títulos Semelhantes" (`isSimilarMode`) e bloquear a execução dos seus efeitos de busca de temas/nanogêneros quando `isMobile` for verdadeiro.
-    - Remover a chamada de sincronização de `transform` (`querySelectorAll('.tab-panel')`) de dentro do listener de `scroll` vertical na página de busca, executando-a apenas no início do gesto de swipe horizontal (`onTouchStart`) ou na troca de aba.
-  - *Por quê*: Garante que o navegador mobile nunca gaste tempo de layout, pintura, rede ou JavaScript por frame em elementos que não estão visíveis na tela do celular.
+    1. **Nível 1 (Principal)**: Consulta `https://api.mdblist.com/tmdb/${mediaType}/${tmdbId}?apikey=${MDBLIST_KEY}`. Extrai `letterboxd`, `imdb`, `metacritic`, `tomatoes` e `tmdb` de `data.ratings`.
+    2. **Nível 2 (Fallback OMDb)**: Se a MDBList falhar, der timeout ou retornar `ratings` sem notas válidas, consulta `https://www.omdbapi.com/?i=${imdbId}&apikey=${OMDB_KEY}` (usando o `imdb_id` vindo do TMDb ou da própria MDBList). Converte `imdbRating` (`parseFloat * 10`), `Metascore` (`parseInt`) e `Rotten Tomatoes` (`parseInt` de `Ratings[]`) para a base 100 e combina com a nota do TMDb (`vote_average * 10`) aplicando os mesmos pesos.
+    3. **Nível 3 (Contingência TMDb)**: Caso o título ainda não possua `imdb_id` ou ambas as APIs externas falhem, utiliza a nota oficial do TMDb para nunca exibir erro visual quebrado.
+- **Decisão 3: Cache Persistente em `localStorage` com Chave Padronizada**
+  - *Abordagem Escolhida*: Salvar o payload processado na chave `notas_unificadas_v1_${tmdbId}` (para filmes, e prefixado com `tv_` quando for série de mesmo ID numérico para evitar colisão de IDs entre filme e série no TMDb) assim que uma resposta válida da MDBList ou OMDb for obtida.
+  - *Por quê*: Reaberturas do mesmo título carregam em `0ms` sem qualquer chamada de rede.
 
 ---
 
-## 4. Arquitetura Técnica e Estratégia de Dados *(Referência Técnica)*
+## 4. Technical Architecture & Data Strategy
 
-### Diagrama de Arquitetura e Fluxo de Renderização Condicional
+### Architecture & Component Diagram
 
 ```
-┌───────────────────────────────────────────────────────────────────────────┐
-│                        Detecção de Contexto Viewport                      │
-│            useIsMobile() / matchMedia('(max-width: 767px)')               │
-└───────────────────┬───────────────────────────────────┬───────────────────┘
-                    │ isMobile === true                 │ isMobile === false
-                    ▼                                   ▼
-┌───────────────────────────────────────┐ ┌─────────────────────────────────┐
-│         Pipeline Mobile (60fps)       │ │   Pipeline Desktop (Intacto)    │
-├───────────────────────────────────────┤ ├─────────────────────────────────┤
-│ • Paginador de Abas:                  │ │ • Árvore de Rotas Direta        │
-│   - Boot: monta apenas aba ativa      │ │ • Backdrop Dupla Camada:        │
-│   - Idle (2500ms): monta aba vizinha  │ │   - fastSrc (w1280) +           │
-│   - Ocultos: content-visibility:hidden│ │   - hdSrc (original 4K decode)  │
-│ • Imagens TMDB Enxutas:               │ │ • Pôsteres Alta Resolução:      │
-│   - Cards: w185 (185w, 342w, 500w)    │ │   - w342 / w500 / w780          │
-│   - Busca (52px): w92 (1x) / w185 (2x)│ │ • Modo Similares Duas Colunas:  │
-│   - Backdrop: camada única w780       │ │   - Abas Themes & Nanogenres    │
-│ • GPU & Scroll Leves:                 │ │ • Animações e GPU:              │
-│   - Sem Observer individual por card  │ │   - translateZ(0) e .mw-poster  │
-│   - Sem translateZ(0) em massa        │ │     com delay escalonado        │
-│   - Sync de abas só no início do swipe│ │                                 │
-└───────────────────────────────────────┘ └─────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     Configuração de Ambiente & Secrets                   │
+│       VITE_MDBLIST_API_KEY (Principal)  |  VITE_OMDB_API_KEY (Reserva)   │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     Serviço de Notas Unificadas                          │
+│                                                                          │
+│  1. Verifica Cache: localStorage.getItem("notas_unificadas_v1_${id}")    │
+│     ├─ Hit  ──► Retorna payload instantaneamente (0ms)                   │
+│     └─ Miss ──► 2. Chama MDBList API (/tmdb/movie ou /tmdb/show)         │
+│                    ├─ Sucesso ──► Pondera (LB 3.0, IMDb 2.5, MC 2.5,     │
+│                    │              RT 1.5, TMDb 1.0)                      │
+│                    └─ Falha/Vazio ──► 3. Fallback OMDb API (?i=imdbId)   │
+│                                          Converte IMDb*10, Metascore, RT │
+│                 4. Salva em localStorage e retorna UnifiedRatingsData    │
+└────────────────────────────────────┬─────────────────────────────────────┘
+                                     │
+                     ┌───────────────┴───────────────┐
+                     ▼                               ▼
+┌────────────────────────────────────────┐ ┌───────────────────────────────┐
+│     Bloco Mobile de Ratings            │ │   Painel Desktop de Ratings   │
+│  - Média Unificada em destaque (0–5 ★) │ │  - Média Unificada (0–5 ★)    │
+│  - Curva do histograma sincronizada    │ │  - Histograma verde clássico  │
+│  - Linha de fontes abaixo (LB, IMDb,   │ │  - Grade compacta das 5       │
+│    RT, Metacritic, TMDb) + Skeleton    │ │    fontes abaixo + Skeleton   │
+└────────────────────────────────────────┘ └───────────────────────────────┘
 ```
 
-### Mapeamento Interativo de Componentes e Estado
+### Data Model & State
 
-1. **Componente de Pôster Padrão**:
-   - Na inicialização e renderização: avalia o tamanho ótimo considerando `w185` para viewports `<= 640px` em cards padrão (`!isLarge`), gera `srcSet` com `185w, 342w, 500w` no mobile e aplica `loading={priority || eager ? 'eager' : 'lazy'}` nativo sem instanciar `IntersectionObserver` por card.
-2. **Componente de Backdrop**:
-   - Quando `isMobile` é verdadeiro: resolve `fastSrc` para `w780`, ignora o agendamento do timer de upgrade para `original` 4K e não retém elementos `HTMLImageElement` no buffer global `pinnedDecodedImages`.
-3. **Paginador de Abas Mobile (`TabViewPager`)**:
-   - No mount inicial: inicializa o vetor `mounted` apenas com `true` no índice da aba ativa (`activeIndex`).
-   - Em inatividade (`2500ms` após a montagem da aba ativa): monta silenciosamente apenas a aba vizinha imediata sem disparar pré-carregamento em massa de imagens.
-   - Na interação do usuário (`onTouchStart` do swipe ou clique em aba): marca imediatamente a aba de destino/adjacente como montada antes da transição visual.
-   - Quando oculto por navegação secundária: aplica contenção `content-visibility: hidden` para zerar o custo de layout das abas em segundo plano.
-4. **Página de Vitrines e Similares**:
-   - Quando `isSimilarMode` está ativo no mobile: curto-circuita os hooks que buscam seções de temas e nanogêneros do Desktop, desmonta a árvore Desktop via `{!isMobile && (...)}` e renderiza os cards da grade mobile instantaneamente (sem classe `.mw-poster-in` e sem `animationDelay`).
-5. **Página de Busca Mobile**:
-   - Durante a rolagem vertical (`window.scroll`): atualiza apenas a referência de posição em memória, deixando a sincronização de `transform` das abas inativas (`syncInactivePanelsOffset`) exclusivamente para o início do gesto de swipe horizontal ou mudança de aba ativa.
+- **`PlatformRatingItem`**:
+  - `source`: `'letterboxd' | 'imdb' | 'tomatoes' | 'metacritic' | 'tmdb'`
+  - `label`: Nome curto para exibição (`Letterboxd`, `IMDb`, `Rotten Tomatoes`, `Metacritic`, `TMDb`)
+  - `score100`: Nota normalizada de `0` a `100` usada no cálculo ponderado
+  - `displayValue`: Nota formatada na escala original da plataforma (a partir de `value` na MDBList ou formatada no fallback OMDb, ex.: `4.2`, `8.5`, `93%`, `81`, `7.8`)
+  - `weight`: Peso da plataforma (`3.0`, `2.5`, `2.5`, `1.5`, `1.0`)
+- **`UnifiedRatingsPayload`**:
+  - `tmdbId`: `number`
+  - `unifiedScore100`: `number` (média ponderada de `0` a `100`)
+  - `unifiedStars5`: `number` (`unifiedScore100 / 20`, escala `0` a `5`)
+  - `sources`: `PlatformRatingItem[]`
+  - `provider`: `'mdblist' | 'omdb' | 'tmdb-fallback'`
+  - `updatedAt`: `number`
+
+### Interactive Component & State Mapping
+
+- **Gerenciamento de Estado na Página do Filme**:
+  - Ao montar ou trocar `movieId`, o estado `unifiedRatings` inicializa lendo sincronamente o `localStorage` (`notas_unificadas_v1_${movieId}`) para evitar qualquer piscar de tela se já estiver em cache.
+  - Caso não esteja em cache, `unifiedLoading` fica `true` (exibindo o skeleton discreto na faixa de plataformas) enquanto o `useEffect` aguarda os detalhes básicos do filme (`imdb_id` e `vote_average`) e dispara a busca unificada.
+  - Quando os dados chegam, a nota principal (`avg` no mobile e `averageRating` no `RatingHistogram` desktop) passa a refletir `unifiedRatings.unifiedStars5`, e a faixa inferior renderiza as notas originais de cada uma das 5 plataformas.

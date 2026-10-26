@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de otimizacao cirurgica de performance mobile (rede, consumo de VRAM e fluidez de 60fps) preservando 100% da experiencia Desktop.",
-  "updatedAt":  "2026-10-25T18:13:26.523391122Z",
+  "summary":  "Plano de implementação do sistema de Nota Unificada (Letterboxd, IMDb, Metacritic, Rotten Tomatoes e TMDb) via MDBList API com fallback OMDb, cache em localStorage e integração responsiva ao bloco de Ratings no Mobile e Desktop.",
+  "updatedAt":  "2026-10-26T11:41:13.162836126Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
