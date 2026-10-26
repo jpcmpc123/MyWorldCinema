@@ -587,8 +587,71 @@ async function hasMovieReleasedInAnyCountry(movieId: number): Promise<boolean> {
   }
 }
 
-async function filterStrictlyUnreleasedMovies(movies: TMDBMovie[]): Promise<TMDBMovie[]> {
-  const baseCandidates = movies.filter(isFuture);
+const INDIAN_REGIONAL_LANGS = new Set([
+  'hi',
+  'te',
+  'ta',
+  'ml',
+  'kn',
+  'pa',
+  'bn',
+  'mr',
+  'ur',
+  'gu',
+  'or',
+  'as',
+]);
+
+// IDs de grandes estúdios (Marvel, Warner, DC, Universal, Paramount, Disney, Pixar, 20th Century,
+// Searchlight, Columbia, Sony, A24, Lionsgate, MGM, Focus, DreamWorks, Illumination, Legendary, Blumhouse, Neon, Apple)
+const MAJOR_STUDIO_COMPANY_IDS =
+  '420|174|184898|128064|33|4|2|6125|3|127928|25|43|5|34|2251|41077|1632|21|210099|10146|521|6704|923|3172|90733|194232';
+
+// Títulos-chave altamente aguardados mundialmente recebem bônus de destaque na frente da vitrine
+const FLAGSHIP_ANTICIPATED_MOVIE_IDS = new Set<number>([
+  1003596, // Avengers: Doomsday
+  1170608, // Dune: Part Three
+  806704,  // The Batman: Part II
+  911916,  // Spider-Man: Beyond the Spider-Verse
+  1003598, // Avengers: Secret Wars
+  1300968, // The Hunger Games: Sunrise on the Reaping
+  1147572, // Narnia: The Magician's Nephew
+  421892,  // Shrek 5
+  1421903, // Werwulf
+  1327821, // Incredibles 3
+  1024604, // Frozen III
+  1401586, // Sonic the Hedgehog 4
+  1260649, // Jumanji: Open World
+  1288438, // Godzilla x Kong: Supernova
+  1457866, // The Further Mis-Adventures of Cliff Booth
+  1523140, // Man of Tomorrow
+  1384758, // Ice Age: Boiling Point
+  1497464, // Gatto (Pixar)
+  1538497, // Hexed (Disney)
+  1574840, // The Mummy: Book of the Dead
+  1131943, // Madden
+  1400336, // Focker-in-Law
+  1437511, // How to Rob a Bank
+  755679,  // Fast Forever
+  1451567, // Coco 2
+  1461519, // A Minecraft Movie Squared
+  1567605, // Ebenezer
+  1425859, // Remain
+  1440769, // The Beekeeper 2
+]);
+
+async function filterStrictlyUnreleasedMovies(
+  movies: TMDBMovie[],
+  allowIndianLangs = false,
+): Promise<TMDBMovie[]> {
+  const baseCandidates = movies.filter((m) => {
+    if (!isFuture(m)) return false;
+    if (!allowIndianLangs) {
+      const lang = ((m as unknown as { original_language?: string }).original_language || '').toLowerCase();
+      if (lang && INDIAN_REGIONAL_LANGS.has(lang)) return false;
+    }
+    return true;
+  });
   if (baseCandidates.length === 0) return [];
   const checks = await Promise.all(
     baseCandidates.map(async (m) => ({
@@ -597,6 +660,104 @@ async function filterStrictlyUnreleasedMovies(movies: TMDBMovie[]): Promise<TMDB
     })),
   );
   return checks.filter((c) => !c.alreadyReleasedAbroad).map((c) => c.movie);
+}
+
+const anticipatedPoolCache = new Map<string, { items: TMDBMovie[]; expires: number }>();
+
+async function buildCuratedMostAnticipatedMoviesPool(page = 1): Promise<TMDBMovie[]> {
+  const cacheKey = `movie:anticipated_pool_v2:${page}:${tmdbLanguage}`;
+  const cached = anticipatedPoolCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    return cached.items;
+  }
+
+  const emptyRes: TMDBResponse<TMDBMovie> = {
+    page: 1,
+    results: [],
+    total_pages: 1,
+    total_results: 0,
+  };
+
+  const baseStudioPage = (page - 1) * 2 + 1;
+  const [studioP1, studioP2, mainstreamP1, mainstreamP2] = await Promise.all([
+    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+      sort_by: 'popularity.desc',
+      'primary_release_date.gte': TMDB_TOMORROW,
+      with_companies: MAJOR_STUDIO_COMPANY_IDS,
+      with_original_language: 'en|pt|ja|ko|fr|es',
+      include_adult: 'false',
+      page: baseStudioPage,
+    }).catch(() => emptyRes),
+    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+      sort_by: 'popularity.desc',
+      'primary_release_date.gte': TMDB_TOMORROW,
+      with_companies: MAJOR_STUDIO_COMPANY_IDS,
+      with_original_language: 'en|pt|ja|ko|fr|es',
+      include_adult: 'false',
+      page: baseStudioPage + 1,
+    }).catch(() => emptyRes),
+    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+      sort_by: 'popularity.desc',
+      'primary_release_date.gte': TMDB_TOMORROW,
+      with_original_language: 'en|pt',
+      include_adult: 'false',
+      page: baseStudioPage,
+    }).catch(() => emptyRes),
+    fetchFromTMDB<TMDBResponse<TMDBMovie>>('/discover/movie', {
+      sort_by: 'popularity.desc',
+      'primary_release_date.gte': TMDB_TOMORROW,
+      with_original_language: 'en|pt',
+      include_adult: 'false',
+      page: baseStudioPage + 1,
+    }).catch(() => emptyRes),
+  ]);
+
+  const studioIds = new Set<number>(
+    [...(studioP1.results || []), ...(studioP2.results || [])].map((m) => m.id),
+  );
+
+  const seen = new Set<number>();
+  const merged: TMDBMovie[] = [];
+  for (const list of [
+    studioP1.results || [],
+    studioP2.results || [],
+    mainstreamP1.results || [],
+    mainstreamP2.results || [],
+  ]) {
+    for (const raw of list) {
+      const m = normalizeMediaItem(raw);
+      if (m && m.id && m.poster_path && !seen.has(m.id)) {
+        seen.add(m.id);
+        merged.push(m);
+      }
+    }
+  }
+
+  const strictlyUnreleased = await filterStrictlyUnreleasedMovies(merged, false);
+
+  const scored = strictlyUnreleased.map((m) => {
+    let score = Math.min(80, Math.sqrt(Math.max(1, m.popularity || 1)) * 10);
+    if (FLAGSHIP_ANTICIPATED_MOVIE_IDS.has(m.id)) {
+      score += 220;
+    }
+    if (studioIds.has(m.id)) {
+      score += 95;
+    }
+    if (m.backdrop_path) {
+      score += 35;
+    } else {
+      score -= 60;
+    }
+    if ((m.overview || '').trim().length >= 60) {
+      score += 15;
+    }
+    return { m, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score || (b.m.popularity || 0) - (a.m.popularity || 0));
+  const finalItems = scored.map((x) => x.m);
+  anticipatedPoolCache.set(cacheKey, { items: finalItems, expires: Date.now() + TMDB_CACHE_TTL_MS });
+  return finalItems;
 }
 
 // ---------------------------------------------------------------------------
@@ -1407,6 +1568,7 @@ export const tmdb = {
   clearRuntimeCaches(): void {
     popularWeekPoolCache.clear();
     popularWeekInFlight.clear();
+    anticipatedPoolCache.clear();
     filmsHubInFlight = null;
     seriesHubInFlight = null;
     mediaDetailsCache.clear();
@@ -2048,6 +2210,14 @@ export const tmdb = {
 
     if (params.language) {
       apiParams.with_original_language = params.language;
+    } else if (
+      params.releaseDateGte &&
+      params.releaseDateGte > TMDB_TODAY &&
+      !params.country
+    ) {
+      // Em buscas de filmes futuros ("Most Anticipated" / "Upcoming") sem filtro de idioma/país,
+      // prioriza idiomas globais principais para evitar que lançamentos regionais indianos dominem o topo.
+      apiParams.with_original_language = 'en|pt|es|fr|ja|ko';
     }
 
     if (params.year) {
@@ -2098,8 +2268,11 @@ export const tmdb = {
 
     const firstRes = responses[0] || { total_results: 0, total_pages: 1 };
     const isUpcomingQuery = Boolean(params.releaseDateGte && params.releaseDateGte > TMDB_TODAY);
+    const allowIndianLangs = Boolean(
+      params.language || (params.country && toOriginCountryIso(params.country) === 'IN'),
+    );
     const filteredResults = isUpcomingQuery
-      ? await filterStrictlyUnreleasedMovies(unique)
+      ? await filterStrictlyUnreleasedMovies(unique, allowIndianLangs)
       : unique;
 
     return {
@@ -2403,6 +2576,24 @@ export const tmdb = {
       },
     }[preset];
 
+    const hasExtraFilters = Boolean(
+      extraFilters.genreId ||
+        extraFilters.year ||
+        extraFilters.decade ||
+        extraFilters.providerId ||
+        extraFilters.country ||
+        extraFilters.language,
+    );
+
+    if (preset === 'most_anticipated' && type === 'movie' && !hasExtraFilters) {
+      const curated = await buildCuratedMostAnticipatedMoviesPool(page);
+      return {
+        results: curated,
+        total_pages: 20,
+        total_results: 400,
+      };
+    }
+
     const res = await discover.call(this, {
       ...extraFilters,
       ...presetParams,
@@ -2411,9 +2602,13 @@ export const tmdb = {
     });
 
     if (preset === 'most_anticipated') {
+      const allowIndianLangs = Boolean(
+        extraFilters.language ||
+          (extraFilters.country && toOriginCountryIso(extraFilters.country) === 'IN'),
+      );
       const results =
         type === 'movie'
-          ? await filterStrictlyUnreleasedMovies(res.results)
+          ? await filterStrictlyUnreleasedMovies(res.results, allowIndianLangs)
           : res.results.filter(isFuture);
       return { ...res, results };
     }
