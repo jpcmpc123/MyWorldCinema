@@ -62,6 +62,18 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
 
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const [ratePopoverOpen, setRatePopoverOpen] = useState(false);
+  const [pinchState, setPinchState] = useState<{
+    scale: number;
+    x: number;
+    y: number;
+    animating: boolean;
+  }>({ scale: 1, x: 0, y: 0, animating: false });
+  const pinchRef = useRef<{
+    active: boolean;
+    startDist: number;
+    startMidX: number;
+    startMidY: number;
+  }>({ active: false, startDist: 0, startMidX: 0, startMidY: 0 });
   const trackRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const endTriggeredForLengthRef = useRef<number>(0);
@@ -306,6 +318,7 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
           const posterUrl = getPosterUrl(item);
           // Renderiza imagens em uma janela ampla com loading="eager" para que já estejam pintadas ao arrastar
           const isNear = Math.abs(idx - activeIndex) <= 5;
+          const isCurrent = idx === activeIndex;
 
           return (
             <div
@@ -314,8 +327,73 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
               className="snap-center snap-always shrink-0 w-full h-full flex items-center justify-center px-[9vw]"
             >
               <div
-                onClick={() => handlePosterClick(item)}
-                className="relative w-full max-w-[350px] aspect-[2/3] rounded-[8px] overflow-hidden border border-white/10 bg-[#1c2228] shadow-[0_20px_50px_rgba(0,0,0,0.65)] cursor-pointer"
+                data-allow-zoom="true"
+                onClick={() => {
+                  if (pinchRef.current.active || pinchState.scale > 1.02) return;
+                  handlePosterClick(item);
+                }}
+                onTouchStart={(e) => {
+                  if (e.touches.length === 2 && isCurrent) {
+                    const t1 = e.touches[0];
+                    const t2 = e.touches[1];
+                    pinchRef.current = {
+                      active: true,
+                      startDist: Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY),
+                      startMidX: (t1.clientX + t2.clientX) / 2,
+                      startMidY: (t1.clientY + t2.clientY) / 2,
+                    };
+                    setPinchState((s) => ({ ...s, animating: false }));
+                  }
+                }}
+                onTouchMove={(e) => {
+                  if (e.touches.length === 2 && isCurrent) {
+                    if (e.cancelable) e.preventDefault();
+                    const t1 = e.touches[0];
+                    const t2 = e.touches[1];
+                    const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+                    if (!pinchRef.current.active || pinchRef.current.startDist <= 0) {
+                      pinchRef.current = {
+                        active: true,
+                        startDist: Math.max(1, dist),
+                        startMidX: (t1.clientX + t2.clientX) / 2,
+                        startMidY: (t1.clientY + t2.clientY) / 2,
+                      };
+                    }
+                    const nextScale = Math.min(3.5, Math.max(1, dist / pinchRef.current.startDist));
+                    const midX = (t1.clientX + t2.clientX) / 2;
+                    const midY = (t1.clientY + t2.clientY) / 2;
+                    setPinchState({
+                      scale: nextScale,
+                      x: midX - pinchRef.current.startMidX,
+                      y: midY - pinchRef.current.startMidY,
+                      animating: false,
+                    });
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  if (pinchRef.current.active && e.touches.length < 2) {
+                    pinchRef.current.active = false;
+                    setPinchState({ scale: 1, x: 0, y: 0, animating: true });
+                  }
+                }}
+                onTouchCancel={() => {
+                  if (pinchRef.current.active) {
+                    pinchRef.current.active = false;
+                    setPinchState({ scale: 1, x: 0, y: 0, animating: true });
+                  }
+                }}
+                style={
+                  isCurrent && (pinchState.scale > 1 || pinchState.animating)
+                    ? {
+                        transform: `translate3d(${pinchState.x}px, ${pinchState.y}px, 0) scale(${pinchState.scale})`,
+                        transition: pinchState.animating
+                          ? 'transform 220ms cubic-bezier(0.32, 0.72, 0, 1)'
+                          : 'none',
+                        zIndex: pinchState.scale > 1 ? 30 : undefined,
+                      }
+                    : undefined
+                }
+                className="relative w-full max-w-[350px] aspect-[2/3] rounded-[8px] overflow-hidden border border-white/10 bg-[#1c2228] shadow-[0_20px_50px_rgba(0,0,0,0.65)] cursor-pointer will-change-transform"
               >
                 {posterUrl && isNear ? (
                   <img
@@ -325,7 +403,7 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
                     loading="eager"
                     fetchPriority={Math.abs(idx - activeIndex) <= 1 ? 'high' : 'auto'}
                     decoding="async"
-                    className="w-full h-full object-cover select-none block"
+                    className="w-full h-full object-cover select-none block pointer-events-none"
                   />
                 ) : !posterUrl ? (
                   <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center text-[#667788]">

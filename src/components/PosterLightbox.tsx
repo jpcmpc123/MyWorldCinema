@@ -478,6 +478,10 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
       g.mode = 'pinch';
       g.startDist = getTouchDist(e.touches[0], e.touches[1]);
       g.startScale = g.currentScale;
+      g.startX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      g.startY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      g.startPanX = g.currentPanX;
+      g.startPanY = g.currentPanY;
       g.currentDragY = 0;
       setDragY(0);
       g.moved = true;
@@ -495,7 +499,20 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
     if (closing) return;
     const g = gestureRef.current;
 
-    if (e.touches.length === 2 && g.mode === 'pinch') {
+    if (e.touches.length === 2) {
+      if (g.mode !== 'pinch') {
+        setIsAnimating(false);
+        g.mode = 'pinch';
+        g.startDist = getTouchDist(e.touches[0], e.touches[1]);
+        g.startScale = g.currentScale;
+        g.startX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        g.startY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        g.startPanX = g.currentPanX;
+        g.startPanY = g.currentPanY;
+        g.currentDragY = 0;
+        setDragY(0);
+        g.moved = true;
+      }
       const dist = getTouchDist(e.touches[0], e.touches[1]);
       if (g.startDist > 0) {
         const nextScale = clamp(1, 4, (dist / g.startDist) * g.startScale);
@@ -505,6 +522,18 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
           g.currentPanX = 0;
           g.currentPanY = 0;
           setPan({ x: 0, y: 0 });
+        } else {
+          const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const dx = midX - g.startX;
+          const dy = midY - g.startY;
+          const maxPanX = (window.innerWidth * (nextScale - 1)) / 2;
+          const maxPanY = (window.innerWidth * 1.5 * (nextScale - 1)) / 2;
+          const nextX = clamp(-maxPanX, maxPanX, g.startPanX + dx);
+          const nextY = clamp(-maxPanY, maxPanY, g.startPanY + dy);
+          g.currentPanX = nextX;
+          g.currentPanY = nextY;
+          setPan({ x: nextX, y: nextY });
         }
       }
       return;
@@ -596,6 +625,7 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label={alt}
+      data-allow-zoom="true"
       style={{ touchAction: 'none' }}
       className="fixed inset-0 z-[100] flex items-center justify-center select-none touch-none overscroll-none"
       onTouchStart={handleTouchStart}
@@ -629,6 +659,7 @@ export const PosterLightbox: React.FC<PosterLightboxProps> = ({
       {/* Container do pôster no CELULAR (< 768px): largura total da tela, zoom + arrastar p/ cima e p/ baixo */}
       <div
         ref={imgContainerRef}
+        data-allow-zoom="true"
         style={{ touchAction: 'none' }}
         className="md:hidden relative z-10 w-full flex items-center justify-center overflow-visible touch-none select-none"
       >

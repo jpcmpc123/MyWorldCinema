@@ -160,6 +160,9 @@ body,
 html {
   scrollbar-gutter: stable;
   overscroll-behavior: none;
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -174,6 +177,7 @@ body {
   min-height: 100vh;
   position: relative;
   overscroll-behavior: none;
+  touch-action: pan-x pan-y;
 }
 
 
@@ -183,7 +187,7 @@ body {
 * {
   -webkit-tap-highlight-color: transparent;
 }
-/* Resposta tátil imediata (zero atraso de 300ms) e evita seleção acidental de texto */
+/* Resposta tátil imediata (zero atraso de 300ms), proíbe pinch-zoom nas páginas e evita seleção acidental */
 button,
 a,
 [role="button"],
@@ -194,7 +198,7 @@ a,
 .person-tab,
 .bottom-nav-item,
 .bottom-nav-add {
-  touch-action: manipulation;
+  touch-action: pan-x pan-y;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
@@ -808,7 +812,7 @@ a,
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-y;
 }
 
 .actor-tab-slider-track {
@@ -1138,7 +1142,7 @@ header:not(:hover):not(:focus-within) > .site-header-bg {
   background-color: transparent;
   color: var(--lb-icon-inactive);
   transition: background-color 0.22s cubic-bezier(0.32, 0.72, 0, 1), color 0.22s cubic-bezier(0.32, 0.72, 0, 1), transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-  touch-action: manipulation;
+  touch-action: none;
   -webkit-user-drag: none;
 }
 
@@ -1162,7 +1166,7 @@ header:not(:hover):not(:focus-within) > .site-header-bg {
   background-color: transparent;
   border: none;
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: none;
   -webkit-user-drag: none;
 }
 
