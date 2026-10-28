@@ -1,6 +1,6 @@
 {
-  "summary":  "Plano de implementação do sistema de Nota Unificada (Letterboxd, IMDb, Metacritic, Rotten Tomatoes e TMDb) via MDBList API com fallback OMDb, cache em localStorage e integração responsiva ao bloco de Ratings no Mobile e Desktop.",
-  "updatedAt":  "2026-10-26T11:41:13.162836126Z",
+  "summary":  "Plano arquitetural para modularização do AppContext e do serviço TMDB, otimização de performance de renderização (O(1) lookups e seletores granulares), cache inteligente do TMDB e fluidez mobile, mantendo 100% do visual e comportamento originais.",
+  "updatedAt":  "2026-10-28T12:13:14.321263614Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

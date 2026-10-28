@@ -1,125 +1,122 @@
-# Sistema de Nota Unificada (Letterboxd, IMDb, Metacritic, Rotten Tomatoes e TMDb)
+# Refatoração Arquitetural, Modularização e Otimização de Performance (MyWorld Cinema)
 
-Implementação de um motor de agregação ponderada de notas críticas e de público diretamente na página de detalhes de filmes e séries, combinando dados da MDBList API (principal) e OMDb API (fallback) com persistência instantânea em `localStorage` e integração nativa ao bloco de avaliações tanto no Mobile quanto no Desktop.
+Este plano estrutura a evolução interna do código do **MyWorld Cinema**, dividindo os dois maiores monólitos do projeto (o contexto global de estado e o cliente/motor de curadoria TMDB) em módulos coesos e fortemente tipados, além de elevar a performance de renderização, o cache em memória e a fluidez em dispositivos móveis sem alterar qualquer aspecto visual ou funcional existente.
 
-## User Review & Critical Decisions
+---
+
+### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> As decisões abaixo foram alinhadas e confirmadas na etapa de esclarecimento e guiam toda a arquitetura desta entrega:
+> As decisões abaixo refletem exatamente as prioridades confirmadas por você na etapa de alinhamento. Nenhum visual, cor, layout ou regra de negócio será alterado — todas as melhorias ocorrem na arquitetura interna, tipagem e performance de execução.
 
-- **Decisão Confirmada 1 (Posicionamento na Interface)**: A **Nota Unificada** será integrada diretamente ao bloco principal de `Ratings` (tanto na seção de histograma mobile quanto no painel lateral direito do desktop), exibindo os indicadores individuais das 5 plataformas logo abaixo do histograma.
-- **Decisão Confirmada 2 (Escala Principal em Destaque)**: O destaque principal da Nota Unificada utilizará exclusivamente a **escala de 0 a 5 estrelas** no padrão Letterboxd (ex.: `4.2 ★`, calculada convertendo o score ponderado de `0–100` para `score / 20`), preservando a identidade visual do app.
-- **Decisão Confirmada 3 (Cobertura de Filmes e Séries)**: O agregador funcionará tanto para **Filmes** (`/tmdb/movie/${tmdbId}`) quanto para **Séries** (`/tmdb/show/${tmdbId}`), com fallback automático para a OMDb API via `imdb_id` e para a nota nativa do TMDb.
-- **Configuração de Secrets (`.env.example`)**: As variáveis `VITE_MDBLIST_API_KEY` e `VITE_OMDB_API_KEY` serão registradas no `.env.example` (habilitando o painel de Secrets do AI Studio), mantendo fallback seguro em código para as chaves fornecidas para que a funcionalidade opere imediatamente.
-
----
-
-## 1. Overview & Core Concept
-
-- **O que faz**: Quando o usuário abre a tela de detalhes de um filme ou série, o sistema consulta o cache local (`notas_unificadas_v1_${tmdbId}` ou `notas_unificadas_v1_tv_${tmdbId}` para séries, mantendo `notas_unificadas_v1_${tmdbId}` para filmes conforme especificado) e, caso ainda não esteja salvo, busca em segundo plano as avaliações do **Letterboxd**, **IMDb**, **Metacritic**, **Rotten Tomatoes** e **TMDb**.
-- **Cálculo da Média Ponderada**:
-  - Cada fonte disponível na MDBList (`data.ratings`) fornece `score` (0 a 100) e `value` (valor original na escala de cada plataforma).
-  - Pesos aplicados exclusivamente sobre as fontes que possuem nota válida (`score > 0`):
-    - **Letterboxd** (`letterboxd`): peso `3.0`
-    - **IMDb** (`imdb`): peso `2.5`
-    - **Metacritic** (`metacritic`): peso `2.5`
-    - **Rotten Tomatoes** (`tomatoes`): peso `1.5`
-    - **TMDb** (`tmdb`): peso `1.0`
-  - A média ponderada resultante (`0 a 100`) é convertida para a escala Letterboxd de **0 a 5 estrelas** (`unifiedScore100 / 20`) para alimentar a nota de destaque e a curva do histograma.
-- **Valor Principal**: Oferece ao usuário um consenso real e imediato entre crítica e público sem sair do aplicativo, sem impactar a fluidez de 60fps das grades de pôsteres e sem desperdiçar franquia de requisições das APIs.
+- **Decisão Confirmada 1 — Foco em Arquitetura, Tipagem e Performance**: Priorizar a modularização de arquivos extensos, fortalecimento da tipagem TypeScript (`strict`, eliminação de casts inseguros `as unknown as`), otimização de re-renders, cache TMDB e fluidez mobile.
+- **Decisão Confirmada 2 — Escopo Principal nos Núcleos de Dados e Estado**: Desmembrar o gerenciador de estado global (~1.600 linhas) e o serviço TMDB (~3.080 linhas) em submódulos especializados mantendo 100% de compatibilidade com os imports existentes nos componentes.
+- **Decisão Confirmada 3 — Preservação Total de UI/UX**: Manter 100% do visual e comportamento atuais intactos, atuando estritamente sob o capô.
 
 ---
 
-## 2. User Experience & Visual Design
+### 1. Overview & Core Concept
 
-- **Fluxo do Usuário e Estados de Carregamento**:
-  1. **Zero chamadas fora da página de detalhes**: Nenhuma requisição para MDBList ou OMDb é disparada na Home, Busca ou Grades de navegação.
-  2. **Abertura da Página de Detalhes**:
-     - Se o filme/série já estiver salvo em `localStorage` (`notas_unificadas_v1_${tmdbId}`), a Nota Unificada em escala 0–5 e as notas das 5 plataformas são renderizadas **instantaneamente no primeiro frame**, sem skeleton.
-     - Se for a primeira abertura daquele título, o histograma exibe imediatamente a estimativa inicial e, logo abaixo, uma linha de placeholders com pulso suave (`animate-pulse`) reserva o espaço exato das plataformas (zero *Cumulative Layout Shift*).
-     - Assim que a resposta da MDBList (ou fallback OMDb) retorna, a nota principal em escala 0–5 atualiza suavemente e as notas originais de cada plataforma aparecem com transição de opacidade (`150ms`).
+- **O Que Faz**: Reorganiza o núcleo de estado do usuário (diário, watchlist, listas, avaliações, sincronização Supabase e importação Letterboxd) e a camada de dados TMDB (cliente HTTP com retry/deduplicação, caches LRU/TTL, motores de curadoria "Popular da Semana", "Mais Aguardados", "Semelhantes" e buscas enriquecidas) em domínios independentes e otimizados.
+- **Público-Alvo / Contexto**: Usuários mobile e desktop do MyWorld Cinema que navegam entre abas, listas grandes (600+ filmes importados) e páginas de detalhes, além da manutenção futura do código.
+- **Valor Principal**:
+  - **Manutenibilidade e Clareza**: Substitui arquivos monolíticos de milhares de linhas por módulos focados por domínio ( cada um com responsabilidade única e contratos TypeScript explícitos).
+  - **Performance O(1) em Listas Grandes**: Substitui buscas lineares (`Array.includes` / `Array.some`) em coleções de centenas de filmes por estruturas indexadas (`Set` / `Map`) e evita re-renderizações em cascata quando o usuário curte, avalia ou registra um filme.
+  - **Rede e Cache Mais Inteligentes**: Unifica o gerenciamento de cache com expiração (TTL) e limite de memória (LRU), além de pré-aquecer pôsteres no mobile de forma adaptativa sem congestionar a banda.
+
+---
+
+### 2. User Experience & Visual Design
+
+- **Fluxos do Usuário**: Todos os fluxos existentes (navegação entre abas com *swipe*, abertura de detalhes de filmes/séries/atores, registro no diário, edição de Top 4, *long-press* no mobile e importação CSV do Letterboxd) permanecem idênticos em comportamento e resposta visual.
 - **Identidade Visual & Tema**:
-  - *Direção Estética*: Editorial cinematográfico escuro fiel ao Letterboxd (`#14181c` no mobile, `#202830` no card lateral do desktop, divisórias sutis `#2c3440` e destaque verde `#00e054`).
-  - *Tipografia e Alinhamento Numérico*: Uso rigoroso de `tabular-nums` em todas as notas (`4.3`, `8.6/10`, `92%`, `84`) para alinhamento vertical perfeito.
-  - *Exibição das Plataformas (Clean Unboxed Row / Micro-Grid)*: Logo abaixo das barras do histograma, uma grade compacta e limpa exibe cada fonte disponível com seu identificador visual/sigla e o valor original formatado (`value`):
-    - **Letterboxd**: ex. `4.1 ★` (ou `4.1/5`)
-    - **IMDb**: ex. `8.3`
-    - **Rotten Tomatoes**: ex. `91%`
-    - **Metacritic**: ex. `82`
-    - **TMDb**: ex. `79%` ou `7.9`
+  - *Direção Estética*: Preservação integral da estética escura inspirada no Letterboxd (`bg-lb-bg`, `#14181c`, `#00e054`, `#ff8000`, `#40bcf4`).
+  - *Tipografia e Layout*: Nenhuma classe CSS, espaçamento ou componente visual será modificado.
+- **Feedback Interativo & Fluidez Mobile**:
+  - **Zero Bloqueio da Thread Principal**: Gravações no `localStorage` continuarão agendadas em `requestIdleCallback`, agora com *coalescing* e serialização desacoplada para nunca competir com animações de transição de página (`340ms cubic-bezier`).
+  - **Consultas Instantâneas (`O(1)`)**: Verificações `isMovieWatched`, `isMovieLiked` e `isMovieInWatchlist` passam a consultar `Set<number>` sincronizados em memória em vez de percorrer arrays a cada chamada.
+  - **Pré-aquecimento Adaptativo de Pôsteres**: O cache de abas passa a pré-carregar os primeiros pôsteres visíveis também em telas mobile (usando a variante leve `w185`), eliminando o atraso na primeira troca de aba.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+### 3. Key Product Decisions & Trade-Offs
 
-- **Decisão 1: Disparo Exclusivo na Página de Detalhes + Cancelamento de Requisição**
-  - *Abordagem Escolhida*: O hook/serviço de Nota Unificada roda apenas dentro da visualização de detalhes do título ativo, utilizando `AbortController` caso o usuário volte rapidamente ou troque de filme.
-  - *Por quê*: Garante consumo mínimo da cota diária da MDBList/OMDb e mantém zero impacto de CPU/rede durante a rolagem de listas e carrosséis no celular.
-- **Decisão 2: Estratégia de Resiliência em 3 Níveis (MDBList → OMDb → TMDb Nativo)**
-  - *Abordagem Escolhida*:
-    1. **Nível 1 (Principal)**: Consulta `https://api.mdblist.com/tmdb/${mediaType}/${tmdbId}?apikey=${MDBLIST_KEY}`. Extrai `letterboxd`, `imdb`, `metacritic`, `tomatoes` e `tmdb` de `data.ratings`.
-    2. **Nível 2 (Fallback OMDb)**: Se a MDBList falhar, der timeout ou retornar `ratings` sem notas válidas, consulta `https://www.omdbapi.com/?i=${imdbId}&apikey=${OMDB_KEY}` (usando o `imdb_id` vindo do TMDb ou da própria MDBList). Converte `imdbRating` (`parseFloat * 10`), `Metascore` (`parseInt`) e `Rotten Tomatoes` (`parseInt` de `Ratings[]`) para a base 100 e combina com a nota do TMDb (`vote_average * 10`) aplicando os mesmos pesos.
-    3. **Nível 3 (Contingência TMDb)**: Caso o título ainda não possua `imdb_id` ou ambas as APIs externas falhem, utiliza a nota oficial do TMDb para nunca exibir erro visual quebrado.
-- **Decisão 3: Cache Persistente em `localStorage` com Chave Padronizada**
-  - *Abordagem Escolhida*: Salvar o payload processado na chave `notas_unificadas_v1_${tmdbId}` (para filmes, e prefixado com `tv_` quando for série de mesmo ID numérico para evitar colisão de IDs entre filme e série no TMDb) assim que uma resposta válida da MDBList ou OMDb for obtida.
-  - *Por quê*: Reaberturas do mesmo título carregam em `0ms` sem qualquer chamada de rede.
+- **Decisão 1: Fachada Compatível (Barrel Re-exports) para Zero Quebra**
+  - *Abordagem Escolhida*: Dividir o estado global e o serviço TMDB em submódulos internos coesos, mantendo os pontos de entrada públicos com a exata mesma assinatura (`useApp`, `useMovieState`, `useMovieActions`, `tmdb.*`, tipos exportados).
+  - *Por Quê*: Permite modularizar mais de 4.600 linhas de código com segurança total, garantindo que todas as páginas e componentes continuem funcionando sem risco de regressão.
+  - *Alternativas Consideradas*: Alterar as assinaturas em todas as 30+ páginas e componentes simultaneamente — descartado por aumentar o risco de efeitos colaterais desnecessários.
+
+- **Decisão 2: Otimização de Estado e Sincronização Supabase Desacoplada**
+  - *Abordagem Escolhida*: Extrair a lógica de persistência do Supabase (logs rápidos, logs completos, watchlist, Top 4, overrides e importação em lote) e o motor de importação do Letterboxd para módulos dedicados fora do corpo do componente `AppProvider`.
+  - *Por Quê*: Reduz drasticamente a complexidade ciclomática do `AppProvider`, facilita testes e leitura, e permite usar `Set<number>` em memória para consultas `O(1)` de filmes assistidos, curtidos e na watchlist.
+  - *Alternativas Consideradas*: Manter as funções assíncronas de banco e importação inline dentro do `AppProvider` — descartado pois mistura regras de transformação de CSV e queries SQL com o ciclo de vida de renderização do React.
+
+- **Decisão 3: Arquitetura Modular do Serviço TMDB com Cache Tipado Unificado**
+  - *Abordagem Escolhida*: Separar o serviço TMDB em módulos especializados:
+    1. **Cliente HTTP & Cache (`client / cache`)**: `fetchFromTMDB`, `fetchWithRetry`, deduplicação de promises *in-flight* e cache LRU com TTL tipado.
+    2. **Contratos e Normalizadores (`types / normalizers`)**: Interfaces estritas para filmes, séries (incluindo `aggregate_credits` e `created_by`), pessoas e coleções, eliminando `as unknown as Record<string, unknown>` espalhados pelo código.
+    3. **Motores de Curadoria (`curators`)**: Algoritmos "Popular da Semana" (escalões Cinema vs. Streaming vs. Trending), "Mais Aguardados" (filtro de inéditos reais) e "Títulos Semelhantes" (afinidade de gêneros, keywords e franquias).
+    4. **Busca e Importação (`search`)**: Busca enriquecida com diretores/títulos alternativos e resolução por TMDB ID / IMDb ID.
+  - *Por Quê*: Isola as regras de pontuação e curadoria da infraestrutura de rede, tornando o código fácil de navegar e estritamente tipado.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+### 4. Technical Architecture & Data Strategy *(Technical Reference)*
 
-### Architecture & Component Diagram
+#### Diagrama de Arquitetura e Fluxo de Módulos
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                     Configuração de Ambiente & Secrets                   │
-│       VITE_MDBLIST_API_KEY (Principal)  |  VITE_OMDB_API_KEY (Reserva)   │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │
-                                     ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│                     Serviço de Notas Unificadas                          │
-│                                                                          │
-│  1. Verifica Cache: localStorage.getItem("notas_unificadas_v1_${id}")    │
-│     ├─ Hit  ──► Retorna payload instantaneamente (0ms)                   │
-│     └─ Miss ──► 2. Chama MDBList API (/tmdb/movie ou /tmdb/show)         │
-│                    ├─ Sucesso ──► Pondera (LB 3.0, IMDb 2.5, MC 2.5,     │
-│                    │              RT 1.5, TMDb 1.0)                      │
-│                    └─ Falha/Vazio ──► 3. Fallback OMDb API (?i=imdbId)   │
-│                                          Converte IMDb*10, Metascore, RT │
-│                 4. Salva em localStorage e retorna UnifiedRatingsData    │
-└────────────────────────────────────┬─────────────────────────────────────┘
-                                     │
-                     ┌───────────────┴───────────────┐
-                     ▼                               ▼
-┌────────────────────────────────────────┐ ┌───────────────────────────────┐
-│     Bloco Mobile de Ratings            │ │   Painel Desktop de Ratings   │
-│  - Média Unificada em destaque (0–5 ★) │ │  - Média Unificada (0–5 ★)    │
-│  - Curva do histograma sincronizada    │ │  - Histograma verde clássico  │
-│  - Linha de fontes abaixo (LB, IMDb,   │ │  - Grade compacta das 5       │
-│    RT, Metacritic, TMDb) + Skeleton    │ │    fontes abaixo + Skeleton   │
-└────────────────────────────────────────┘ └───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         CAMADA DE APRESENTAÇÃO (UI)                          │
+│   Pages (Home, Film, Profile, Search...)  │  PosterCard / GlobalModals       │
+└─────────────────────┬──────────────────────────────────────┬─────────────────┘
+                      │ useApp()                             │ useMovieState(id)
+                      │ useMovieActions()                    │ useOpenActionSheet()
+                      ▼                                      ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     NÚCLEO DE ESTADO GLOBAL (AppContext)                     │
+│  ┌─────────────────────────┐  ┌────────────────────────┐  ┌───────────────┐  │
+│  │   AppProvider (Core)    │  │  MovieStore (O(1) Set) │  │ Idle Storage  │  │
+│  │  Estado React + Hooks   │─▶│ useSyncExternalStore   │  │ Scheduler     │  │
+│  └────────────┬────────────┘  └────────────────────────┘  └───────────────┘  │
+│               ├──────────────────────────────┐                               │
+│               ▼                              ▼                               │
+│  ┌─────────────────────────┐  ┌───────────────────────────────────────────┐  │
+│  │ Supabase Sync Service   │  │      Letterboxd Bulk Import Engine        │  │
+│  │ • Quick/Full Logs       │  │ • Deduplicação por (movieId + date)       │  │
+│  │ • Watchlist & Top 4     │  │ • Upsert em lotes (chunks de 100)         │  │
+│  │ • Poster/Backdrop Overr.│  │ • Merge inteligente de tags e reviews     │  │
+│  └─────────────────────────┘  └───────────────────────────────────────────┘  │
+└──────────────────────────────────────────────┬───────────────────────────────┘
+                                               │
+                                               ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        CAMADA DE DADOS & CURADORIA TMDB                      │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │                   Fachada Pública Unificada (`tmdb`)                   │  │
+│  └───┬───────────────────┬──────────────────────┬─────────────────────┬───┘  │
+│      ▼                   ▼                      ▼                     ▼      │
+│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────────┐  ┌──────────┐  │
+│  │ HTTP Client  │  │ Curadoria & Hubs │  │ Affinity Engine  │  │  Search  │  │
+│  │ & LRU Cache  │  │ • Popular Week   │  │ • Similar Media  │  │ & Import │  │
+│  │ • Retry 429  │  │ • Anticipated    │  │ • Genre/Keyword  │  │ • Enrich │  │
+│  │ • In-Flight  │  │ • Films/TV Hubs  │  │   Jaccard Score  │  │ • IMDb   │  │
+│  └──────────────┘  └──────────────────┘  └──────────────────┘  └──────────┘  │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Model & State
+#### Modelo de Dados & Otimizações de Estado
 
-- **`PlatformRatingItem`**:
-  - `source`: `'letterboxd' | 'imdb' | 'tomatoes' | 'metacritic' | 'tmdb'`
-  - `label`: Nome curto para exibição (`Letterboxd`, `IMDb`, `Rotten Tomatoes`, `Metacritic`, `TMDb`)
-  - `score100`: Nota normalizada de `0` a `100` usada no cálculo ponderado
-  - `displayValue`: Nota formatada na escala original da plataforma (a partir de `value` na MDBList ou formatada no fallback OMDb, ex.: `4.2`, `8.5`, `93%`, `81`, `7.8`)
-  - `weight`: Peso da plataforma (`3.0`, `2.5`, `2.5`, `1.5`, `1.0`)
-- **`UnifiedRatingsPayload`**:
-  - `tmdbId`: `number`
-  - `unifiedScore100`: `number` (média ponderada de `0` a `100`)
-  - `unifiedStars5`: `number` (`unifiedScore100 / 20`, escala `0` a `5`)
-  - `sources`: `PlatformRatingItem[]`
-  - `provider`: `'mdblist' | 'omdb' | 'tmdb-fallback'`
-  - `updatedAt`: `number`
+1. **Indexação `O(1)` no Contexto**:
+   - Criação de conjuntos derivados e refs sincronizadas (`watchedSetRef`, `likedSetRef`, `watchlistSetRef`) para que `isMovieWatched(id)`, `isMovieLiked(id)` e `isMovieInWatchlist(id)` executem em tempo constante `O(1)` em vez de `O(N)`.
+   - No `movieStore`, a conversão de `watchlist` para IDs deixa de alocar arrays intermediários desnecessários quando a lista de observação não muda.
+2. **Tipagem Estrita de Respostas Híbridas (Filme/Série)**:
+   - Definição da interface explícita `TMDBRawMediaPayload` cobrindo campos exclusivos de TV (`name`, `original_name`, `first_air_date`, `episode_run_time`, `aggregate_credits`, `created_by`) para eliminar conversões `as unknown as Record<string, unknown>` e garantir segurança em tempo de compilação.
+3. **Gerenciador de Cache `BoundedTTLCache<K, V>`**:
+   - Abstração genérica leve com política LRU (remove a entrada menos recentemente usada ao atingir a capacidade máxima) e validação automática de TTL, substituindo os múltiplos `Map` manuais espalhados pelo serviço TMDB.
 
-### Interactive Component & State Mapping
+#### Mapeamento de Interações e Garantias de Comportamento
 
-- **Gerenciamento de Estado na Página do Filme**:
-  - Ao montar ou trocar `movieId`, o estado `unifiedRatings` inicializa lendo sincronamente o `localStorage` (`notas_unificadas_v1_${movieId}`) para evitar qualquer piscar de tela se já estiver em cache.
-  - Caso não esteja em cache, `unifiedLoading` fica `true` (exibindo o skeleton discreto na faixa de plataformas) enquanto o `useEffect` aguarda os detalhes básicos do filme (`imdb_id` e `vote_average`) e dispara a busca unificada.
-  - Quando os dados chegam, a nota principal (`avg` no mobile e `averageRating` no `RatingHistogram` desktop) passa a refletir `unifiedRatings.unifiedStars5`, e a faixa inferior renderiza as notas originais de cada uma das 5 plataformas.
+- **Ações Rápidas em Cartões (`PosterCard`)**: Ao clicar em "Assistido", "Curtir" ou atribuir estrelas, `useMovieActions` atualiza o estado em memória via `Set` `O(1)`, notifica exclusivamente o `PosterCard` daquele filme via `movieStore` e dispara a sincronização assíncrona no módulo de persistência Supabase.
+- **Importação de Dados (Letterboxd CSV)**: O fluxo de importação delega a combinação de linhas, cálculo de estatísticas e envio em lotes (`chunkSize = 100`) ao módulo dedicado de importação, mantendo o retorno `ProfileImportSummary` idêntico.
+- **Navegação Mobile & Abas**: O cache de abas (`tabDataCache`) passa a aquecer na Onda 1 os 4 primeiros pôsteres na resolução ideal de cada dispositivo (`w185` no mobile, `w342`/`w500` no desktop), garantindo transição instantânea ao deslizar entre *Films* e *Series*.

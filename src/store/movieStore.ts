@@ -40,6 +40,10 @@ export interface MovieStore {
   flush(): void;
   /** Snapshot estável do filme: a mesma referência enquanto nada mudar. */
   get(id: number): MovieSnapshot;
+  /** Consultas O(1) diretas nos Sets sincronizados em memória. */
+  hasWatched(id: number): boolean;
+  hasLiked(id: number): boolean;
+  hasInWatchlist(id: number): boolean;
   subscribe(id: number, listener: () => void): () => void;
 }
 
@@ -115,6 +119,18 @@ export function createMovieStore(): MovieStore {
         snapshots.set(id, snap);
       }
       return snap;
+    },
+
+    hasWatched(id) {
+      return watchedSet.has(id);
+    },
+
+    hasLiked(id) {
+      return likedSet.has(id);
+    },
+
+    hasInWatchlist(id) {
+      return watchlistSet.has(id);
     },
 
     subscribe(id, listener) {

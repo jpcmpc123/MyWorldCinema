@@ -37,10 +37,11 @@ if (typeof window !== 'undefined') {
 
 export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>): void {
   if (typeof window === 'undefined' || typeof Image === 'undefined') return;
-  if (window.innerWidth <= 767) return;
+  const isMobileViewport = window.innerWidth <= 767;
   const firstFoldLists = [data.popular, data.highestRated];
 
-  // Onda 1 (Imediata): Aquece apenas os 4 primeiros itens das 2 primeiras listas (8 pôsteres visíveis na tela)
+  // Onda 1 (Imediata): Aquece apenas os 4 primeiros itens das 2 primeiras listas (8 pôsteres visíveis na tela;
+  // no mobile, preloadPoster seleciona automaticamente a resolução leve w185).
   for (const list of firstFoldLists) {
     if (!Array.isArray(list)) continue;
     for (const item of list.slice(0, 4)) {
@@ -50,7 +51,10 @@ export function prewarmHubPosters(data: Omit<HubSectionsData, 'timestamp'>): voi
     }
   }
 
-  // Onda 2 (Após 250ms + requestIdleCallback): Aquece slice(4, 10) das 2 primeiras listas e slice(0, 6) de mostWatched e mostAnticipated
+  // No mobile preservamos a banda aquecendo apenas a primeira dobra imediata
+  if (isMobileViewport) return;
+
+  // Onda 2 (Desktop - Após 250ms + requestIdleCallback): Aquece slice(4, 10) das 2 primeiras listas e slice(0, 6) de mostWatched e mostAnticipated
   const runWave2 = () => {
     for (const list of firstFoldLists) {
       if (!Array.isArray(list)) continue;
