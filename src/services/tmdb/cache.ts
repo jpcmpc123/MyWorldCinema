@@ -132,6 +132,10 @@ export const popularWeekInFlight = new Map<string, Promise<TMDBMovie[]>>();
 export const anticipatedPoolCache = new BoundedTTLCache<string, TMDBMovie[]>(20, TMDB_CACHE_TTL_MS);
 export const movieHasPastReleaseCache = new BoundedLRUMap<number, boolean>(600);
 
+/** Cache determinístico do melhor poster_path e backdrop_path curados (anti-IA) por ID */
+export const curatedPosterCache = new BoundedLRUMap<number, string>(1200);
+export const curatedBackdropCache = new BoundedLRUMap<number, string>(600);
+
 let filmsHubInFlight: Promise<HubSectionsResult> | null = null;
 let seriesHubInFlight: Promise<HubSectionsResult> | null = null;
 
@@ -160,4 +164,6 @@ export function clearAllTmdbRuntimeCaches(): void {
   collectionDetailsCache.clear();
   searchEnrichCache.clear();
   similarProfileCache.clear();
+  curatedPosterCache.clear();
+  curatedBackdropCache.clear();
 }

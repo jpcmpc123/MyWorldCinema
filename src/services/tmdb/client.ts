@@ -1,4 +1,5 @@
-import { tmdbHttpCache, tmdbInflight } from './cache';
+import { curatedBackdropCache, curatedPosterCache, tmdbHttpCache, tmdbInflight } from './cache';
+import { CANONICAL_BACKDROP_BY_ID } from './posterFilter';
 import type { TMDBMovie, TMDBRawMediaPayload } from './types';
 
 // ATENÇÃO: nunca recoloque chaves reais como fallback aqui — use apenas
@@ -104,12 +105,36 @@ export function isFuture(m: TMDBMovie): boolean {
 }
 
 export function normalizeMediaItem(m: TMDBMovie & Partial<TMDBRawMediaPayload>): TMDBMovie {
+  const curatedPoster = m.id ? curatedPosterCache.get(m.id) : undefined;
+  const finalPoster = curatedPoster || m.poster_path || null;
+  if (m.id && finalPoster && !curatedPoster) {
+    curatedPosterCache.set(m.id, finalPoster);
+  }
+
   return {
     ...m,
+    poster_path: finalPoster,
     title: m.title || m.name || '',
     original_title: m.original_title || m.original_name || m.title || m.name || '',
     release_date: m.release_date || m.first_air_date || '',
   };
+}
+
+function isMediaListEndpoint(endpoint: string): boolean {
+  return (
+    endpoint.startsWith('/discover/') ||
+    endpoint.startsWith('/trending/') ||
+    endpoint === '/movie/popular' ||
+    endpoint === '/movie/top_rated' ||
+    endpoint === '/movie/now_playing' ||
+    endpoint === '/tv/popular' ||
+    endpoint === '/tv/top_rated' ||
+    endpoint.startsWith('/search/movie') ||
+    endpoint.startsWith('/search/tv') ||
+    endpoint.startsWith('/search/multi') ||
+    endpoint.endsWith('/recommendations') ||
+    endpoint.endsWith('/similar')
+  );
 }
 
 async function fetchWithRetry(
@@ -163,6 +188,7 @@ export async function fetchFromTMDB<T>(
   const url = new URL(`${BASE_URL}${endpoint}`);
   url.searchParams.append('api_key', TMDB_API_KEY);
 
+  const effectiveLang = params.language !== undefined ? String(params.language) : tmdbLanguage;
   if (params.language === undefined) {
     url.searchParams.append('language', tmdbLanguage);
   }
@@ -186,16 +212,62 @@ export async function fetchFromTMDB<T>(
     return inflight as Promise<T>;
   }
 
+  const shouldSyncOfficialPosters =
+    effectiveLang === 'pt-BR' && params.language === undefined && isMediaListEndpoint(endpoint);
+
   const promise = (async () => {
-    const res = await fetchWithRetry(urlString, headers, 6);
+    const enPostersPromise = shouldSyncOfficialPosters
+      ? (async () => {
+          try {
+            const enUrl = new URL(urlString);
+            enUrl.searchParams.set('language', 'en-US');
+            const enKey = `${enUrl.toString()}#enPosters`;
+            const cachedEn = tmdbHttpCache.get(enKey) as Map<number, string> | null;
+            if (cachedEn) return cachedEn;
+            const enRes = await fetchWithRetry(enUrl.toString(), headers, 2);
+            const enJson = await enRes.json();
+            const map = new Map<number, string>();
+            if (enJson && Array.isArray(enJson.results)) {
+              for (const item of enJson.results) {
+                if (
+                  item &&
+                  typeof item.id === 'number' &&
+                  typeof item.poster_path === 'string' &&
+                  item.poster_path
+                ) {
+                  map.set(item.id, item.poster_path);
+                }
+              }
+            }
+            tmdbHttpCache.set(enKey, map);
+            return map;
+          } catch {
+            return null;
+          }
+        })()
+      : Promise.resolve(null);
+
+    const [res, enPosterMap] = await Promise.all([
+      fetchWithRetry(urlString, headers, 6),
+      enPostersPromise,
+    ]);
     const data = await res.json();
     if (data && Array.isArray(data.results)) {
       data.results = data.results
-        .filter(
-          (r: { poster_path?: string | null }) =>
-            options?.allowMissingPoster || !('poster_path' in r) || Boolean(r.poster_path),
-        )
         .map((r: Record<string, unknown>) => {
+          const itemId = typeof r.id === 'number' ? r.id : 0;
+          if (itemId) {
+            const curatedPoster = curatedPosterCache.get(itemId);
+            const officialEn = enPosterMap?.get(itemId);
+            if (curatedPoster) {
+              r.poster_path = curatedPoster;
+            } else if (officialEn) {
+              r.poster_path = officialEn;
+              curatedPosterCache.set(itemId, officialEn);
+            } else if (typeof r.poster_path === 'string' && r.poster_path) {
+              curatedPosterCache.set(itemId, r.poster_path);
+            }
+          }
           if (!r.title && typeof r.name === 'string') {
             r.title = r.name;
           }
@@ -203,7 +275,11 @@ export async function fetchFromTMDB<T>(
             r.release_date = r.first_air_date;
           }
           return r;
-        });
+        })
+        .filter(
+          (r: { poster_path?: string | null }) =>
+            options?.allowMissingPoster || !('poster_path' in r) || Boolean(r.poster_path),
+        );
     }
     tmdbHttpCache.set(cacheKey, data);
     return data as T;

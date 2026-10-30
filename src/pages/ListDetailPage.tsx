@@ -29,7 +29,7 @@ export const ListDetailPage: React.FC = () => {
   const { t } = useLanguage();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { lists, deleteList, user, watchedMovieIds, logs } = useApp();
+  const { lists, deleteList, user, watchedMovieIds, logs, movieOverrides } = useApp();
   const { isAuthenticated, profile } = useAuth();
 
   const list = lists.find((l) => l.id === id);
@@ -408,8 +408,9 @@ export const ListDetailPage: React.FC = () => {
                 }`}
               >
                 {sortedMovies.map(({ movie: m, rank }) => {
-                  const posterUrl = m.poster_path
-                    ? tmdb.getImageUrl(m.poster_path, 'w342')
+                  const rawPoster = movieOverrides[m.id]?.poster || m.poster_path;
+                  const posterUrl = rawPoster
+                    ? tmdb.getImageUrl(rawPoster, 'w342')
                     : null;
                   return (
                     <Link
@@ -447,11 +448,12 @@ export const ListDetailPage: React.FC = () => {
               <div className="divide-y divide-white/10 border-t border-b border-white/10 mt-1">
                 {sortedMovies.map(({ movie: m, rank }) => {
                   const year = m.release_date?.slice(0, 4) || '';
-                  const posterUrl = m.poster_path
-                    ? tmdb.getImageUrl(m.poster_path, 'w500')
+                  const rawPoster = movieOverrides[m.id]?.poster || m.poster_path;
+                  const posterUrl = rawPoster
+                    ? tmdb.getImageUrl(rawPoster, 'w500')
                     : null;
-                  const posterW780 = m.poster_path
-                    ? tmdb.getImageUrl(m.poster_path, 'w780')
+                  const posterW780 = rawPoster
+                    ? tmdb.getImageUrl(rawPoster, 'w780')
                     : null;
                   return (
                     <Link
@@ -788,11 +790,12 @@ export const ListDetailPage: React.FC = () => {
         {/* List Items */}
         <div className="space-y-4">
           {list.movies.map((m, idx) => {
-            const posterUrl = m.poster_path
-              ? tmdb.getImageUrl(m.poster_path, 'w500')
+            const rawPoster = movieOverrides[m.id]?.poster || m.poster_path;
+            const posterUrl = rawPoster
+              ? tmdb.getImageUrl(rawPoster, 'w500')
               : null;
-            const posterW780 = m.poster_path
-              ? tmdb.getImageUrl(m.poster_path, 'w780')
+            const posterW780 = rawPoster
+              ? tmdb.getImageUrl(rawPoster, 'w780')
               : null;
             return (
               <div

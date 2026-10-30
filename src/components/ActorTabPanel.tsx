@@ -61,7 +61,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
   showAllFilms,
   onShowMore,
 }) => {
-  const { isMovieWatched } = useApp();
+  const { isMovieWatched, movieOverrides } = useApp();
   const { t } = useLanguage();
   const prefetchedIdsRef = useRef<Set<number>>(new Set());
 
@@ -109,13 +109,16 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
     const isMob = typeof window !== 'undefined' && window.innerWidth < 768;
     const detailPosterSize = isMob ? 'w342' : 'w500';
     const detailBackdropSize = isMob ? 'w780' : 'w1280';
-    if (film.poster_path) {
-      const dpUrl = tmdb.getImageUrl(film.poster_path, detailPosterSize);
+    const override = movieOverrides[film.id];
+    const effectivePoster = override?.poster || film.poster_path;
+    const effectiveBackdrop = override?.backdrop || film.backdrop_path;
+    if (effectivePoster) {
+      const dpUrl = tmdb.getImageUrl(effectivePoster, detailPosterSize);
       preloadImageUrl(dpUrl);
       void preloadSingleImage(dpUrl);
     }
-    if (film.backdrop_path) {
-      void preloadSingleImage(tmdb.getBackdropUrl(film.backdrop_path, detailBackdropSize));
+    if (effectiveBackdrop) {
+      void preloadSingleImage(tmdb.getBackdropUrl(effectiveBackdrop, detailBackdropSize));
     }
     const req =
       film.media_type === 'tv'
@@ -123,12 +126,13 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
         : tmdb.getMovieDetails(film.id);
     req
       .then((details) => {
-        const bp = details.backdrop_path || details.poster_path;
+        const bp = override?.backdrop || details.backdrop_path || details.poster_path;
         if (bp) {
           void preloadSingleImage(tmdb.getBackdropUrl(bp, detailBackdropSize));
         }
-        if (details.poster_path) {
-          const dpUrl = tmdb.getImageUrl(details.poster_path, detailPosterSize);
+        const pp = override?.poster || details.poster_path;
+        if (pp) {
+          const dpUrl = tmdb.getImageUrl(pp, detailPosterSize);
           preloadImageUrl(dpUrl);
           void preloadSingleImage(dpUrl);
         }
@@ -139,8 +143,9 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
   // Card de pôster (grade de 4 colunas e lista compacta).
   // Série (media_type 'tv') abre /tv/{id}; filme abre /film/{id}.
   const posterCard = (film: TMDBPersonMovieCredit, idx: number, className = '') => {
-    const p185 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w185') : '';
-    const p342 = film.poster_path ? tmdb.getImageUrl(film.poster_path, 'w342') : '';
+    const rawPoster = movieOverrides[film.id]?.poster || film.poster_path;
+    const p185 = rawPoster ? tmdb.getImageUrl(rawPoster, 'w185') : '';
+    const p342 = rawPoster ? tmdb.getImageUrl(rawPoster, 'w342') : '';
     return (
       <Link
         key={`${film.media_type ?? 'movie'}-${film.id}`}
@@ -150,7 +155,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
         onMouseEnter={() => handlePrefetch(film)}
         className={`person-film-card relative block ${className}`}
       >
-        {film.poster_path ? (
+        {rawPoster ? (
           <img
             ref={smartImgRef}
             onLoad={smartImgOnLoad}

@@ -123,7 +123,7 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
   item,
   t,
 }) => {
-  const { isMovieWatched, ratingsMap } = useApp();
+  const { isMovieWatched, ratingsMap, movieOverrides } = useApp();
   const [showAllTitles, setShowAllTitles] = useState(false);
   const year = item.release_date ? item.release_date.slice(0, 4) : '';
 
@@ -145,9 +145,10 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
   const userRating = ratingsMap[item.id] ?? 0;
   const watched = isMovieWatched(item.id);
   const href = item.media_type === 'tv' ? `/tv/${item.id}` : `/film/${item.id}`;
+  const rawPoster = movieOverrides[item.id]?.poster || item.poster_path;
   const handlePrefetch = () => {
-    if (item.poster_path) {
-      preloadPoster(item.poster_path, 'w500', true);
+    if (rawPoster) {
+      preloadPoster(rawPoster, 'w500', true);
     }
     if (item.media_type === 'tv') {
       tmdb.getTVDetails(item.id).catch(() => {});
@@ -156,8 +157,8 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
     }
   };
 
-  const p500 = item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w500') : '';
-  const p780 = item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w780') : '';
+  const p500 = rawPoster ? tmdb.getImageUrl(rawPoster, 'w500') : '';
+  const p780 = rawPoster ? tmdb.getImageUrl(rawPoster, 'w780') : '';
 
   return (
     <Link
@@ -170,7 +171,7 @@ const ResultRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) => st
     >
       {/* Pôster 76x114 (placeholder escuro quando não há arte) */}
       <div className="w-[76px] h-[114px] shrink-0 rounded-[4px] overflow-hidden border border-white/15 bg-[#232a31]">
-        {item.poster_path ? (
+        {rawPoster ? (
           <img
             src={p500}
             srcSet={`${p500} 1x, ${p780} 2x`}
@@ -359,15 +360,17 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
   item,
   t,
 }) => {
+  const { movieOverrides } = useApp();
   const releaseYear = item.release_date ? item.release_date.slice(0, 4) : '';
   const director = (item.directors ?? []).join(', ');
   const hasDistinctOriginalTitle =
     Boolean(item.original_title) &&
     item.original_title!.trim().toLowerCase() !== item.title.trim().toLowerCase();
   const href = item.media_type === 'tv' ? `/tv/${item.id}` : `/film/${item.id}`;
+  const rawPoster = movieOverrides[item.id]?.poster || item.poster_path;
   const handlePrefetch = () => {
-    if (item.poster_path) {
-      preloadPoster(item.poster_path, 'w342');
+    if (rawPoster) {
+      preloadPoster(rawPoster, 'w342');
     }
     if (item.media_type === 'tv') {
       tmdb.getTVDetails(item.id).catch(() => {});
@@ -384,7 +387,7 @@ const MobileMovieRow: React.FC<{ item: TMDBSearchResult; t: (k: TranslationKey) 
       onMouseEnter={handlePrefetch}
       className="flex items-center gap-4 px-4 py-3 border-b border-white/10 active:bg-white/5 diary-row-optimized"
     >
-      <MobilePoster path={item.poster_path} alt={item.title} />
+      <MobilePoster path={rawPoster} alt={item.title} />
       <div className="flex flex-col justify-center min-w-0">
         <p className="text-[14px] text-[#9ab] leading-[1.35]">
           <span className="font-bold text-white text-[16px]">{item.title}</span>
@@ -438,7 +441,7 @@ const MobileLocalRow: React.FC<{
 
 export const SearchPage: React.FC = () => {
   const { t, language } = useLanguage();
-  const { reviews, lists } = useApp();
+  const { reviews, lists, movieOverrides } = useApp();
   const isMobile = useIsMobile();
   // Mobile: estado de foco do input (máquina de 3 estados: idle / focused / typing)
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -772,7 +775,7 @@ export const SearchPage: React.FC = () => {
           key: `review-${r.id}`,
           title: r.movieTitle,
           subtitle: r.author?.displayName,
-          poster: r.moviePoster,
+          poster: movieOverrides[r.movieId]?.poster || r.moviePoster,
           to: `/film/${r.movieId}`,
           year: r.movieYear,
         }));
@@ -787,7 +790,10 @@ export const SearchPage: React.FC = () => {
           key: `list-${l.id}`,
           title: l.title,
           subtitle: `${l.movies.length} films`,
-          poster: l.movies[0]?.poster_path ?? null,
+          poster:
+            (l.movies[0] && movieOverrides[l.movies[0].id]?.poster) ||
+            l.movies[0]?.poster_path ||
+            null,
           to: `/list/${l.id}`,
           year: '',
         }));
@@ -796,7 +802,7 @@ export const SearchPage: React.FC = () => {
   };
 
   // Resultados locais (críticas e listas do próprio usuário)
-  const localResults = useMemo(() => getLocalResultsFor(filter), [filter, term, reviews, lists, searchLoadSeq]);
+  const localResults = useMemo(() => getLocalResultsFor(filter), [filter, term, reviews, lists, movieOverrides, searchLoadSeq]);
 
   useEffect(() => {
     if (!term) {

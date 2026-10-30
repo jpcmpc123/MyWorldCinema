@@ -8,7 +8,7 @@ import { StarRating } from './StarRating';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export const LogModal: React.FC = () => {
-  const { isLogModalOpen, closeLogModal, selectedMovieForLog, saveLog, ratingsMap, isMovieLiked } = useApp();
+  const { isLogModalOpen, closeLogModal, selectedMovieForLog, saveLog, ratingsMap, isMovieLiked, movieOverrides } = useApp();
   const { t } = useLanguage();
 
   const [movie, setMovie] = useState<TMDBMovie | { id: number; title: string; poster_path: string | null; release_date?: string } | null>(null);
@@ -173,8 +173,8 @@ export const LogModal: React.FC = () => {
                           onLoad={smartImgOnLoad}
                           loading="lazy"
                           decoding="async"
-                          src={tmdb.getImageUrl(res.poster_path, 'w500')}
-                          srcSet={`${tmdb.getImageUrl(res.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(res.poster_path, 'w780')} 2x`}
+                          src={tmdb.getImageUrl(movieOverrides[res.id]?.poster || res.poster_path, 'w500')}
+                          srcSet={`${tmdb.getImageUrl(movieOverrides[res.id]?.poster || res.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(movieOverrides[res.id]?.poster || res.poster_path, 'w780')} 2x`}
                           alt={res.title}
                           className="w-8 h-12 object-cover rounded bg-lb-elevated mw-img-fade"
                         />
@@ -195,8 +195,8 @@ export const LogModal: React.FC = () => {
                 onLoad={smartImgOnLoad}
                 loading="eager"
                 decoding="async"
-                src={tmdb.getImageUrl(movie.poster_path, 'w500')}
-                srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 2x`}
+                src={tmdb.getImageUrl(movieOverrides[movie.id]?.poster || movie.poster_path, 'w500')}
+                srcSet={`${tmdb.getImageUrl(movieOverrides[movie.id]?.poster || movie.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(movieOverrides[movie.id]?.poster || movie.poster_path, 'w780')} 2x`}
                 alt={movie.title}
                 className="w-12 h-18 object-cover rounded shadow border border-white/10 mw-img-fade"
               />

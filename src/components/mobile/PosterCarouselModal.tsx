@@ -82,11 +82,8 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
   const getPosterUrl = useCallback(
     (item: CarouselMovieItem | undefined) => {
       if (!item) return null;
-      const override = movieOverrides[item.id];
-      return (
-        override?.poster ||
-        (item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w780') : null)
-      );
+      const rawPoster = movieOverrides[item.id]?.poster || item.poster_path;
+      return rawPoster ? tmdb.getImageUrl(rawPoster, 'w780') : null;
     },
     [movieOverrides],
   );
@@ -95,11 +92,8 @@ export const PosterCarouselModal: React.FC<PosterCarouselModalProps> = ({
   const getBgUrl = useCallback(
     (item: CarouselMovieItem | undefined) => {
       if (!item) return null;
-      const override = movieOverrides[item.id];
-      return (
-        override?.poster ||
-        (item.poster_path ? tmdb.getImageUrl(item.poster_path, 'w500') : null)
-      );
+      const rawPoster = movieOverrides[item.id]?.poster || item.poster_path;
+      return rawPoster ? tmdb.getImageUrl(rawPoster, 'w500') : null;
     },
     [movieOverrides],
   );

@@ -14,7 +14,7 @@ import { setTmdbLanguage } from '../services/tmdb';
 export { formatDatePt, formatMoneyUSD, languageNames, regionNames };
 export type { Language, TranslationKey };
 
-const STORAGE_KEY = 'myworld_lang';
+const STORAGE_KEY = 'myworld_lang_v2';
 
 interface LanguageContextType {
   language: Language;
@@ -33,8 +33,8 @@ function initialLanguage(): Language {
   } catch {
     /* storage indisponível */
   }
-  // Detecta pt-BR pelo navegador como primeiro contato
-  return navigator.language?.toLowerCase().startsWith('pt') ? 'pt-BR' : 'en-US';
+  // Idioma padrão do site: Inglês (en-US)
+  return 'en-US';
 }
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

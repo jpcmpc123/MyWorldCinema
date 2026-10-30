@@ -8,7 +8,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { parseProfileTabRoute } from '../utils/tabRoutes';
 
 export const ListsPage: React.FC = () => {
-  const { lists, user } = useApp();
+  const { lists, user, movieOverrides } = useApp();
   const { isAuthenticated, profile } = useAuth();
   const { t } = useLanguage();
   const location = useLocation();
@@ -51,11 +51,12 @@ export const ListsPage: React.FC = () => {
                     {previewMovies.length > 0 && (
                       <div className="flex items-center w-full">
                         {previewMovies.map((m, idx) => {
-                          const posterUrl = m.poster_path
-                            ? tmdb.getImageUrl(m.poster_path, 'w500')
+                          const rawPoster = movieOverrides[m.id]?.poster || m.poster_path;
+                          const posterUrl = rawPoster
+                            ? tmdb.getImageUrl(rawPoster, 'w500')
                             : null;
-                          const posterW780 = m.poster_path
-                            ? tmdb.getImageUrl(m.poster_path, 'w780')
+                          const posterW780 = rawPoster
+                            ? tmdb.getImageUrl(rawPoster, 'w780')
                             : null;
                           return (
                             <div
@@ -165,11 +166,12 @@ export const ListsPage: React.FC = () => {
                 {/* Overlapping poster fan */}
                 <div className="flex items-center -space-x-8 mb-4 overflow-hidden pt-1 pb-2">
                   {list.movies.slice(0, 5).map((m, idx) => {
-                    const posterUrl = m.poster_path
-                      ? tmdb.getImageUrl(m.poster_path, 'w500')
+                    const rawPoster = movieOverrides[m.id]?.poster || m.poster_path;
+                    const posterUrl = rawPoster
+                      ? tmdb.getImageUrl(rawPoster, 'w500')
                       : null;
-                    const posterW780 = m.poster_path
-                      ? tmdb.getImageUrl(m.poster_path, 'w780')
+                    const posterW780 = rawPoster
+                      ? tmdb.getImageUrl(rawPoster, 'w780')
                       : null;
                     return posterUrl ? (
                       <img

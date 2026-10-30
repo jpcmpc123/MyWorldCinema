@@ -6,6 +6,7 @@ import { WhereToWatch } from '../components/WhereToWatch';
 import { PosterCard } from '../components/PosterCard';
 import { Backdrop, preloadSingleImage } from '../components/Backdrop';
 import { openPersonProfile } from '../utils/personNav';
+import { useApp } from '../context/AppContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { getRequiredFilmImageUrls, isTitleUnreleased } from './FilmPage';
@@ -14,6 +15,7 @@ import { getRequiredFilmImageUrls, isTitleUnreleased } from './FilmPage';
 // navegação/leitura apenas (sem log/diário/rating; o app registra FILMES).
 export const SeriesDetailPage: React.FC = () => {
   const { t } = useLanguage();
+  const { movieOverrides } = useApp();
   const { id } = useParams<{ id: string }>();
   const tvId = Number(id);
   const location = useLocation();
@@ -118,7 +120,7 @@ export const SeriesDetailPage: React.FC = () => {
       const cached = tmdb.getCachedDetails(tvId, 'tv');
       if (cached && Array.isArray(cached.credits?.cast)) {
         if (isMobile) {
-          const urls = getRequiredFilmImageUrls(cached, true);
+          const urls = getRequiredFilmImageUrls(cached, true, movieOverrides[tvId], null, undefined, movieOverrides);
           await Promise.race([
             Promise.all(urls.map(preloadSingleImage)),
             new Promise<void>((resolve) => setTimeout(resolve, 10000)),
@@ -143,7 +145,7 @@ export const SeriesDetailPage: React.FC = () => {
         const details = await tmdb.getTVDetails(tvId);
         if (cancelled) return;
         if (isMobile) {
-          const urls = getRequiredFilmImageUrls(details, true);
+          const urls = getRequiredFilmImageUrls(details, true, movieOverrides[tvId], null, undefined, movieOverrides);
           await Promise.race([
             Promise.all(urls.map(preloadSingleImage)),
             new Promise<void>((resolve) => setTimeout(resolve, 10000)),
@@ -216,13 +218,21 @@ export const SeriesDetailPage: React.FC = () => {
   const cast = show.credits?.cast?.slice(0, 18) ?? [];
   const similar = show.recommendations?.results?.slice(0, 6) ?? [];
 
-  const backdropUrl = show.backdrop_path
-    ? tmdb.getBackdropUrl(show.backdrop_path, 'original')
+  const override = movieOverrides[show.id];
+  const rawBackdrop = override?.backdrop || show.backdrop_path;
+  const rawPoster = override?.poster || show.poster_path;
+  const isCustomFullPoster = Boolean(
+    rawPoster && rawPoster.startsWith('http') && !rawPoster.includes('image.tmdb.org/t/p/'),
+  );
+
+  const backdropUrl = rawBackdrop
+    ? tmdb.getBackdropUrl(rawBackdrop, 'original')
     : null;
-  const posterUrl = show.poster_path ? tmdb.getImageUrl(show.poster_path, 'w780') : '';
-  const posterSrcSet = show.poster_path
-    ? `${tmdb.getImageUrl(show.poster_path, 'w342')} 342w, ${tmdb.getImageUrl(show.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(show.poster_path, 'w780')} 780w`
-    : undefined;
+  const posterUrl = rawPoster ? tmdb.getImageUrl(rawPoster, 'w780') : '';
+  const posterSrcSet =
+    rawPoster && !isCustomFullPoster
+      ? `${tmdb.getImageUrl(rawPoster, 'w342')} 342w, ${tmdb.getImageUrl(rawPoster, 'w500')} 500w, ${tmdb.getImageUrl(rawPoster, 'w780')} 780w`
+      : undefined;
 
   return (
     <div className="relative max-md:mw-slide-in-left">
@@ -352,11 +362,11 @@ export const SeriesDetailPage: React.FC = () => {
               {/* Pôster compacto à direita — SOMENTE mobile (padrão app Letterboxd) */}
               <div className="md:hidden w-[80px] shrink-0">
                 <div className="w-full aspect-[2/3] rounded-[4px] overflow-hidden border border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.7)] bg-lb-surface">
-                  {show.poster_path && (
+                  {rawPoster && (
                     <img
                       loading="lazy"
                       decoding="async"
-                      src={tmdb.getImageUrl(show.poster_path, 'w342')}
+                      src={tmdb.getImageUrl(rawPoster, 'w342')}
                       srcSet={posterSrcSet}
                       sizes="80px"
                       alt={show.title}

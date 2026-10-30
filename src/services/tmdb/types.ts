@@ -152,6 +152,10 @@ export interface TMDBMovieDetails extends TMDBMovie {
     backdrop_path: string | null;
   } | null;
   collection_parts?: TMDBMovie[];
+  images?: {
+    posters?: TMDBImage[];
+    backdrops?: TMDBImage[];
+  };
 }
 
 export interface TMDBCollectionDetails {
@@ -170,6 +174,7 @@ export interface TMDBImage {
   aspect_ratio: number;
   vote_average: number;
   vote_count: number;
+  iso_639_1?: string | null;
 }
 
 export interface TMDBMovieImages {

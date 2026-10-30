@@ -10,7 +10,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 export const HomePage: React.FC = () => {
-  const { lists, openLogModal } = useApp();
+  const { lists, openLogModal, movieOverrides } = useApp();
   const { t } = useLanguage();
   const isMobile = useIsMobile();
 
@@ -77,10 +77,10 @@ export const HomePage: React.FC = () => {
         <div className="hidden md:block relative min-h-[520px] overflow-hidden bg-lb-bg border-b border-lb-elevated">
           {featuredFilm && (
             <img
-              src={tmdb.getBackdropUrl(featuredFilm.backdrop_path, 'w1280')}
+              src={tmdb.getBackdropUrl(movieOverrides[featuredFilm.id]?.backdrop || featuredFilm.backdrop_path, 'w1280')}
               srcSet={
-                featuredFilm.backdrop_path
-                  ? `${tmdb.getBackdropUrl(featuredFilm.backdrop_path, 'w1280')} 1280w, ${tmdb.getBackdropUrl(featuredFilm.backdrop_path, 'original')} 1920w`
+                (movieOverrides[featuredFilm.id]?.backdrop || featuredFilm.backdrop_path)
+                  ? `${tmdb.getBackdropUrl(movieOverrides[featuredFilm.id]?.backdrop || featuredFilm.backdrop_path, 'w1280')} 1280w, ${tmdb.getBackdropUrl(movieOverrides[featuredFilm.id]?.backdrop || featuredFilm.backdrop_path, 'original')} 1920w`
                   : undefined
               }
               sizes="100vw"
@@ -197,19 +197,22 @@ export const HomePage: React.FC = () => {
                 >
                   {/* Overlapping mini posters */}
                   <div className="flex items-center -space-x-4 mb-3 overflow-hidden pb-1">
-                    {list.movies.slice(0, 4).map((m, idx) => (
-                      <img
-                        key={idx}
-                        loading="lazy"
-                        decoding="async"
-                        src={tmdb.getImageUrl(m.poster_path, 'w342')}
-                        srcSet={`${tmdb.getImageUrl(m.poster_path, 'w342')} 342w, ${tmdb.getImageUrl(m.poster_path, 'w500')} 500w`}
-                        sizes="48px"
-                        alt={m.title}
-                        className="w-12 aspect-[2/3] object-cover rounded shadow border border-white/10 group-hover:translate-y-[-2px] transition-transform"
-                        style={{ zIndex: 10 - idx }}
-                      />
-                    ))}
+                    {list.movies.slice(0, 4).map((m, idx) => {
+                      const rawPoster = movieOverrides[m.id]?.poster || m.poster_path;
+                      return (
+                        <img
+                          key={idx}
+                          loading="lazy"
+                          decoding="async"
+                          src={tmdb.getImageUrl(rawPoster, 'w342')}
+                          srcSet={`${tmdb.getImageUrl(rawPoster, 'w342')} 342w, ${tmdb.getImageUrl(rawPoster, 'w500')} 500w`}
+                          sizes="48px"
+                          alt={m.title}
+                          className="w-12 aspect-[2/3] object-cover rounded shadow border border-white/10 group-hover:translate-y-[-2px] transition-transform"
+                          style={{ zIndex: 10 - idx }}
+                        />
+                      );
+                    })}
                   </div>
 
                   <h3 className="text-xs font-bold text-white group-hover:text-lb-green transition-colors truncate">

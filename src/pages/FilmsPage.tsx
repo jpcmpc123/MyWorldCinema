@@ -15,7 +15,7 @@ export const FilmsPage: React.FC = () => {
     year?: string;
   }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isMovieWatched } = useApp();
+  const { isMovieWatched, movieOverrides } = useApp();
 
   // Parse decade/year from URL params or query params (optional — no forced 2020 fallback)
   const parsedYear = urlYear
@@ -41,9 +41,9 @@ export const FilmsPage: React.FC = () => {
   const currentSort = searchParams.get('sort') || 'vote_count.desc';
   const currentPage = searchParams.get('page') ? Number(searchParams.get('page')) : 1;
 
-  // Filter for watched / unwatched + Letterboxd fade watched toggle (on by default)
+  // Filter for watched / unwatched + Letterboxd fade watched toggle (off by default)
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
-  const [fadeWatched, setFadeWatched] = useState<boolean>(true);
+  const [fadeWatched, setFadeWatched] = useState<boolean>(false);
 
   const [movies, setMovies] = useState<TMDBMovie[]>([]);
   const [totalResults, setTotalResults] = useState(138599);
@@ -559,7 +559,7 @@ export const FilmsPage: React.FC = () => {
               >
                 <Link to={`/film/${movie.id}`} className="shrink-0">
                   <img loading="lazy" decoding="async"
-                    src={tmdb.getImageUrl(movie.poster_path, 'w185')}
+                    src={tmdb.getImageUrl(movieOverrides[movie.id]?.poster || movie.poster_path, 'w185')}
                     alt={movie.title}
                     className="w-14 h-21 object-cover rounded shadow border border-white/10 group-hover:border-lb-green transition-colors"
                   />

@@ -16,8 +16,8 @@ const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutos
 let memoryFilmsHub: HubSectionsData | null = null;
 let memorySeriesHub: HubSectionsData | null = null;
 
-const FILMS_KEY = 'mw_cache_films_hub_v6';
-const SERIES_KEY = 'mw_cache_series_hub_v6';
+const FILMS_KEY = 'mw_cache_films_hub_v7';
+const SERIES_KEY = 'mw_cache_series_hub_v7';
 
 if (typeof window !== 'undefined') {
   try {
@@ -26,6 +26,8 @@ if (typeof window !== 'undefined') {
       'mw_cache_series_hub_v2',
       'mw_cache_films_hub_v5',
       'mw_cache_series_hub_v5',
+      'mw_cache_films_hub_v6',
+      'mw_cache_series_hub_v6',
     ]) {
       window.sessionStorage.removeItem(k);
       window.localStorage.removeItem(k);
@@ -95,7 +97,8 @@ function readStorage(key: string): HubSectionsData | null {
     const currentLang = getTmdbLanguage();
     if (
       Date.now() - parsed.timestamp > CACHE_TTL_MS ||
-      (parsed.lang && parsed.lang !== currentLang)
+      !parsed.lang ||
+      parsed.lang !== currentLang
     ) {
       window.sessionStorage.removeItem(key);
       window.localStorage.removeItem(key);

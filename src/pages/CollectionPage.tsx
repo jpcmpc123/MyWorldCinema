@@ -53,7 +53,7 @@ export const CollectionPage: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>('release_date.asc');
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
   const [watchlistFilter, setWatchlistFilter] = useState<'any' | 'in' | 'out'>('any');
-  const [fadeWatched, setFadeWatched] = useState<boolean>(true);
+  const [fadeWatched, setFadeWatched] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'grid' | 'cards'>('grid');
   const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
 
@@ -186,7 +186,7 @@ export const CollectionPage: React.FC = () => {
     else if (draft.sort === 'primary_release_date.desc') setSortBy('release_date.desc');
     else if (draft.sort) setSortBy(draft.sort);
 
-    setFadeWatched(draft.fade !== '0');
+    setFadeWatched(draft.fade === '1');
     setGenreFilter(draft.genre ? Number(draft.genre) : undefined);
     setDecadeFilter(draft.decade ? parseInt(draft.decade.replace('s', ''), 10) : undefined);
     setWatchedFilter((draft.watched as 'all' | 'watched' | 'unwatched') || 'all');
@@ -388,7 +388,7 @@ export const CollectionPage: React.FC = () => {
               <button
                 onClick={(e) => handleDropdownToggle(e, 'eye')}
                 className={`flex items-center gap-0.5 hover:text-white transition-colors cursor-pointer ${
-                  fadeWatched || watchedFilter !== 'all' ? 'text-lb-green' : ''
+                  openDropdown === 'eye' || fadeWatched || watchedFilter !== 'all' ? 'text-white' : ''
                 }`}
                 title={t('cat_fade_watched')}
               >
@@ -398,11 +398,14 @@ export const CollectionPage: React.FC = () => {
               {openDropdown === 'eye' && (
                 <div className="absolute right-0 top-6 w-48 bg-[#202830] border border-[#334150] rounded-xs shadow-2xl py-1.5 z-50 normal-case font-normal text-xs space-y-1">
                   <button
-                    onClick={() => setFadeWatched((v) => !v)}
+                    onClick={() => {
+                      setFadeWatched((v) => !v);
+                      setOpenDropdown(null);
+                    }}
                     className="w-full flex items-center justify-between px-3 py-1.5 text-lb-text hover:text-white hover:bg-lb-elevated cursor-pointer"
                   >
                     <span>{t('cat_fade_watched')}</span>
-                    <span className={fadeWatched ? 'text-lb-green font-bold' : 'text-lb-muted'}>
+                    <span className={fadeWatched ? 'text-white font-bold' : 'text-lb-muted'}>
                       {fadeWatched ? '✓' : ''}
                     </span>
                   </button>

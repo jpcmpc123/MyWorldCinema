@@ -9,7 +9,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 export const SeriesPage: React.FC = () => {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const { isMovieWatched } = useApp();
+  const { isMovieWatched, movieOverrides } = useApp();
   const { genre: urlGenre, decade: urlDecade, year: urlYear } = useParams<{
     genre?: string;
     decade?: string;
@@ -41,7 +41,7 @@ export const SeriesPage: React.FC = () => {
   const currentPage = searchParams.get('page') ? Number(searchParams.get('page')) : 1;
 
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'watched' | 'unwatched'>('all');
-  const [fadeWatched, setFadeWatched] = useState<boolean>(true);
+  const [fadeWatched, setFadeWatched] = useState<boolean>(false);
   const [movies, setMovies] = useState<TMDBMovie[]>([]);
   const [totalResults, setTotalResults] = useState(42000);
   const [totalPages, setTotalPages] = useState(1);
@@ -536,7 +536,7 @@ export const SeriesPage: React.FC = () => {
               >
                 <Link to={`/tv/${movie.id}`} className="shrink-0">
                   <img
-                    src={tmdb.getImageUrl(movie.poster_path, 'w185')}
+                    src={tmdb.getImageUrl(movieOverrides[movie.id]?.poster || movie.poster_path, 'w185')}
                     alt={movie.title}
                     loading="lazy"
                     decoding="async"

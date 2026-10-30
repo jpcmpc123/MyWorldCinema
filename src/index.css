@@ -224,16 +224,11 @@ a,
   background: var(--color-lb-border-light);
 }
 
-/* Visible focus ring for keyboard navigation */
-:focus-visible {
-  outline: 2px solid var(--color-lb-green);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-/* Opt out of the global green focus ring (e.g. header search pill) */
-.no-focus-ring:focus-visible {
-  outline: none;
+/* Remove focus outline/ring across the entire application */
+*,
+*:focus,
+*:focus-visible {
+  outline: none !important;
 }
 
 /* Backdrop ambient gradient */

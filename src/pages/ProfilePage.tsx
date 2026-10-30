@@ -27,6 +27,7 @@ export const ProfilePage: React.FC = () => {
     top4MovieIds,
     lists,
     ratingsMap,
+    movieOverrides,
   } = useApp();
 
   const { isAuthenticated } = useAuth();
@@ -214,32 +215,35 @@ export const ProfilePage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                    {top4Movies.map((movie, idx) => (
-                      <div
-                        key={idx}
-                        className="relative aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 shadow-md w-full h-full"
-                      >
-                        {movie ? (
-                          <Link to={`/film/${movie.id}`} title={movie.title}>
-                            <img
-                              ref={smartImgRef}
-                              onLoad={smartImgOnLoad}
-                              loading="lazy"
-                              decoding="async"
-                              src={tmdb.getImageUrl(movie.poster_path, 'w500')}
-                              srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 780w`}
-                              sizes="(max-width: 1024px) 380px, 500px"
-                              alt={movie.title}
-                              className="w-full h-full object-cover hover:opacity-90 mw-img-fade"
-                            />
-                          </Link>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-lb-muted text-xs">
-                            {t('pp_slot')} #{idx + 1}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    {top4Movies.map((movie, idx) => {
+                      const rawPoster = movie ? (movieOverrides[movie.id]?.poster || movie.poster_path) : null;
+                      return (
+                        <div
+                          key={idx}
+                          className="relative aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 shadow-md w-full h-full"
+                        >
+                          {movie ? (
+                            <Link to={`/film/${movie.id}`} title={movie.title}>
+                              <img
+                                ref={smartImgRef}
+                                onLoad={smartImgOnLoad}
+                                loading="lazy"
+                                decoding="async"
+                                src={tmdb.getImageUrl(rawPoster, 'w500')}
+                                srcSet={`${tmdb.getImageUrl(rawPoster, 'w500')} 500w, ${tmdb.getImageUrl(rawPoster, 'w780')} 780w`}
+                                sizes="(max-width: 1024px) 380px, 500px"
+                                alt={movie.title}
+                                className="w-full h-full object-cover hover:opacity-90 mw-img-fade"
+                              />
+                            </Link>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-lb-muted text-xs">
+                              {t('pp_slot')} #{idx + 1}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </section>
@@ -266,25 +270,28 @@ export const ProfilePage: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                  {recentLogs.map((log, idx) => (
-                    <div key={`recent-${log.id}-${idx}`} className="group">
-                      <div className="aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 hover:border-white transition-colors shadow-md">
-                        <Link to={`/film/${log.movieId}`}>
-                          <img
-                            ref={smartImgRef}
-                            onLoad={smartImgOnLoad}
-                            loading="lazy"
-                            decoding="async"
-                            src={tmdb.getImageUrl(log.moviePoster, 'w500')}
-                            srcSet={`${tmdb.getImageUrl(log.moviePoster, 'w500')} 500w, ${tmdb.getImageUrl(log.moviePoster, 'w780')} 780w`}
-                            sizes="(max-width: 1024px) 380px, 500px"
-                            alt={log.movieTitle}
-                            className="w-full h-full object-cover mw-img-fade"
-                          />
-                        </Link>
+                  {recentLogs.map((log, idx) => {
+                    const rawPoster = movieOverrides[log.movieId]?.poster || log.moviePoster;
+                    return (
+                      <div key={`recent-${log.id}-${idx}`} className="group">
+                        <div className="aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 hover:border-white transition-colors shadow-md">
+                          <Link to={`/film/${log.movieId}`}>
+                            <img
+                              ref={smartImgRef}
+                              onLoad={smartImgOnLoad}
+                              loading="lazy"
+                              decoding="async"
+                              src={tmdb.getImageUrl(rawPoster, 'w500')}
+                              srcSet={`${tmdb.getImageUrl(rawPoster, 'w500')} 500w, ${tmdb.getImageUrl(rawPoster, 'w780')} 780w`}
+                              sizes="(max-width: 1024px) 380px, 500px"
+                              alt={log.movieTitle}
+                              className="w-full h-full object-cover mw-img-fade"
+                            />
+                          </Link>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -308,35 +315,34 @@ export const ProfilePage: React.FC = () => {
                 </p>
               ) : (
                 <div className="flex items-center -space-x-4 pt-1">
-                  {watchlist.slice(0, 4).map((m, i) => (
-                    <div
-                      key={m.id}
-                      className="w-14 aspect-[2/3] rounded-xs overflow-hidden shadow border border-white/20"
-                      style={{ zIndex: 10 - i }}
-                    >
-                      {m.poster_path ? (
-                        <img
-                          ref={smartImgRef}
-                          onLoad={smartImgOnLoad}
-                          loading="lazy"
-                          decoding="async"
-                          src={m.poster_path.startsWith('http') ? m.poster_path : tmdb.getImageUrl(m.poster_path, 'w500')}
-                          srcSet={
-                            m.poster_path.startsWith('http')
-                              ? undefined
-                              : `${tmdb.getImageUrl(m.poster_path, 'w500')} 1x, ${tmdb.getImageUrl(m.poster_path, 'w780')} 2x`
-                          }
-                          alt={m.title}
-                          title={m.title}
-                          className="w-full h-full object-cover mw-img-fade"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-lb-surface flex items-center justify-center text-[8px] text-lb-muted px-0.5 text-center">
-                          {m.title}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {watchlist.slice(0, 4).map((m, i) => {
+                    const rawPoster = movieOverrides[m.id]?.poster || m.poster_path;
+                    return (
+                      <div
+                        key={m.id}
+                        className="w-14 aspect-[2/3] rounded-xs overflow-hidden shadow border border-white/20"
+                        style={{ zIndex: 10 - i }}
+                      >
+                        {rawPoster ? (
+                          <img
+                            ref={smartImgRef}
+                            onLoad={smartImgOnLoad}
+                            loading="lazy"
+                            decoding="async"
+                            src={tmdb.getImageUrl(rawPoster, 'w500')}
+                            srcSet={`${tmdb.getImageUrl(rawPoster, 'w500')} 1x, ${tmdb.getImageUrl(rawPoster, 'w780')} 2x`}
+                            alt={m.title}
+                            title={m.title}
+                            className="w-full h-full object-cover mw-img-fade"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-lb-surface flex items-center justify-center text-[8px] text-lb-muted px-0.5 text-center">
+                            {m.title}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -566,10 +572,7 @@ export const ProfilePage: React.FC = () => {
                   movie={{
                     id: m.id,
                     title: m.title,
-                    poster_path:
-                      m.poster_path && m.poster_path.startsWith('http')
-                        ? null
-                        : m.poster_path,
+                    poster_path: m.poster_path,
                     release_date: m.release_date,
                   }}
                   showDetails
@@ -616,11 +619,12 @@ export const ProfilePage: React.FC = () => {
                       {previewMovies.length > 0 && (
                         <div className="flex items-center w-full">
                           {previewMovies.map((m, idx) => {
-                            const posterUrl = m.poster_path
-                              ? tmdb.getImageUrl(m.poster_path, 'w500')
+                            const rawPoster = movieOverrides[m.id]?.poster || m.poster_path;
+                            const posterUrl = rawPoster
+                              ? tmdb.getImageUrl(rawPoster, 'w500')
                               : null;
-                            const posterW780 = m.poster_path
-                              ? tmdb.getImageUrl(m.poster_path, 'w780')
+                            const posterW780 = rawPoster
+                              ? tmdb.getImageUrl(rawPoster, 'w780')
                               : null;
                             return (
                               <div
@@ -880,32 +884,35 @@ export const ProfilePage: React.FC = () => {
                   {t('pp_favorites')}
                 </h2>
                 <div className="grid grid-cols-4 gap-1.5">
-                  {top4Movies.map((movie, idx) => (
-                    <div
-                      key={`mob-fav-${idx}`}
-                      className="relative aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 shadow-md"
-                    >
-                      {movie ? (
-                        <Link to={`/film/${movie.id}`} title={movie.title}>
-                          <img
-                            ref={smartImgRef}
-                            onLoad={smartImgOnLoad}
-                            loading="lazy"
-                            decoding="async"
-                            src={tmdb.getImageUrl(movie.poster_path, 'w500')}
-                            srcSet={`${tmdb.getImageUrl(movie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(movie.poster_path, 'w780')} 780w`}
-                            sizes="380px"
-                            alt={movie.title}
-                            className="w-full h-full object-cover mw-img-fade"
-                          />
-                        </Link>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-lb-muted text-[10px]">
-                          #{idx + 1}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {top4Movies.map((movie, idx) => {
+                    const rawPoster = movie ? (movieOverrides[movie.id]?.poster || movie.poster_path) : null;
+                    return (
+                      <div
+                        key={`mob-fav-${idx}`}
+                        className="relative aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 shadow-md"
+                      >
+                        {movie ? (
+                          <Link to={`/film/${movie.id}`} title={movie.title}>
+                            <img
+                              ref={smartImgRef}
+                              onLoad={smartImgOnLoad}
+                              loading="lazy"
+                              decoding="async"
+                              src={tmdb.getImageUrl(rawPoster, 'w500')}
+                              srcSet={`${tmdb.getImageUrl(rawPoster, 'w500')} 500w, ${tmdb.getImageUrl(rawPoster, 'w780')} 780w`}
+                              sizes="380px"
+                              alt={movie.title}
+                              className="w-full h-full object-cover mw-img-fade"
+                            />
+                          </Link>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-lb-muted text-[10px]">
+                            #{idx + 1}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             )}
@@ -921,31 +928,34 @@ export const ProfilePage: React.FC = () => {
                 </p>
               ) : (
                 <div className="grid grid-cols-4 gap-1.5">
-                  {recentLogs.map((log, idx) => (
-                    <div key={`mob-recent-${log.id}-${idx}`}>
-                      <div className="aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 shadow-md">
-                        <Link to={`/film/${log.movieId}`}>
-                          <img
-                            ref={smartImgRef}
-                            onLoad={smartImgOnLoad}
-                            loading="lazy"
-                            decoding="async"
-                            src={tmdb.getImageUrl(log.moviePoster, 'w500')}
-                            srcSet={`${tmdb.getImageUrl(log.moviePoster, 'w500')} 500w, ${tmdb.getImageUrl(log.moviePoster, 'w780')} 780w`}
-                            sizes="380px"
-                            alt={log.movieTitle}
-                            className="w-full h-full object-cover mw-img-fade"
-                          />
-                        </Link>
+                  {recentLogs.map((log, idx) => {
+                    const rawPoster = movieOverrides[log.movieId]?.poster || log.moviePoster;
+                    return (
+                      <div key={`mob-recent-${log.id}-${idx}`}>
+                        <div className="aspect-[2/3] bg-lb-surface rounded-xs overflow-hidden border border-white/12 shadow-md">
+                          <Link to={`/film/${log.movieId}`}>
+                            <img
+                              ref={smartImgRef}
+                              onLoad={smartImgOnLoad}
+                              loading="lazy"
+                              decoding="async"
+                              src={tmdb.getImageUrl(rawPoster, 'w500')}
+                              srcSet={`${tmdb.getImageUrl(rawPoster, 'w500')} 500w, ${tmdb.getImageUrl(rawPoster, 'w780')} 780w`}
+                              sizes="380px"
+                              alt={log.movieTitle}
+                              className="w-full h-full object-cover mw-img-fade"
+                            />
+                          </Link>
+                        </div>
+                        {log.rating > 0 && (
+                          <p className="mt-1 text-center text-[10px] text-lb-green font-semibold">
+                            {'★'.repeat(Math.round(log.rating))}
+                            {log.rating % 1 !== 0 ? '½' : ''}
+                          </p>
+                        )}
                       </div>
-                      {log.rating > 0 && (
-                        <p className="mt-1 text-center text-[10px] text-lb-green font-semibold">
-                          {'★'.repeat(Math.round(log.rating))}
-                          {log.rating % 1 !== 0 ? '½' : ''}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>

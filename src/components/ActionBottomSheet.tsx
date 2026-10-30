@@ -52,6 +52,7 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
     ratingsMap,
     setMovieRating,
     openLogModal,
+    movieOverrides,
   } = useApp();
 
   const watched = isMovieWatched(movie.id);
@@ -65,6 +66,7 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
   const draggingRef = useRef(false);
   const lastTapRef = useRef(0);
   const [posterPath, setPosterPath] = useState<string | null>(posterCache[movie.id] ?? null);
+  const effectivePosterPath = movieOverrides[movie.id]?.poster || posterPath;
   const [showPosterLightbox, setShowPosterLightbox] = useState(false);
   // Contador de "pop" para os ícones Watch/Like/Watchlist
   const [bump, setBump] = useState(0);
@@ -330,7 +332,7 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
               openLogModal({
                 id: movie.id,
                 title: movie.title,
-                poster_path: posterPath,
+                poster_path: effectivePosterPath,
                 release_date: movie.release_date ?? '',
               });
               onClose();
@@ -349,7 +351,7 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
             <ListPlus className={rowIconClass} />
             {t('add_to_lists')}
           </button>
-          {posterPath && (
+          {effectivePosterPath && (
             <button className={`${rowClass} border-t border-white/5`} onClick={handleViewPoster}>
               <ImageIcon className={rowIconClass} />
               {t('view_poster')}
@@ -386,11 +388,11 @@ export const ActionBottomSheet: React.FC<ActionBottomSheetProps> = ({
         </div>
       </div>
 
-      {posterPath && (
+      {effectivePosterPath && (
         <PosterLightbox
           open={showPosterLightbox}
-          src={tmdb.getImageUrl(posterPath, 'w780')}
-          srcSet={`${tmdb.getImageUrl(posterPath, 'w500')} 500w, ${tmdb.getImageUrl(posterPath, 'w780')} 780w, ${tmdb.getImageUrl(posterPath, 'original')} 1280w`}
+          src={tmdb.getImageUrl(effectivePosterPath, 'w780')}
+          srcSet={`${tmdb.getImageUrl(effectivePosterPath, 'w500')} 500w, ${tmdb.getImageUrl(effectivePosterPath, 'w780')} 780w, ${tmdb.getImageUrl(effectivePosterPath, 'original')} 1280w`}
           alt={movie.title}
           onClose={() => setShowPosterLightbox(false)}
         />

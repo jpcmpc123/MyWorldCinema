@@ -33,7 +33,7 @@ interface SelectedListItem {
 export const CreateListPage: React.FC = () => {
   const navigate = useNavigate();
   const { id: editListId } = useParams<{ id?: string }>();
-  const { lists, createList, updateList, user } = useApp();
+  const { lists, createList, updateList, user, movieOverrides } = useApp();
   const { isAuthenticated, profile } = useAuth();
   const { t } = useLanguage();
 
@@ -516,8 +516,9 @@ export const CreateListPage: React.FC = () => {
                 {items.length > 0 && (
                   <div className="grid grid-cols-5 gap-2 pb-4">
                     {items.map((item, idx) => {
-                      const posterUrl = item.poster_path
-                        ? tmdb.getImageUrl(item.poster_path, 'w185')
+                      const rawPoster = movieOverrides[item.id]?.poster || item.poster_path;
+                      const posterUrl = rawPoster
+                        ? tmdb.getImageUrl(rawPoster, 'w185')
                         : null;
                       return (
                         <div key={item.id} className="relative aspect-[2/3]">
@@ -661,8 +662,9 @@ export const CreateListPage: React.FC = () => {
             >
               {items.map((item, idx) => {
                 const year = item.release_date?.slice(0, 4) || '';
-                const posterUrl = item.poster_path
-                  ? tmdb.getImageUrl(item.poster_path, 'w185')
+                const rawPoster = movieOverrides[item.id]?.poster || item.poster_path;
+                const posterUrl = rawPoster
+                  ? tmdb.getImageUrl(rawPoster, 'w185')
                   : null;
                 return (
                   <div
@@ -836,8 +838,9 @@ export const CreateListPage: React.FC = () => {
                       m.directors && m.directors.length > 0
                         ? m.directors.slice(0, 2).join(', ')
                         : '';
-                    const posterUrl = m.poster_path
-                      ? tmdb.getImageUrl(m.poster_path, 'w185')
+                    const rawPoster = movieOverrides[m.id]?.poster || m.poster_path;
+                    const posterUrl = rawPoster
+                      ? tmdb.getImageUrl(rawPoster, 'w185')
                       : null;
 
                     return (
@@ -1289,97 +1292,102 @@ export const CreateListPage: React.FC = () => {
             ) : desktopView === 'grid' ? (
               /* Grid View */
               <div className="grid grid-cols-6 gap-3.5">
-                {items.map((item, idx) => (
-                  <div key={item.id} className="group relative">
-                    <div className="relative aspect-[2/3] rounded-[3px] overflow-hidden border border-white/15 bg-[#1c2228] shadow">
-                      {item.poster_path ? (
-                        <img
-                          loading="lazy"
-                          decoding="async"
-                          src={tmdb.getImageUrl(item.poster_path, 'w342')}
-                          alt={item.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[#556677]">
-                          <Film className="w-6 h-6" />
-                        </div>
-                      )}
-                      {/* Hover overlay with move / remove actions */}
-                      <div className="absolute inset-0 bg-black/65 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => removeMovie(item.id)}
-                            title={t('create_list_remove_film')}
-                            className="w-6 h-6 rounded-full bg-black/70 text-[#99aabb] hover:text-[#ff3344] flex items-center justify-center cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[11px] font-bold text-white leading-tight line-clamp-2">
-                            {item.title}
-                          </p>
-                          <div className="flex items-center justify-between pt-1 border-t border-white/15">
+                {items.map((item, idx) => {
+                  const rawPoster = movieOverrides[item.id]?.poster || item.poster_path;
+                  return (
+                    <div key={item.id} className="group relative">
+                      <div className="relative aspect-[2/3] rounded-[3px] overflow-hidden border border-white/15 bg-[#1c2228] shadow">
+                        {rawPoster ? (
+                          <img
+                            loading="lazy"
+                            decoding="async"
+                            src={tmdb.getImageUrl(rawPoster, 'w342')}
+                            alt={item.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[#556677]">
+                            <Film className="w-6 h-6" />
+                          </div>
+                        )}
+                        {/* Hover overlay with move / remove actions */}
+                        <div className="absolute inset-0 bg-black/65 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                          <div className="flex justify-end">
                             <button
                               type="button"
-                              disabled={idx === 0}
-                              onClick={() => moveItem(idx, 'up')}
-                              className="p-1 text-[#99aabb] hover:text-white disabled:opacity-30 cursor-pointer"
+                              onClick={() => removeMovie(item.id)}
+                              title={t('create_list_remove_film')}
+                              className="w-6 h-6 rounded-full bg-black/70 text-[#99aabb] hover:text-[#ff3344] flex items-center justify-center cursor-pointer"
                             >
-                              <ArrowUp className="w-3.5 h-3.5 -rotate-90" />
+                              <X className="w-3.5 h-3.5" />
                             </button>
-                            <span className="text-[10px] text-[#99aabb]">
-                              {item.release_date?.slice(0, 4)}
-                            </span>
-                            <button
-                              type="button"
-                              disabled={idx === items.length - 1}
-                              onClick={() => moveItem(idx, 'down')}
-                              className="p-1 text-[#99aabb] hover:text-white disabled:opacity-30 cursor-pointer"
-                            >
-                              <ArrowDown className="w-3.5 h-3.5 -rotate-90" />
-                            </button>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-bold text-white leading-tight line-clamp-2">
+                              {item.title}
+                            </p>
+                            <div className="flex items-center justify-between pt-1 border-t border-white/15">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => moveItem(idx, 'up')}
+                                className="p-1 text-[#99aabb] hover:text-white disabled:opacity-30 cursor-pointer"
+                              >
+                                <ArrowUp className="w-3.5 h-3.5 -rotate-90" />
+                              </button>
+                              <span className="text-[10px] text-[#99aabb]">
+                                {item.release_date?.slice(0, 4)}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={idx === items.length - 1}
+                                onClick={() => moveItem(idx, 'down')}
+                                className="p-1 text-[#99aabb] hover:text-white disabled:opacity-30 cursor-pointer"
+                              >
+                                <ArrowDown className="w-3.5 h-3.5 -rotate-90" />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
+                      {isRanked && (
+                        <div className="mt-1.5 text-center font-mono text-[12px] font-bold text-[#99aabb]">
+                          {idx + 1}
+                        </div>
+                      )}
                     </div>
-                    {isRanked && (
-                      <div className="mt-1.5 text-center font-mono text-[12px] font-bold text-[#99aabb]">
-                        {idx + 1}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               /* List View */
               <div className="divide-y divide-[#242c34] border border-[#2c3440] rounded-[4px] overflow-hidden">
-                {items.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className="bg-[#181e24] hover:bg-[#1c2228] p-3.5 flex items-center gap-4 transition-colors"
-                  >
-                    {isRanked && (
-                      <span className="font-mono font-bold text-sm text-[#99aabb] w-7 text-center">
-                        {idx + 1}
-                      </span>
-                    )}
+                {items.map((item, idx) => {
+                  const rawPoster = movieOverrides[item.id]?.poster || item.poster_path;
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-[#181e24] hover:bg-[#1c2228] p-3.5 flex items-center gap-4 transition-colors"
+                    >
+                      {isRanked && (
+                        <span className="font-mono font-bold text-sm text-[#99aabb] w-7 text-center">
+                          {idx + 1}
+                        </span>
+                      )}
 
-                    {item.poster_path ? (
-                      <img
-                        loading="lazy"
-                        decoding="async"
-                        src={tmdb.getImageUrl(item.poster_path, 'w92')}
-                        alt={item.title}
-                        className="w-11 aspect-[2/3] object-cover rounded-[2px] border border-white/10 shadow"
-                      />
-                    ) : (
-                      <div className="w-11 aspect-[2/3] rounded-[2px] border border-white/10 bg-[#1c2228] flex items-center justify-center text-[#556677]">
-                        <Film className="w-4 h-4" />
-                      </div>
-                    )}
+                      {rawPoster ? (
+                        <img
+                          loading="lazy"
+                          decoding="async"
+                          src={tmdb.getImageUrl(rawPoster, 'w92')}
+                          alt={item.title}
+                          className="w-11 aspect-[2/3] object-cover rounded-[2px] border border-white/10 shadow"
+                        />
+                      ) : (
+                        <div className="w-11 aspect-[2/3] rounded-[2px] border border-white/10 bg-[#1c2228] flex items-center justify-center text-[#556677]">
+                          <Film className="w-4 h-4" />
+                        </div>
+                      )}
 
                     <div className="flex-1 min-w-0 space-y-1.5">
                       <div className="flex items-baseline gap-2">
@@ -1430,7 +1438,8 @@ export const CreateListPage: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

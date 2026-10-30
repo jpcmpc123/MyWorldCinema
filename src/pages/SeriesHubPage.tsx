@@ -5,6 +5,7 @@ import { tmdb, type TMDBMovie } from '../services/tmdb';
 import { tabDataCache, prewarmHubPosters } from '../services/tabDataCache';
 import { PosterCard } from '../components/PosterCard';
 import { MobileCatalogSections } from '../components/mobile/MobileCatalogSections';
+import { useApp } from '../context/AppContext';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useNavigationType } from 'react-router-dom';
@@ -13,6 +14,7 @@ const seriesFindCache = new Map<string, TMDBMovie[]>();
 
 export const SeriesHubPage: React.FC = () => {
   const { t } = useLanguage();
+  const { movieOverrides } = useApp();
   const isMobile = useIsMobile();
   const navType = useNavigationType();
 
@@ -139,12 +141,17 @@ export const SeriesHubPage: React.FC = () => {
     setOpenDropdown(openDropdown === name ? null : name);
   };
 
+  const canPrevCarousel = carouselIndex > 0;
+  const canNextCarousel = carouselIndex + 4 < popularSeries.length;
+
   const handlePrevCarousel = () => {
-    setCarouselIndex((prev) => (prev - 4 < 0 ? Math.max(0, popularSeries.length - 4) : prev - 4));
+    if (!canPrevCarousel) return;
+    setCarouselIndex((prev) => Math.max(0, prev - 4));
   };
 
   const handleNextCarousel = () => {
-    setCarouselIndex((prev) => (prev + 4 < popularSeries.length ? prev + 4 : 0));
+    if (!canNextCarousel) return;
+    setCarouselIndex((prev) => (prev + 4 < popularSeries.length ? prev + 4 : prev));
   };
 
   const currentPopularBatch = popularSeries.slice(carouselIndex, carouselIndex + 4);
@@ -155,7 +162,7 @@ export const SeriesHubPage: React.FC = () => {
       {isMobile && (
         <MobileCatalogSections
           basePath="/series"
-          popular={popularSeries}
+          popular={popularSeries.slice(0, 18)}
           topRated={topRatedSeries}
           mostWatched={mostWatchedSeries}
           anticipated={justReviewedSeries}
@@ -411,7 +418,7 @@ export const SeriesHubPage: React.FC = () => {
                     className="p-2 flex items-center gap-2.5 hover:bg-lb-elevated block"
                   >
                     <img loading="lazy" decoding="async"
-                      src={tmdb.getImageUrl(m.poster_path, 'w92')}
+                      src={tmdb.getImageUrl(movieOverrides[m.id]?.poster || m.poster_path, 'w92')}
                       alt={m.title}
                       className="w-7 h-10 object-cover rounded bg-lb-bg shrink-0"
                     />
@@ -447,21 +454,28 @@ export const SeriesHubPage: React.FC = () => {
           {/* Left Arrow Button */}
           {popularSeries.length > 4 && (
             <button
+              type="button"
               onClick={handlePrevCarousel}
-              className="absolute -left-5 sm:-left-7 md:-left-8 top-[calc(50%-17px)] -translate-y-1/2 z-20 text-[#667788] hover:text-white transition-colors cursor-pointer p-1.5 focus:outline-none select-none"
-              title={t('common_previous')}
+              disabled={!canPrevCarousel}
+              aria-disabled={!canPrevCarousel}
+              className={`absolute -left-7 sm:-left-8 top-[calc(50%-14px)] -translate-y-1/2 z-20 p-1.5 focus:outline-none select-none transition-colors ${
+                canPrevCarousel
+                  ? 'text-[#667788] hover:text-white cursor-pointer'
+                  : 'text-[#667788] opacity-40 cursor-default pointer-events-none'
+              }`}
+              title={canPrevCarousel ? t('common_previous') : undefined}
               aria-label={t('common_previous')}
             >
               <svg
-                className="w-4 h-9 sm:w-[18px] sm:h-[40px]"
-                viewBox="0 0 16 36"
+                className="w-3 h-5"
+                viewBox="0 0 10 18"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
               >
                 <path
-                  d="M11 6L3 18L11 30"
+                  d="M8.5 1.5L1.5 9L8.5 16.5"
                   stroke="currentColor"
-                  strokeWidth="1.75"
+                  strokeWidth="1.8"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -472,28 +486,29 @@ export const SeriesHubPage: React.FC = () => {
           {/* 4 Large Featured Series Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6">
             {currentPopularBatch.map((show, idx) => {
+              const globalIdx = carouselIndex + idx;
               const basePop = show.popularity || 100;
-              const watchedCount = Math.round(basePop * 2.2 + (idx + 1) * 60).toLocaleString() + 'K';
-              const ratingCount = Math.round(basePop * 0.4 + (idx + 1) * 20).toLocaleString() + 'K';
-              const likedCount = Math.round(basePop * 0.75 + (idx + 1) * 35).toLocaleString() + 'K';
+              const watchedCount = Math.round(basePop * 2.2 + (globalIdx + 1) * 60).toLocaleString() + 'K';
+              const ratingCount = Math.round(basePop * 0.4 + (globalIdx + 1) * 20).toLocaleString() + 'K';
+              const likedCount = Math.round(basePop * 0.75 + (globalIdx + 1) * 35).toLocaleString() + 'K';
 
               return (
                 <div key={show.id} className="flex flex-col space-y-2">
                   {/* Poster */}
                   <PosterCard movie={show} size="fluid" tv priority />
 
-                  {/* Triple Stats (Watched, Rating, Liked) */}
-                  <div className="flex items-center justify-between text-[11px] font-semibold pt-1 px-1">
-                    <span className="flex items-center gap-1 text-lb-green" title={t('common_watched')}>
-                      <Eye className="w-3.5 h-3.5 stroke-[2.5]" />
+                  {/* Triple Stats (Watched, Rating, Liked) — Letterboxd centered style */}
+                  <div className="flex items-center justify-center gap-3 text-[11px] font-normal text-[#667788] pt-0.5 px-1 tabular-nums">
+                    <span className="inline-flex items-center gap-1" title={t('common_watched')}>
+                      <Eye className="w-3.5 h-3.5 text-lb-green stroke-[2.2]" />
                       <span>{watchedCount}</span>
                     </span>
-                    <span className="flex items-center gap-1 text-lb-blue" title={t('common_rated')}>
-                      <Star className="w-3 h-3 fill-lb-blue" />
+                    <span className="inline-flex items-center gap-1" title={t('common_rated')}>
+                      <Star className="w-3 h-3 text-lb-blue fill-lb-blue" />
                       <span>{ratingCount}</span>
                     </span>
-                    <span className="flex items-center gap-1 text-lb-orange" title={t('common_liked')}>
-                      <Heart className="w-3 h-3 fill-lb-orange" />
+                    <span className="inline-flex items-center gap-1" title={t('common_liked')}>
+                      <Heart className="w-3 h-3 text-lb-orange fill-lb-orange" />
                       <span>{likedCount}</span>
                     </span>
                   </div>
@@ -505,21 +520,28 @@ export const SeriesHubPage: React.FC = () => {
           {/* Right Arrow Button */}
           {popularSeries.length > 4 && (
             <button
+              type="button"
               onClick={handleNextCarousel}
-              className="absolute -right-5 sm:-right-7 md:-right-8 top-[calc(50%-17px)] -translate-y-1/2 z-20 text-[#667788] hover:text-white transition-colors cursor-pointer p-1.5 focus:outline-none select-none"
-              title={t('common_next')}
+              disabled={!canNextCarousel}
+              aria-disabled={!canNextCarousel}
+              className={`absolute -right-7 sm:-right-8 top-[calc(50%-14px)] -translate-y-1/2 z-20 p-1.5 focus:outline-none select-none transition-colors ${
+                canNextCarousel
+                  ? 'text-[#667788] hover:text-white cursor-pointer'
+                  : 'text-[#667788] opacity-40 cursor-default pointer-events-none'
+              }`}
+              title={canNextCarousel ? t('common_next') : undefined}
               aria-label={t('common_next')}
             >
               <svg
-                className="w-4 h-9 sm:w-[18px] sm:h-[40px]"
-                viewBox="0 0 16 36"
+                className="w-3 h-5"
+                viewBox="0 0 10 18"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
               >
                 <path
-                  d="M5 6L13 18L5 30"
+                  d="M1.5 1.5L8.5 9L1.5 16.5"
                   stroke="currentColor"
-                  strokeWidth="1.75"
+                  strokeWidth="1.8"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />

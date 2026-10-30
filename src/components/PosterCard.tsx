@@ -221,31 +221,19 @@ const PosterCardBase: React.FC<PosterCardProps> = ({
 
   // Custom poster override (Set film poster) applies site-wide
   const displayPosterPath = overridePoster || movie.poster_path;
-  const isCustomUrl = Boolean(displayPosterPath && displayPosterPath.startsWith('http'));
+  const isCustomUrl = Boolean(
+    displayPosterPath &&
+      displayPosterPath.startsWith('http') &&
+      !displayPosterPath.includes('image.tmdb.org/t/p/'),
+  );
   const isLarge = size === 'lg';
   const isSmallViewport = typeof window !== 'undefined' && window.innerWidth <= 640;
 
   // URLs de pôsteres do TMDB (incluindo w185 para mobile e w342/w500/w780)
-  const urlW185 = displayPosterPath
-    ? isCustomUrl
-      ? displayPosterPath
-      : tmdb.getImageUrl(displayPosterPath, 'w185')
-    : '';
-  const urlW342 = displayPosterPath
-    ? isCustomUrl
-      ? displayPosterPath
-      : tmdb.getImageUrl(displayPosterPath, 'w342')
-    : '';
-  const urlW500 = displayPosterPath
-    ? isCustomUrl
-      ? displayPosterPath
-      : tmdb.getImageUrl(displayPosterPath, 'w500')
-    : '';
-  const urlW780 = displayPosterPath
-    ? isCustomUrl
-      ? displayPosterPath
-      : tmdb.getImageUrl(displayPosterPath, 'w780')
-    : '';
+  const urlW185 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w185') : '';
+  const urlW342 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w342') : '';
+  const urlW500 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w500') : '';
+  const urlW780 = displayPosterPath ? tmdb.getImageUrl(displayPosterPath, 'w780') : '';
 
   const optimalSize = getOptimalPosterSize(isLarge);
   const primarySrc =

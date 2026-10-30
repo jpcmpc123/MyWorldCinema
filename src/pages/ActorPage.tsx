@@ -100,7 +100,7 @@ export function ActorPage() {
   const [serviceFilter, setServiceFilter] = useState<number | null>(null);
   const [serviceMatchedKeys, setServiceMatchedKeys] = useState<Set<string> | null>(null);
   const [watchedMode, setWatchedMode] = useState<'all' | 'watched' | 'unwatched'>('all');
-  const [fadeWatched, setFadeWatched] = useState<boolean>(true);
+  const [fadeWatched, setFadeWatched] = useState<boolean>(false);
   const [openDropdown, setOpenDropdown] = useState<
     'role' | 'decade' | 'genre' | 'service' | 'sort' | 'watched' | null
   >(null);
@@ -358,6 +358,7 @@ export function ActorPage() {
     setGenreFilter(genre && !Number.isNaN(genre) ? genre : null);
     const decade = draft.decade || (draft.year && draft.year.length === 4 ? `${draft.year.slice(0, 3)}0s` : '');
     setDecadeFilter(decade || null);
+    setFadeWatched(draft.fade === '1');
     setFiltersOpen(false);
   };
 
@@ -368,8 +369,9 @@ export function ActorPage() {
     else if (sortBy === 'oldest') d.sort = 'primary_release_date.asc';
     if (genreFilter) d.genre = String(genreFilter);
     if (decadeFilter) d.decade = decadeFilter;
+    if (fadeWatched) d.fade = '1';
     return d;
-  }, [sortBy, genreFilter, decadeFilter]);
+  }, [sortBy, genreFilter, decadeFilter, fadeWatched]);
 
   const visibleFilms = useMemo(() => {
     let list = tabItems;

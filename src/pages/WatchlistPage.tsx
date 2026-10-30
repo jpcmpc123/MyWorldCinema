@@ -8,7 +8,7 @@ import { tmdb } from '../services/tmdb';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export const WatchlistPage: React.FC = () => {
-  const { watchlist } = useApp();
+  const { watchlist, movieOverrides } = useApp();
   const { t } = useLanguage();
 
   const [shuffledMovie, setShuffledMovie] = useState<{
@@ -213,8 +213,8 @@ export const WatchlistPage: React.FC = () => {
                 <img
                   loading="eager"
                   decoding="async"
-                  src={tmdb.getImageUrl(shuffledMovie.poster_path, 'w500')}
-                  srcSet={`${tmdb.getImageUrl(shuffledMovie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(shuffledMovie.poster_path, 'w780')} 780w`}
+                  src={tmdb.getImageUrl(movieOverrides[shuffledMovie.id]?.poster || shuffledMovie.poster_path, 'w500')}
+                  srcSet={`${tmdb.getImageUrl(movieOverrides[shuffledMovie.id]?.poster || shuffledMovie.poster_path, 'w500')} 500w, ${tmdb.getImageUrl(movieOverrides[shuffledMovie.id]?.poster || shuffledMovie.poster_path, 'w780')} 780w`}
                   sizes="352px"
                   alt={shuffledMovie.title}
                   className="w-full h-full object-cover"

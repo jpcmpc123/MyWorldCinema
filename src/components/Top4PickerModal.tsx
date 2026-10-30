@@ -5,7 +5,7 @@ import { tmdb, type TMDBMovie } from '../services/tmdb';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export const Top4PickerModal: React.FC = () => {
-  const { isTop4PickerOpen, closeTop4Picker, activeTop4Slot, setTop4Movie } = useApp();
+  const { isTop4PickerOpen, closeTop4Picker, activeTop4Slot, setTop4Movie, movieOverrides } = useApp();
   const { t } = useLanguage();
 
   const [query, setQuery] = useState('');
@@ -87,7 +87,7 @@ export const Top4PickerModal: React.FC = () => {
                 className="pt-2 pb-2 flex items-center gap-3 hover:bg-lb-elevated px-2 rounded cursor-pointer transition-colors w-full text-left"
               >
                 <img
-                  src={tmdb.getImageUrl(m.poster_path, 'w92')}
+                  src={tmdb.getImageUrl(movieOverrides[m.id]?.poster || m.poster_path, 'w92')}
                   alt={m.title}
                   className="w-10 h-15 object-cover rounded bg-lb-bg shrink-0 border border-white/10"
                 />

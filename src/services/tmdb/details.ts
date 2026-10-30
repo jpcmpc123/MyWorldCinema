@@ -1,5 +1,7 @@
 import {
   collectionDetailsCache,
+  curatedBackdropCache,
+  curatedPosterCache,
   mediaDetailsCache,
   personDetailsCache,
   similarProfileCache,
@@ -12,6 +14,12 @@ import {
   TMDB_TODAY,
   TV_EXCLUDED_GENRE_IDS,
 } from './client';
+import {
+  filterAndRankBackdrops,
+  filterAndRankPosters,
+  pickBestBackdropPath,
+  pickBestPosterPath,
+} from './posterFilter';
 import { curateSimilarForDetails, rankSimilarCandidates } from './similar';
 import type {
   TMDBCollectionDetails,
@@ -26,6 +34,8 @@ import type {
   TMDBResponse,
 } from './types';
 
+const IMAGE_LANGUAGES_PARAM = 'en,pt,ja,ko,fr,es,it,de,null';
+
 export async function getMovieDetails(id: number): Promise<TMDBMovieDetails> {
   const lang = getTmdbLanguage();
   const cacheKey = `movie:${id}:${lang}`;
@@ -38,15 +48,23 @@ export async function getMovieDetails(id: number): Promise<TMDBMovieDetails> {
   try {
     movie = await fetchFromTMDB<TMDBMovieDetails>(`/movie/${id}`, {
       append_to_response:
-        'credits,similar,recommendations,watch/providers,videos,release_dates,external_ids,alternative_titles',
+        'credits,similar,recommendations,watch/providers,videos,release_dates,external_ids,alternative_titles,images',
+      include_image_language: IMAGE_LANGUAGES_PARAM,
     });
   } catch {
     movie = await fetchFromTMDB<TMDBMovieDetails>(`/movie/${id}`, {
-      append_to_response: 'credits,videos,release_dates,similar',
+      append_to_response: 'credits,videos,release_dates,similar,images',
+      include_image_language: IMAGE_LANGUAGES_PARAM,
     });
   }
 
+  const cachedCanonicalPoster = curatedPosterCache.get(id);
+  if (cachedCanonicalPoster) {
+    movie.poster_path = cachedCanonicalPoster;
+  }
+
   const needsEnFallback =
+    (lang !== 'en-US' && !cachedCanonicalPoster) ||
     !movie.overview ||
     !movie.backdrop_path ||
     (!movie.credits?.cast?.length && !movie.credits?.crew?.length);
@@ -60,7 +78,7 @@ export async function getMovieDetails(id: number): Promise<TMDBMovieDetails> {
       if (!movie.tagline && en.tagline) movie.tagline = en.tagline;
       if (!movie.runtime && en.runtime) movie.runtime = en.runtime;
       if (!movie.backdrop_path && en.backdrop_path) movie.backdrop_path = en.backdrop_path;
-      if (!movie.poster_path && en.poster_path) movie.poster_path = en.poster_path;
+      if (!cachedCanonicalPoster && en.poster_path) movie.poster_path = en.poster_path;
       if (!movie.credits?.cast?.length && en.credits?.cast?.length) {
         movie.credits = {
           cast: en.credits.cast,
@@ -77,6 +95,18 @@ export async function getMovieDetails(id: number): Promise<TMDBMovieDetails> {
     }
   }
 
+  // Mantém o pôster padrão oficial (100% igual ao das abas Filmes/Séries)
+  const bestPoster =
+    cachedCanonicalPoster ||
+    pickBestPosterPath(movie.images?.posters, movie.poster_path, {
+      originalLanguage: movie.original_language,
+      uiLanguage: lang,
+    });
+  if (bestPoster) {
+    movie.poster_path = bestPoster;
+    curatedPosterCache.set(movie.id, bestPoster);
+  }
+
   if (!movie.credits) {
     movie.credits = { cast: [], crew: [] };
   }
@@ -85,8 +115,19 @@ export async function getMovieDetails(id: number): Promise<TMDBMovieDetails> {
     movie.backdrop_path = movie.poster_path || null;
   }
 
-  const similarRanked = await curateSimilarForDetails(movie, 'movie', true);
+  const [similarRanked, collectionDetails] = await Promise.all([
+    curateSimilarForDetails(movie, 'movie', true),
+    movie.belongs_to_collection?.id
+      ? getCollectionDetails(movie.belongs_to_collection.id).catch(() => null)
+      : Promise.resolve(null),
+  ]);
   movie.similar = { results: similarRanked };
+  if (collectionDetails) {
+    if (movie.belongs_to_collection && collectionDetails.name) {
+      movie.belongs_to_collection.name = collectionDetails.name;
+    }
+    movie.collection_parts = collectionDetails.parts;
+  }
   mediaDetailsCache.set(cacheKey, movie);
   return movie;
 }
@@ -103,15 +144,23 @@ export async function getTVDetails(id: number): Promise<TMDBMovieDetails> {
   try {
     show = await fetchFromTMDB<TMDBMovieDetails & Partial<TMDBRawMediaPayload>>(`/tv/${id}`, {
       append_to_response:
-        'credits,aggregate_credits,similar,recommendations,watch/providers,videos,content_ratings,external_ids,alternative_titles',
+        'credits,aggregate_credits,similar,recommendations,watch/providers,videos,content_ratings,external_ids,alternative_titles,images',
+      include_image_language: IMAGE_LANGUAGES_PARAM,
     });
   } catch {
     show = await fetchFromTMDB<TMDBMovieDetails & Partial<TMDBRawMediaPayload>>(`/tv/${id}`, {
-      append_to_response: 'credits,aggregate_credits,videos,content_ratings,similar',
+      append_to_response: 'credits,aggregate_credits,videos,content_ratings,similar,images',
+      include_image_language: IMAGE_LANGUAGES_PARAM,
     });
   }
 
+  const cachedCanonicalPoster = curatedPosterCache.get(id);
+  if (cachedCanonicalPoster) {
+    show.poster_path = cachedCanonicalPoster;
+  }
+
   const needsEnFallback =
+    (lang !== 'en-US' && !cachedCanonicalPoster) ||
     !show.overview ||
     !show.backdrop_path ||
     (!show.credits?.cast?.length && !show.credits?.crew?.length);
@@ -124,7 +173,7 @@ export async function getTVDetails(id: number): Promise<TMDBMovieDetails> {
       if (!show.overview && en.overview) show.overview = en.overview;
       if (!show.tagline && en.tagline) show.tagline = en.tagline;
       if (!show.backdrop_path && en.backdrop_path) show.backdrop_path = en.backdrop_path;
-      if (!show.poster_path && en.poster_path) show.poster_path = en.poster_path;
+      if (!cachedCanonicalPoster && en.poster_path) show.poster_path = en.poster_path;
       if (!show.credits?.cast?.length && en.credits?.cast?.length) {
         show.credits = {
           cast: en.credits.cast,
@@ -134,6 +183,18 @@ export async function getTVDetails(id: number): Promise<TMDBMovieDetails> {
     } catch {
       /* mantém vazio */
     }
+  }
+
+  // Mantém o pôster padrão oficial (100% igual ao das abas Filmes/Séries)
+  const bestPoster =
+    cachedCanonicalPoster ||
+    pickBestPosterPath(show.images?.posters, show.poster_path, {
+      originalLanguage: show.original_language,
+      uiLanguage: lang,
+    });
+  if (bestPoster) {
+    show.poster_path = bestPoster;
+    curatedPosterCache.set(show.id, bestPoster);
   }
 
   if (!show.backdrop_path) {
@@ -262,10 +323,23 @@ export async function getTVDetails(id: number): Promise<TMDBMovieDetails> {
   return show;
 }
 
-export async function getMovieImages(id: number): Promise<TMDBMovieImages> {
-  return fetchFromTMDB<TMDBMovieImages>(`/movie/${id}/images`, {
-    include_image_language: 'en,null',
+export async function getMovieImages(
+  id: number,
+  mediaType: 'movie' | 'tv' = 'movie',
+): Promise<TMDBMovieImages> {
+  const lang = getTmdbLanguage();
+  const cachedDetails = mediaDetailsCache.get(`${mediaType}:${id}:${lang}`);
+  const raw = await fetchFromTMDB<TMDBMovieImages>(`/${mediaType}/${id}/images`, {
+    include_image_language: IMAGE_LANGUAGES_PARAM,
   });
+  return {
+    id: raw.id,
+    posters: filterAndRankPosters(raw.posters, {
+      originalLanguage: cachedDetails?.original_language,
+      uiLanguage: lang,
+    }),
+    backdrops: filterAndRankBackdrops(raw.backdrops),
+  };
 }
 
 export async function getCollectionDetails(collectionId: number): Promise<TMDBCollectionDetails> {
@@ -276,9 +350,36 @@ export async function getCollectionDetails(collectionId: number): Promise<TMDBCo
     return cached;
   }
   const col = await fetchFromTMDB<TMDBCollectionDetails>(`/collection/${collectionId}`);
-  const parts = (col.parts || [])
-    .map(normalizeMediaItem)
-    .filter((m) => Boolean(m.poster_path) && (!itemDate(m) || itemDate(m) <= TMDB_TODAY))
+  let rawParts = (col.parts || []).map(normalizeMediaItem);
+
+  if (lang !== 'en-US') {
+    try {
+      const enCol = await fetchFromTMDB<TMDBCollectionDetails>(`/collection/${collectionId}`, {
+        language: 'en-US',
+      });
+      if (enCol.poster_path) col.poster_path = enCol.poster_path;
+      if (enCol.backdrop_path) col.backdrop_path = enCol.backdrop_path;
+      const enById = new Map((enCol.parts || []).map((p) => [p.id, normalizeMediaItem(p)]));
+      rawParts = rawParts.map((part) => {
+        const enPart = enById.get(part.id);
+        if (!enPart) return part;
+        const bestPoster =
+          curatedPosterCache.get(part.id) || enPart.poster_path || part.poster_path || null;
+        return {
+          ...part,
+          poster_path: bestPoster,
+          backdrop_path: part.backdrop_path || enPart.backdrop_path || null,
+          overview: part.overview || enPart.overview || '',
+          release_date: part.release_date || enPart.release_date || '',
+        };
+      });
+    } catch {
+      /* mantém partes atuais */
+    }
+  }
+
+  const parts = rawParts
+    .filter((m) => Boolean(m.id && (m.title || m.original_title)))
     .sort((a, b) => {
       const da = itemDate(a) || '9999-12-31';
       const db = itemDate(b) || '9999-12-31';
@@ -372,7 +473,8 @@ export async function getPersonDetails(id: number): Promise<TMDBPersonDetails> {
   const person = await fetchFromTMDB<TMDBPersonDetails>(`/person/${id}`, {
     append_to_response: 'movie_credits,tv_credits,external_ids',
   });
-  if (lang !== 'en-US' && !person.biography?.trim()) {
+  const enPosterById = new Map<number, string>();
+  if (lang !== 'en-US') {
     try {
       const en = await fetchFromTMDB<TMDBPersonDetails>(`/person/${id}`, {
         language: 'en-US',
@@ -382,6 +484,18 @@ export async function getPersonDetails(id: number): Promise<TMDBPersonDetails> {
       if (!person.movie_credits && en.movie_credits) person.movie_credits = en.movie_credits;
       if (!person.tv_credits && en.tv_credits) person.tv_credits = en.tv_credits;
       if (!person.external_ids && en.external_ids) person.external_ids = en.external_ids;
+      for (const list of [
+        en.movie_credits?.cast,
+        en.movie_credits?.crew,
+        en.tv_credits?.cast,
+        en.tv_credits?.crew,
+      ]) {
+        for (const item of list ?? []) {
+          if (item?.id && item.poster_path) {
+            enPosterById.set(item.id, item.poster_path);
+          }
+        }
+      }
     } catch {
       /* fallback para Wikipedia logo abaixo */
     }
@@ -420,11 +534,18 @@ export async function getPersonDetails(id: number): Promise<TMDBPersonDetails> {
   const SELF_GUEST_RE =
     /^(self|himself|herself|ele mesmo|ela mesma|archive footage)(\b|\s*[-–—(])/i;
 
+  const resolveCreditPoster = (c: TMDBPersonMovieCredit): string | null =>
+    curatedPosterCache.get(c.id) || enPosterById.get(c.id) || c.poster_path || null;
+
   const normalizeTv = (
     list?: (TMDBPersonMovieCredit & Partial<TMDBRawMediaPayload>)[],
     isCast = false,
   ): TMDBPersonMovieCredit[] =>
     (list ?? [])
+      .map((c) => ({
+        ...c,
+        poster_path: resolveCreditPoster(c),
+      }))
       .filter((c) => {
         if (!c.poster_path) return false;
         if (c.genre_ids?.some((g) => TV_EXCLUDED_GENRE_IDS.has(g))) return false;
@@ -441,6 +562,10 @@ export async function getPersonDetails(id: number): Promise<TMDBPersonDetails> {
 
   const normalizeMovie = (list?: TMDBPersonMovieCredit[]): TMDBPersonMovieCredit[] =>
     (list ?? [])
+      .map((c) => ({
+        ...c,
+        poster_path: resolveCreditPoster(c),
+      }))
       .filter((c) => Boolean(c.poster_path))
       .map((c) => ({
         ...c,

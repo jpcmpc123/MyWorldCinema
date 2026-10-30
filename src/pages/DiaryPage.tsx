@@ -13,6 +13,7 @@ const DIARY_BATCH_SIZE = 40;
 
 interface DiaryRowProps {
   entry: ReturnType<typeof useApp>['logs'][number];
+  overridePoster?: string;
   formattedDate: string;
   isRemote: boolean;
   onDelete: (id: string) => void;
@@ -21,9 +22,10 @@ interface DiaryRowProps {
 }
 
 const DiaryMobileRow = React.memo<DiaryRowProps>(
-  ({ entry, formattedDate, isRemote, onDelete, deleteTitle }) => {
-    const p500 = tmdb.getImageUrl(entry.moviePoster, 'w500');
-    const p780 = tmdb.getImageUrl(entry.moviePoster, 'w780');
+  ({ entry, overridePoster, formattedDate, isRemote, onDelete, deleteTitle }) => {
+    const rawPoster = overridePoster || entry.moviePoster;
+    const p500 = tmdb.getImageUrl(rawPoster, 'w500');
+    const p780 = tmdb.getImageUrl(rawPoster, 'w780');
     return (
       <div className="py-3 flex gap-3 items-start diary-row-optimized">
         <Link to={`/film/${entry.movieId}`} className="shrink-0 rounded-[4px] bg-lb-surface ring-1 ring-white/15 overflow-hidden">
@@ -33,7 +35,7 @@ const DiaryMobileRow = React.memo<DiaryRowProps>(
             loading="lazy"
             decoding="async"
             src={p500}
-            srcSet={entry.moviePoster ? `${p500} 1x, ${p780} 2x` : undefined}
+            srcSet={rawPoster ? `${p500} 1x, ${p780} 2x` : undefined}
             alt={entry.movieTitle}
             className="w-14 aspect-[2/3] object-cover mw-img-fade"
           />
@@ -88,9 +90,10 @@ const DiaryMobileRow = React.memo<DiaryRowProps>(
 );
 
 const DiaryDesktopRow = React.memo<DiaryRowProps>(
-  ({ entry, formattedDate, isRemote, onDelete, deleteTitle, rewatchedTitle }) => {
-    const p500 = tmdb.getImageUrl(entry.moviePoster, 'w500');
-    const p780 = tmdb.getImageUrl(entry.moviePoster, 'w780');
+  ({ entry, overridePoster, formattedDate, isRemote, onDelete, deleteTitle, rewatchedTitle }) => {
+    const rawPoster = overridePoster || entry.moviePoster;
+    const p500 = tmdb.getImageUrl(rawPoster, 'w500');
+    const p780 = tmdb.getImageUrl(rawPoster, 'w780');
     return (
       <tr className="hover:bg-lb-elevated/40 transition-colors group diary-row-optimized">
         {/* Date */}
@@ -107,7 +110,7 @@ const DiaryDesktopRow = React.memo<DiaryRowProps>(
               loading="lazy"
               decoding="async"
               src={p500}
-              srcSet={entry.moviePoster ? `${p500} 1x, ${p780} 2x` : undefined}
+              srcSet={rawPoster ? `${p500} 1x, ${p780} 2x` : undefined}
               alt={entry.movieTitle}
               className="w-full h-full object-cover mw-img-fade"
             />
@@ -196,7 +199,7 @@ export const DiaryPage: React.FC = () => {
   const { t, language } = useLanguage();
   const { username: paramUsername } = useParams<{ username: string }>();
   const location = useLocation();
-  const { user, logs, deleteLog, openLogModal } = useApp();
+  const { user, logs, deleteLog, openLogModal, movieOverrides } = useApp();
   const username =
     paramUsername ?? parseProfileTabRoute(location.pathname, user.username)?.username;
   const remote = useProfileByUsername(username, user.username);
@@ -375,6 +378,7 @@ export const DiaryPage: React.FC = () => {
               <DiaryMobileRow
                 key={entry.id}
                 entry={entry}
+                overridePoster={movieOverrides[entry.movieId]?.poster}
                 formattedDate={formatWatchedDate(entry.watchedDate)}
                 isRemote={remote.isRemote}
                 onDelete={deleteLog}
@@ -406,6 +410,7 @@ export const DiaryPage: React.FC = () => {
                     <DiaryDesktopRow
                       key={entry.id}
                       entry={entry}
+                      overridePoster={movieOverrides[entry.movieId]?.poster}
                       formattedDate={formatWatchedDate(entry.watchedDate)}
                       isRemote={remote.isRemote}
                       onDelete={deleteLog}
