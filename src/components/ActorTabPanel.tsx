@@ -80,7 +80,7 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
     return sorted;
   }, [items, genreFilter, decadeFilter, sortBy]);
 
-  const listed = showAllFilms ? visibleFilms : visibleFilms.slice(0, INITIAL_VISIBLE);
+  const listed = visibleFilms;
 
   // ---- % assistida desta lista (ícone de olho azul da barra de status) -----
   const watchedPct = useMemo(() => {
@@ -275,17 +275,6 @@ export const ActorTabPanel: React.FC<ActorTabPanelProps> = React.memo(({
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {visibleFilms.length > INITIAL_VISIBLE && !showAllFilms && (
-        <div className="px-3 pb-8 -mt-1">
-          <button
-            onClick={onShowMore}
-            className="w-full py-2.5 rounded border border-white/10 bg-[#1c2228] text-[11px] font-bold uppercase tracking-wider text-[#9ab] active:scale-[0.98] transition-transform cursor-pointer"
-          >
-            {t('show_more')} ({visibleFilms.length})
-          </button>
         </div>
       )}
     </>

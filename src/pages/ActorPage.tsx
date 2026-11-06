@@ -24,7 +24,7 @@ import {
   personRoleFromJob,
   type PersonRole,
 } from '../utils/personNav';
-import { ActorTabPanel, INITIAL_VISIBLE } from '../components/ActorTabPanel';
+import { ActorTabPanel } from '../components/ActorTabPanel';
 import { FiltersModal, type FiltersDraft } from '../components/mobile/FiltersModal';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useSwipeableTabs } from '../hooks/useSwipeableTabs';
@@ -410,7 +410,7 @@ export function ActorPage() {
     sortBy,
   ]);
 
-  const listed = showAllFilms ? visibleFilms : visibleFilms.slice(0, INITIAL_VISIBLE);
+  const listed = visibleFilms;
 
   const selectTab = (key: TabKey) => {
     setActiveTab(key);
@@ -514,18 +514,6 @@ export function ActorPage() {
       onClose={() => setShowPhotoLightbox(false)}
     />
   ) : null;
-
-  const showMoreButton =
-    visibleFilms.length > INITIAL_VISIBLE && !showAllFilms ? (
-      <div className="pt-5 pb-8">
-        <button
-          onClick={() => setShowAllFilms(true)}
-          className="w-full py-2.5 rounded border border-white/10 bg-[#1c2228] hover:bg-[#242c34] text-[11px] font-bold uppercase tracking-wider text-[#9ab] hover:text-white transition-colors cursor-pointer"
-        >
-          {t('show_more')} ({visibleFilms.length})
-        </button>
-      </div>
-    ) : null;
 
   // =========================================================================
   // MOBILE — Top App Bar + abas horizontais + grade de 4 colunas
@@ -1107,7 +1095,6 @@ export function ActorPage() {
                   );
                 })}
               </div>
-              {showMoreButton}
             </>
           ) : (
             <div className="py-20 text-center space-y-2 border border-dashed border-[#2c3440] rounded">
