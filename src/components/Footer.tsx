@@ -11,9 +11,12 @@ export const Footer: React.FC = () => {
         <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-6 gap-y-2 font-semibold">
           <Link to="/films" className="hover:text-white transition-colors whitespace-nowrap">{t('nav_films')}</Link>
           <Link to="/series" className="hover:text-white transition-colors whitespace-nowrap">{t('nav_series')}</Link>
+          <Link to="/reviews" className="hover:text-white transition-colors whitespace-nowrap">{t('nav_reviews')}</Link>
           <Link to="/lists" className="hover:text-white transition-colors whitespace-nowrap">{t('nav_lists')}</Link>
           <Link to="/diary" className="hover:text-white transition-colors whitespace-nowrap">{t('hdr_diary')}</Link>
           <Link to="/watchlist" className="hover:text-white transition-colors whitespace-nowrap">{t('hdr_watchlist')}</Link>
+          <Link to="/terms" className="hover:text-white transition-colors whitespace-nowrap">{t('footer_terms')}</Link>
+          <Link to="/privacy" className="hover:text-white transition-colors whitespace-nowrap">{t('footer_privacy')}</Link>
           <button
             type="button"
             onClick={toggleLanguage}
@@ -29,7 +32,7 @@ export const Footer: React.FC = () => {
           <p>© MyWorld — My World Cinema. {t('footer_made')}</p>
           <p className="flex items-center justify-center md:justify-end gap-1.5">
             <a
-              href="https://github.com/jpcmpc123/My-World-Cinema"
+              href="https://github.com/jpcmpc123/MyWorldCinema"
               target="_blank"
               rel="noreferrer"
               title={t('footer_github')}

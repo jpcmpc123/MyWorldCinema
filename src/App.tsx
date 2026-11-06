@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { BrowserRouter, Routes, Route, useLocation, useNavigationType, type Location } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, useNavigationType, type Location } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider } from './context/AppContext';
@@ -19,9 +19,12 @@ import { CollectionPage } from './pages/CollectionPage';
 import { SeriesHubPage } from './pages/SeriesHubPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { DiaryPage } from './pages/DiaryPage';
+import { ReviewsPage } from './pages/ReviewsPage';
 import { WatchlistPage } from './pages/WatchlistPage';
 import { ListsPage } from './pages/ListsPage';
 import { CineIaPage } from './pages/CineIaPage';
+import { LegalPage } from './pages/LegalPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { PullToRefresh } from './components/PullToRefresh';
 
 function parseDetailRoute(pathname: string): { type: 'movie' | 'tv'; id: number } | null {
@@ -164,14 +167,19 @@ const MemoizedRouteTree = React.memo(
             <Route path="/browse/language" element={<BrowseDrilldownPage kind="language" />} />
             <Route path="/browse/service" element={<BrowseDrilldownPage kind="service" />} />
             <Route path="/browse/results" element={<BrowseResultsPage />} />
-            {/* Stand-ins usados pela BottomNav/abas mobile do app */}
-            <Route path="/reviews" element={<DiaryPage />} />
+            {/* Reviews & Activity */}
+            <Route path="/reviews" element={<ReviewsPage />} />
             <Route path="/activity" element={<DiaryPage />} />
+            {/* Legal pages */}
+            <Route path="/terms" element={<LegalPage />} />
+            <Route path="/privacy" element={<LegalPage />} />
             {/* MyWorld profile sub-routes */}
             <Route path="/:username" element={<ProfilePage />} />
             <Route path="/:username/diary" element={<DiaryPage />} />
             <Route path="/:username/watchlist" element={<WatchlistPage />} />
             <Route path="/:username/lists" element={<ListsPage />} />
+            {/* 404 Not Found */}
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>
@@ -184,11 +192,20 @@ const MemoizedRouteTree = React.memo(
 
 function AppShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const navigationType = useNavigationType();
   const isMobile = useIsMobile();
   const { user } = useApp();
   const { isAuthenticated, profile } = useAuth();
   const displayUsername = isAuthenticated && profile ? profile.username : user.username;
+
+  useEffect(() => {
+    const onRequireAuth = () => {
+      navigate('/signin');
+    };
+    window.addEventListener('mw:require-auth', onRequireAuth);
+    return () => window.removeEventListener('mw:require-auth', onRequireAuth);
+  }, [navigate]);
 
   const [committedLocation, setCommittedLocation] = useState<Location>(location);
   const [outgoingState, setOutgoingState] = useState<{ location: Location; scrollY: number } | null>(null);

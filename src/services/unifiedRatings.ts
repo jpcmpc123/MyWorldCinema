@@ -2,13 +2,13 @@
 // Consulta MDBList API (principal) com fallback automático para OMDb API
 // e cache persistente em localStorage (notas_unificadas_v1_${tmdbId}).
 
+// ATENÇÃO: nunca recoloque chaves reais como fallback aqui — use apenas
+// variáveis de ambiente (.env local ou secrets de CI).
 const MDBLIST_API_KEY =
-  (import.meta.env.VITE_MDBLIST_API_KEY as string | undefined)?.trim() ||
-  'lpszy6kb88hgtx0a2aeqiwjo1';
+  (import.meta.env.VITE_MDBLIST_API_KEY as string | undefined)?.trim() || '';
 
 const OMDB_API_KEY =
-  (import.meta.env.VITE_OMDB_API_KEY as string | undefined)?.trim() ||
-  'dbd20520';
+  (import.meta.env.VITE_OMDB_API_KEY as string | undefined)?.trim() || '';
 
 export type RatingPlatformSource =
   | 'letterboxd'
@@ -272,45 +272,47 @@ export async function fetchUnifiedRatings(options: {
     let resolvedImdbId = imdbId?.trim() || '';
     const mdbItemsMap = new Map<RatingPlatformSource, PlatformRatingItem>();
 
-    // 1. Tenta MDBList API (Principal)
-    try {
-      const endpointType = isTv ? 'show' : 'movie';
-      const mdbUrl = `https://api.mdblist.com/tmdb/${endpointType}/${tmdbId}?apikey=${encodeURIComponent(
-        MDBLIST_API_KEY,
-      )}`;
-      const res = await fetch(mdbUrl);
-      if (res.ok) {
-        const data = (await res.json()) as MDBListResponse;
-        if (!resolvedImdbId && data?.imdbid && /^tt\d+/i.test(data.imdbid)) {
-          resolvedImdbId = data.imdbid.trim();
-        }
+    // 1. Tenta MDBList API (Principal) se a chave estiver configurada
+    if (MDBLIST_API_KEY) {
+      try {
+        const endpointType = isTv ? 'show' : 'movie';
+        const mdbUrl = `https://api.mdblist.com/tmdb/${endpointType}/${tmdbId}?apikey=${encodeURIComponent(
+          MDBLIST_API_KEY,
+        )}`;
+        const res = await fetch(mdbUrl);
+        if (res.ok) {
+          const data = (await res.json()) as MDBListResponse;
+          if (!resolvedImdbId && data?.imdbid && /^tt\d+/i.test(data.imdbid)) {
+            resolvedImdbId = data.imdbid.trim();
+          }
 
-        if (Array.isArray(data?.ratings)) {
-          for (const entry of data.ratings) {
-            const rawSource = (entry?.source || '').toLowerCase().trim() as RatingPlatformSource;
-            if (!(rawSource in SOURCE_CONFIG)) continue;
+          if (Array.isArray(data?.ratings)) {
+            for (const entry of data.ratings) {
+              const rawSource = (entry?.source || '').toLowerCase().trim() as RatingPlatformSource;
+              if (!(rawSource in SOURCE_CONFIG)) continue;
 
-            const cfg = SOURCE_CONFIG[rawSource];
-            const score = normalizeScore100(rawSource, entry.score, entry.value);
-            if (score <= 0) continue;
+              const cfg = SOURCE_CONFIG[rawSource];
+              const score = normalizeScore100(rawSource, entry.score, entry.value);
+              if (score <= 0) continue;
 
-            const rawValue = entry.value ?? score;
-            const displayValue = formatPlatformDisplayValue(rawSource, entry.value, score);
+              const rawValue = entry.value ?? score;
+              const displayValue = formatPlatformDisplayValue(rawSource, entry.value, score);
 
-            mdbItemsMap.set(rawSource, {
-              source: rawSource,
-              label: cfg.label,
-              shortLabel: cfg.shortLabel,
-              score,
-              rawValue,
-              displayValue,
-              weight: cfg.weight,
-            });
+              mdbItemsMap.set(rawSource, {
+                source: rawSource,
+                label: cfg.label,
+                shortLabel: cfg.shortLabel,
+                score,
+                rawValue,
+                displayValue,
+                weight: cfg.weight,
+              });
+            }
           }
         }
+      } catch {
+        /* Falha de rede ou CORS na MDBList -> segue para fallback OMDb */
       }
-    } catch {
-      /* Falha de rede ou CORS na MDBList -> segue para fallback OMDb */
     }
 
     // Se o TMDb local já tem nota válida e a MDBList não trouxe `tmdb`, complementa a fonte `tmdb`
@@ -343,8 +345,8 @@ export async function fetchUnifiedRatings(options: {
       }
     }
 
-    // 2. Fallback OMDb API (se MDBList falhou ou veio vazia de notas externas)
-    if (resolvedImdbId && /^tt\d+/i.test(resolvedImdbId)) {
+    // 2. Fallback OMDb API (se MDBList falhou ou veio vazia de notas externas e OMDB_API_KEY estiver configurada)
+    if (OMDB_API_KEY && resolvedImdbId && /^tt\d+/i.test(resolvedImdbId)) {
       try {
         const omdbUrl = `https://www.omdbapi.com/?i=${encodeURIComponent(
           resolvedImdbId,

@@ -2397,8 +2397,57 @@ interface ImdbSpec { label: string; value: string }
 interface ImdbTrivia { text: string; spoiler: boolean }
 interface ImdbData { specs: ImdbSpec[]; trivia: ImdbTrivia[] }
 
-/** Hook com cache em localStorage (chave imdb_<id>) */
-function useImdbData(imdbId: string | null | undefined): ImdbData | null {
+/**
+ * Busca especificações técnicas via Wikidata SPARQL (CORS aberto) + fallback TMDB
+ * quando o endpoint dev `/api/imdb` não está disponível no deploy estático.
+ */
+async function fetchFallbackSpecs(
+  imdbId: string,
+  movie: TMDBMovieDetails,
+): Promise<ImdbData> {
+  const specs: ImdbSpec[] = [];
+  if (movie.runtime && movie.runtime > 0) {
+    const h = Math.floor(movie.runtime / 60);
+    const m = movie.runtime % 60;
+    specs.push({
+      label: 'Runtime',
+      value: h > 0 ? `${h} hr ${m} min (${movie.runtime} min)` : `${movie.runtime} min`,
+    });
+  }
+
+  try {
+    const sparql = `SELECT ?aspectRatioLabel ?colorLabel WHERE {
+      ?film wdt:P345 "${imdbId.replace(/[^a-zA-Z0-9]/g, '')}".
+      OPTIONAL { ?film wdt:P2061 ?aspectRatio. }
+      OPTIONAL { ?film wdt:P462 ?color. }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+    } LIMIT 1`;
+    const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+    const res = await fetch(url, {
+      headers: { Accept: 'application/sparql-results+json' },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const row = json?.results?.bindings?.[0];
+      if (row?.colorLabel?.value) {
+        specs.push({ label: 'Color', value: String(row.colorLabel.value) });
+      }
+      if (row?.aspectRatioLabel?.value) {
+        specs.push({ label: 'Aspect Ratio', value: String(row.aspectRatioLabel.value) });
+      }
+    }
+  } catch {
+    /* sem rede / bloqueado */
+  }
+
+  return { specs, trivia: [] };
+}
+
+/** Hook com cache em localStorage (chave imdb_<id>) e fallback em produção */
+function useImdbData(
+  imdbId: string | null | undefined,
+  movie: TMDBMovieDetails,
+): ImdbData | null {
   const [data, setData] = useState<ImdbData | null>(null);
   useEffect(() => {
     if (!imdbId) return;
@@ -2407,20 +2456,42 @@ function useImdbData(imdbId: string | null | undefined): ImdbData | null {
     try {
       const cached = localStorage.getItem(key);
       if (cached) {
-        setData(JSON.parse(cached));
-        return;
+        const parsed: ImdbData = JSON.parse(cached);
+        if ((parsed.specs && parsed.specs.length > 0) || (parsed.trivia && parsed.trivia.length > 0)) {
+          setData(parsed);
+          return;
+        }
       }
     } catch { /* cache ilegível */ }
-    fetch(`/api/imdb?imdbId=${imdbId}`)
-      .then((r) => (r.ok ? r.json() : { specs: [], trivia: [] }))
-      .then((d: ImdbData) => {
-        if (cancelled) return;
-        setData(d);
-        try { localStorage.setItem(key, JSON.stringify(d)); } catch { /* quota */ }
-      })
-      .catch(() => { if (!cancelled) setData({ specs: [], trivia: [] }); });
+
+    (async () => {
+      let result: ImdbData | null = null;
+      try {
+        const r = await fetch(`/api/imdb?imdbId=${encodeURIComponent(imdbId)}`);
+        const contentType = r.headers.get('content-type') || '';
+        if (r.ok && contentType.includes('application/json')) {
+          const json: ImdbData = await r.json();
+          if ((json.specs && json.specs.length > 0) || (json.trivia && json.trivia.length > 0)) {
+            result = json;
+          }
+        }
+      } catch {
+        /* /api/imdb indisponível em produção estática */
+      }
+
+      if (!result) {
+        result = await fetchFallbackSpecs(imdbId, movie);
+      }
+
+      if (cancelled) return;
+      setData(result);
+      if (result.specs.length > 0 || result.trivia.length > 0) {
+        try { localStorage.setItem(key, JSON.stringify(result)); } catch { /* quota */ }
+      }
+    })();
+
     return () => { cancelled = true; };
-  }, [imdbId]);
+  }, [imdbId, movie]);
   return data;
 }
 
@@ -2458,7 +2529,7 @@ const DetailsTab: React.FC<{ movie: TMDBMovieDetails; isTv: boolean; mobile?: bo
   const { language, t } = useLanguage();
   const regions = useMemo(() => regionNames(language), [language]);
   const langs = useMemo(() => languageNames(language), [language]);
-  const imdb = useImdbData(isTv ? null : movie.external_ids?.imdb_id);
+  const imdb = useImdbData(isTv ? null : movie.external_ids?.imdb_id, movie);
   const [showAllTrivia, setShowAllTrivia] = useState(false);
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
 

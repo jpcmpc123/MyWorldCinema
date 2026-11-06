@@ -60,6 +60,8 @@ const RESERVED_SINGLE_SEGMENTS = new Set([
   'settings',
   'signin',
   'signup',
+  'terms',
+  'privacy',
 ]);
 
 const RESERVED_TWO_SEGMENT_PARENTS = new Set([

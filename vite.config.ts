@@ -231,7 +231,7 @@ const TMDB_KEY_DEFAULT =
   process.env.VITE_TMDB_API_KEY ||
   process.env.TMDB_READ_TOKEN ||
   process.env.VITE_TMDB_ACCESS_TOKEN ||
-  '756b66f23e97ca70dba67363ba4e3b21'
+  ''
 
 let nodeWeightsLoaded = false
 

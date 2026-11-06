@@ -38,11 +38,11 @@ function resolveDefaultTmdbAuth(explicitKey?: string): string {
       nodeEnv.VITE_TMDB_API_KEY ||
       nodeEnv.TMDB_READ_TOKEN ||
       nodeEnv.VITE_TMDB_ACCESS_TOKEN ||
-      '756b66f23e97ca70dba67363ba4e3b21'
+      ''
     );
   }
 
-  return '756b66f23e97ca70dba67363ba4e3b21';
+  return '';
 }
 
 export function mapTmdbMovieItem(m: any): AiMovie {

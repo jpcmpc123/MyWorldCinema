@@ -16,11 +16,13 @@ import { useLanguage } from '../i18n/LanguageContext';
 export const AuthPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signIn, signUp, signInWithGoogle, isAuthenticated } = useAuth();
+  const { signIn, signUp, signInWithGoogle, resetPassword, isAuthenticated } = useAuth();
   const { t } = useLanguage();
 
   const isSignUpRoute = location.pathname === '/signup';
-  const [mode, setMode] = useState<'signin' | 'signup'>(isSignUpRoute ? 'signup' : 'signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>(
+    isSignUpRoute ? 'signup' : 'signin',
+  );
 
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -34,11 +36,15 @@ export const AuthPage: React.FC = () => {
     if (isAuthenticated) navigate('/', { replace: true });
   }, [isAuthenticated, navigate]);
 
-  const switchMode = (next: 'signin' | 'signup') => {
+  const switchMode = (next: 'signin' | 'signup' | 'forgot') => {
     setMode(next);
     setError(null);
     setInfo(null);
-    navigate(next === 'signup' ? '/signup' : '/signin', { replace: true });
+    if (next === 'signup') {
+      navigate('/signup', { replace: true });
+    } else if (next === 'signin') {
+      navigate('/signin', { replace: true });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,13 +62,17 @@ export const AuthPage: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      if (mode === 'signin') {
-        const { error } = await signIn(email.trim(), password);
-        if (error) setError(error);
+      if (mode === 'forgot') {
+        const { error: resetErr } = await resetPassword(email.trim());
+        if (resetErr) setError(resetErr);
+        else setInfo(t('auth_reset_sent'));
+      } else if (mode === 'signin') {
+        const { error: signInErr } = await signIn(email.trim(), password);
+        if (signInErr) setError(signInErr);
         else navigate('/');
       } else {
-        const { error } = await signUp(email.trim(), password, username.trim());
-        if (error) setError(error);
+        const { error: signUpErr } = await signUp(email.trim(), password, username.trim());
+        if (signUpErr) setError(signUpErr);
         else setInfo(t('auth_created'));
       }
     } finally {
@@ -75,8 +85,8 @@ export const AuthPage: React.FC = () => {
     setError(null);
     setIsSubmitting(true);
     try {
-      const { error } = await signInWithGoogle();
-      if (error) setError(error);
+      const { error: googleErr } = await signInWithGoogle();
+      if (googleErr) setError(googleErr);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-in failed.');
     } finally {
@@ -90,30 +100,42 @@ export const AuthPage: React.FC = () => {
         {/* Heading */}
         <div className="text-center space-y-1">
           <h1 className="text-2xl font-extrabold text-white tracking-tight">
-            {mode === 'signin' ? t('auth_sign_in_title') : t('auth_create_title')}
+            {mode === 'forgot'
+              ? t('auth_reset_title')
+              : mode === 'signin'
+                ? t('auth_sign_in_title')
+                : t('auth_create_title')}
           </h1>
           <p className="text-xs text-lb-text">
-            {mode === 'signin' ? t('auth_welcome_back') : t('auth_join_text')}
+            {mode === 'forgot'
+              ? t('auth_reset_desc')
+              : mode === 'signin'
+                ? t('auth_welcome_back')
+                : t('auth_join_text')}
           </p>
         </div>
 
-        {/* Google OAuth */}
-        <button
-          type="button"
-          onClick={handleGoogle}
-          disabled={isSubmitting}
-          className="w-full flex items-center justify-center gap-2 bg-lb-elevated hover:bg-lb-border-light border border-lb-elevated text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          <GoogleIcon />
-          <span>{t('auth_google')}</span>
-        </button>
+        {mode !== 'forgot' && (
+          <>
+            {/* Google OAuth */}
+            <button
+              type="button"
+              onClick={handleGoogle}
+              disabled={isSubmitting}
+              className="w-full flex items-center justify-center gap-2 bg-lb-elevated hover:bg-lb-border-light border border-lb-elevated text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-sm transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <GoogleIcon />
+              <span>{t('auth_google')}</span>
+            </button>
 
-        {/* Divider */}
-        <div className="flex items-center gap-3 text-[11px] uppercase font-bold text-lb-muted">
-          <div className="flex-1 h-px bg-lb-elevated" />
-          <span>{t('auth_or_email')}</span>
-          <div className="flex-1 h-px bg-lb-elevated" />
-        </div>
+            {/* Divider */}
+            <div className="flex items-center gap-3 text-[11px] uppercase font-bold text-lb-muted">
+              <div className="flex-1 h-px bg-lb-elevated" />
+              <span>{t('auth_or_email')}</span>
+              <div className="flex-1 h-px bg-lb-elevated" />
+            </div>
+          </>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -149,21 +171,34 @@ export const AuthPage: React.FC = () => {
             </div>
           )}
 
-          <div>
-            <label htmlFor="auth-password" className="block text-[11px] uppercase font-bold text-lb-muted mb-1.5">
-              {t('auth_password')}
-            </label>
-            <input
-              id="auth-password"
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-lb-bg border border-lb-elevated focus:border-lb-green rounded px-3 py-2 text-sm text-white placeholder-lb-muted focus:outline-none"
-            />
-          </div>
+          {mode !== 'forgot' && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="auth-password" className="block text-[11px] uppercase font-bold text-lb-muted">
+                  {t('auth_password')}
+                </label>
+                {mode === 'signin' && (
+                  <button
+                    type="button"
+                    onClick={() => switchMode('forgot')}
+                    className="text-[11px] text-lb-green hover:underline font-semibold cursor-pointer"
+                  >
+                    {t('auth_forgot_password')}
+                  </button>
+                )}
+              </div>
+              <input
+                id="auth-password"
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-lb-bg border border-lb-elevated focus:border-lb-green rounded px-3 py-2 text-sm text-white placeholder-lb-muted focus:outline-none"
+              />
+            </div>
+          )}
 
           {error && (
             <div className="flex items-start gap-2 bg-red-950/40 border border-red-900/60 rounded px-3 py-2.5">
@@ -184,6 +219,8 @@ export const AuthPage: React.FC = () => {
           >
             {isSubmitting ? (
               <Loader2 className="w-4 h-4 animate-spin" />
+            ) : mode === 'forgot' ? (
+              <span>{t('auth_reset_btn')}</span>
             ) : mode === 'signin' ? (
               <>
                 <LogIn className="w-4 h-4 stroke-[2.5]" />
@@ -198,9 +235,30 @@ export const AuthPage: React.FC = () => {
           </button>
         </form>
 
+        {/* Terms & Privacy notice */}
+        <p className="text-center text-[11px] text-lb-muted leading-relaxed">
+          {t('auth_terms_agree_1')}{' '}
+          <Link to="/terms" className="text-lb-text hover:text-white underline underline-offset-2">
+            {t('footer_terms')}
+          </Link>{' '}
+          {t('auth_terms_agree_and')}{' '}
+          <Link to="/privacy" className="text-lb-text hover:text-white underline underline-offset-2">
+            {t('footer_privacy')}
+          </Link>
+          .
+        </p>
+
         {/* Mode toggle */}
         <p className="text-center text-xs text-lb-text">
-          {mode === 'signin' ? (
+          {mode === 'forgot' ? (
+            <button
+              type="button"
+              onClick={() => switchMode('signin')}
+              className="text-lb-green hover:underline font-bold cursor-pointer"
+            >
+              {t('auth_back_to_signin')}
+            </button>
+          ) : mode === 'signin' ? (
             <>
               {t('auth_new_here')}{' '}
               <button type="button" onClick={() => switchMode('signup')} className="text-lb-green hover:underline font-bold cursor-pointer">

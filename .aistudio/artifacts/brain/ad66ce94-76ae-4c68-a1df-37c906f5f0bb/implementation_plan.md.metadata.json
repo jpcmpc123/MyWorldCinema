@@ -1,6 +1,0 @@
-{
-  "summary":  "Plano arquitetural para modularização do AppContext e do serviço TMDB, otimização de performance de renderização (O(1) lookups e seletores granulares), cache inteligente do TMDB e fluidez mobile, mantendo 100% do visual e comportamento originais.",
-  "updatedAt":  "2026-10-28T12:13:14.321263614Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}

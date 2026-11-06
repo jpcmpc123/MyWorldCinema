@@ -19,16 +19,39 @@ returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
+declare
+  raw_uname text;
+  clean_uname text;
 begin
+  raw_uname := coalesce(new.raw_user_meta_data->>'username', split_part(coalesce(new.email, 'user'), '@', 1));
+  clean_uname := lower(regexp_replace(raw_uname, '[^a-z0-9_]', '_', 'g'));
+  clean_uname := regexp_replace(clean_uname, '_+', '_', 'g');
+  clean_uname := trim(both '_' from clean_uname);
+  if length(clean_uname) < 3 then
+    clean_uname := 'user_' || substr(replace(new.id::text, '-', ''), 1, 8);
+  end if;
+  clean_uname := left(clean_uname, 20);
+
   insert into public.profiles (id, username, display_name, avatar_url)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
-    coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email, '@', 1)),
+    clean_uname,
+    coalesce(new.raw_user_meta_data->>'display_name', split_part(coalesce(new.email, clean_uname), '@', 1)),
     coalesce(new.raw_user_meta_data->>'avatar_url', '')
   )
   on conflict (id) do nothing;
   return new;
+exception
+  when unique_violation then
+    insert into public.profiles (id, username, display_name, avatar_url)
+    values (
+      new.id,
+      left(clean_uname, 13) || '_' || substr(replace(new.id::text, '-', ''), 1, 6),
+      coalesce(new.raw_user_meta_data->>'display_name', clean_uname),
+      coalesce(new.raw_user_meta_data->>'avatar_url', '')
+    )
+    on conflict (id) do nothing;
+    return new;
 end;
 $$;
 
@@ -90,7 +113,8 @@ create table if not exists public.follows (
   follower_id uuid not null references public.profiles (id) on delete cascade,
   following_id uuid not null references public.profiles (id) on delete cascade,
   created_at timestamptz not null default now(),
-  primary key (follower_id, following_id)
+  primary key (follower_id, following_id),
+  constraint follows_no_self_follow check (follower_id <> following_id)
 );
 
 -- 6. View: média de rating por filme (alimenta o histograma / ★3.1)
@@ -144,10 +168,13 @@ create policy "items_select" on public.list_items for select
   using (exists (select 1 from public.lists l where l.id = list_id and (l.is_public or l.user_id = auth.uid())));
 create policy "items_insert" on public.list_items for insert
   with check (exists (select 1 from public.lists l where l.id = list_id and l.user_id = auth.uid()));
+create policy "items_update" on public.list_items for update
+  using (exists (select 1 from public.lists l where l.id = list_id and l.user_id = auth.uid()))
+  with check (exists (select 1 from public.lists l where l.id = list_id and l.user_id = auth.uid()));
 create policy "items_delete" on public.list_items for delete
   using (exists (select 1 from public.lists l where l.id = list_id and l.user_id = auth.uid()));
 
--- follows: leitura pública; só o seguidor cria/apaga
+-- follows: leitura pública; só o seguidor cria/apaga (sem seguir a si mesmo)
 create policy "follows_select" on public.follows for select using (true);
-create policy "follows_insert" on public.follows for insert with check (auth.uid() = follower_id);
+create policy "follows_insert" on public.follows for insert with check (auth.uid() = follower_id and follower_id <> following_id);
 create policy "follows_delete" on public.follows for delete using (auth.uid() = follower_id);

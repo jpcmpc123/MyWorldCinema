@@ -193,31 +193,47 @@ export async function persistQuickLogRemote(
 ): Promise<void> {
   if (!supabase) return;
   try {
+    if (patch.watched === false) {
+      const { error } = await supabase
+        .from('film_logs')
+        .delete()
+        .eq('user_id', userId)
+        .eq('film_id', filmId);
+      if (error) console.error('Supabase film_logs unwatch delete error:', error);
+      return;
+    }
+
     const meta = movieMeta[filmId] ?? { title: '', poster: null, year: null };
 
-    const { data: existing } = await supabase
+    const { data: rows } = await supabase
       .from('film_logs')
-      .select('id, rating, liked, review_text')
+      .select('id, rating, liked, review_text, watched_on')
       .eq('user_id', userId)
       .eq('film_id', filmId)
-      .is('watched_on', null)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const existing = rows?.[0] ?? null;
 
     if (existing) {
       const updates: Record<string, unknown> = {};
       if (patch.liked !== undefined) updates.liked = patch.liked;
       if (patch.rating !== undefined) updates.rating = patch.rating > 0 ? patch.rating : null;
-      if (patch.watched === false && !existing.review_text) {
-        await supabase.from('film_logs').delete().eq('id', existing.id);
-        return;
-      }
+
+      const nextRating =
+        patch.rating !== undefined ? (patch.rating > 0 ? patch.rating : null) : existing.rating;
+      const nextLiked = patch.liked !== undefined ? patch.liked : existing.liked;
+
       if (Object.keys(updates).length > 0) {
         const { error } = await supabase.from('film_logs').update(updates).eq('id', existing.id);
         if (error) console.error('Supabase film_logs update error:', error);
+      } else if (!nextRating && !nextLiked && !existing.review_text && patch.watched === undefined) {
+        await supabase.from('film_logs').delete().eq('id', existing.id);
       }
     } else if (
-      patch.watched !== false &&
-      (patch.watched === true || (patch.rating && patch.rating > 0) || patch.liked)
+      patch.watched === true ||
+      (patch.rating !== undefined && patch.rating > 0) ||
+      patch.liked === true
     ) {
       const { error } = await supabase.from('film_logs').insert({
         user_id: userId,

@@ -95,6 +95,7 @@ interface DragState {
 import { HomePage } from '../pages/HomePage';
 import { SeriesHubPage } from '../pages/SeriesHubPage';
 import { DiaryPage } from '../pages/DiaryPage';
+import { ReviewsPage } from '../pages/ReviewsPage';
 import { ListsPage } from '../pages/ListsPage';
 import { CineIaPage } from '../pages/CineIaPage';
 import { ProfilePage } from '../pages/ProfilePage';
@@ -107,7 +108,7 @@ const MAIN_PANELS: {
 }[] = [
   { key: 'films', Component: HomePage },
   { key: 'series', Component: SeriesHubPage },
-  { key: 'reviews', Component: DiaryPage },
+  { key: 'reviews', Component: ReviewsPage },
   { key: 'cine-ia', Component: CineIaPage },
 ];
 

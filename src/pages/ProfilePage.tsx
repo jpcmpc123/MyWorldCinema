@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, Link, useParams, Navigate, useLocation } from 'react-router-dom';
+import { useSearchParams, Link, useParams, useLocation } from 'react-router-dom';
 import { MoreHorizontal, Search, Heart, ChevronRight, User, Plus, Film } from 'lucide-react';
 import { RatingHistogram } from '../components/RatingHistogram';
 import { useApp } from '../context/AppContext';
@@ -9,6 +9,7 @@ import { tmdb, type TMDBMovie } from '../services/tmdb';
 import { PosterCard, smartImgRef, smartImgOnLoad } from '../components/PosterCard';
 import { useLanguage } from '../i18n/LanguageContext';
 import { parseProfileTabRoute } from '../utils/tabRoutes';
+import { NotFoundPage } from './NotFoundPage';
 
 export const ProfilePage: React.FC = () => {
   const { t } = useLanguage();
@@ -188,9 +189,9 @@ export const ProfilePage: React.FC = () => {
     { label: t('pp_followers'), count: viewFollowersCount, to: `/${viewUsername}?tab=network` },
   ];
 
-  // Guard: username desconhecido (sem perfil local nem no Supabase) vai para home
+  // Guard: username desconhecido (sem perfil local nem no Supabase) mostra página 404 real
   if (username && username.toLowerCase() !== user.username.toLowerCase() && remote.status === 'not-found') {
-    return <Navigate to="/" replace />;
+    return <NotFoundPage />;
   }
 
   const renderTabBody = (tabId: string) => {

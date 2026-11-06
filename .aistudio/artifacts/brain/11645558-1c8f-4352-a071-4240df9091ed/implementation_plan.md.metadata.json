@@ -1,6 +1,0 @@
-{
-  "summary":  "Plano de implementação para corrigir a lentidão e a baixa resolução do carrossel, restaurando o deslize nativo a 120fps no compositor da GPU e imagens de alta nitidez TMDB w780.",
-  "updatedAt":  "2026-10-23T23:36:03.898109997Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}

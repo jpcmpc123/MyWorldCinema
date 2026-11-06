@@ -25,6 +25,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, username: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
+  resetPassword: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -219,6 +220,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: error ? error.message : null };
   }, []);
 
+  const resetPassword = useCallback(async (email: string) => {
+    if (!supabase) return { error: 'Supabase is not configured.' };
+    const redirectTo =
+      window.location.origin +
+      (window.location.pathname.match(/^\/[^/]*\//)?.[0] ?? '/') +
+      'settings';
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    return { error: error ? error.message : null };
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       if (supabase) {
@@ -242,9 +253,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signUp,
       signIn,
       signInWithGoogle,
+      resetPassword,
       signOut,
     }),
-    [session, profile, loading, signUp, signIn, signInWithGoogle, signOut]
+    [session, profile, loading, signUp, signIn, signInWithGoogle, resetPassword, signOut]
   );
 
   // Bloqueia o primeiro render até a sessão do Supabase ser resolvida:

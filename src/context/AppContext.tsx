@@ -221,34 +221,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     release_date?: string;
   } | null>(null);
 
-  // Sync with LocalStorage (agendado em idle para não travar scroll/toques)
+  // Sync with LocalStorage (apenas quando autenticado, evitando estado fantasma sem login)
   useEffect(() => {
+    if (!isAuthenticated) return;
     scheduleStorageWrite('lb_user', user);
-  }, [user]);
+  }, [user, isAuthenticated]);
   useEffect(() => {
+    if (!isAuthenticated) return;
     scheduleStorageWrite('lb_logs', logs);
-  }, [logs]);
+  }, [logs, isAuthenticated]);
   useEffect(() => {
+    if (!isAuthenticated) return;
     scheduleStorageWrite('lb_watchlist', watchlist);
-  }, [watchlist]);
+  }, [watchlist, isAuthenticated]);
   useEffect(() => {
+    if (!isAuthenticated) return;
     scheduleStorageWrite('lb_watched', watchedMovieIds);
-  }, [watchedMovieIds]);
+  }, [watchedMovieIds, isAuthenticated]);
   useEffect(() => {
+    if (!isAuthenticated) return;
     scheduleStorageWrite('lb_likes', likedMovieIds);
-  }, [likedMovieIds]);
+  }, [likedMovieIds, isAuthenticated]);
   useEffect(() => {
+    if (!isAuthenticated) return;
     scheduleStorageWrite('lb_ratings', ratingsMap);
-  }, [ratingsMap]);
+  }, [ratingsMap, isAuthenticated]);
   useEffect(() => {
+    if (!isAuthenticated) return;
     scheduleStorageWrite('lb_top4', top4MovieIds);
-  }, [top4MovieIds]);
+  }, [top4MovieIds, isAuthenticated]);
   useEffect(() => {
+    if (!isAuthenticated) return;
     scheduleStorageWrite('lb_lists', lists);
-  }, [lists]);
+  }, [lists, isAuthenticated]);
   useEffect(() => {
+    if (!isAuthenticated) return;
     scheduleStorageWrite('lb_reviews', reviews);
-  }, [reviews]);
+  }, [reviews, isAuthenticated]);
   useEffect(() => {
     if (isAuthenticated) return;
     scheduleStorageWrite('lb_movie_overrides', movieOverrides);
@@ -453,6 +462,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleWatchlist = useCallback(
     (movie: MovieShort) => {
+      if (!isAuthenticated || !authUser) {
+        window.dispatchEvent(new CustomEvent('mw:require-auth'));
+        return;
+      }
       const exists = watchlistSetRef.current.has(movie.id);
       rememberMovie(movie);
       setWatchlist((prev) => {
@@ -462,12 +475,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return [movie, ...prev];
       });
-      if (isAuthenticated && authUser) {
-        if (exists) {
-          void persistWatchlistRemoveRemote(authUser.id, movie.id);
-        } else {
-          void persistWatchlistAddRemote(authUser.id, movie, movieMetaRef.current);
-        }
+      if (exists) {
+        void persistWatchlistRemoveRemote(authUser.id, movie.id);
+      } else {
+        void persistWatchlistAddRemote(authUser.id, movie, movieMetaRef.current);
       }
     },
     [isAuthenticated, authUser, rememberMovie],
@@ -479,18 +490,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleWatched = useCallback(
     (movieId: number) => {
-      const wasWatched = watchedSetRef.current.has(movieId);
-      setWatchedMovieIds((prev) =>
-        prev.includes(movieId) ? prev.filter((id) => id !== movieId) : [movieId, ...prev],
-      );
-      if (isAuthenticated && authUser) {
-        void persistQuickLogRemote(
-          authUser.id,
-          movieId,
-          { watched: !wasWatched },
-          movieMetaRef.current,
-        );
+      if (!isAuthenticated || !authUser) {
+        window.dispatchEvent(new CustomEvent('mw:require-auth'));
+        return;
       }
+      const wasWatched = watchedSetRef.current.has(movieId);
+      if (wasWatched) {
+        setWatchedMovieIds((prev) => prev.filter((id) => id !== movieId));
+        setLikedMovieIds((prev) => prev.filter((id) => id !== movieId));
+        setRatingsMap((prev) => {
+          const { [movieId]: _removed, ...rest } = prev;
+          return rest;
+        });
+        setLogs((prev) => prev.filter((l) => l.movieId !== movieId));
+        setReviews((prev) => prev.filter((r) => r.movieId !== movieId));
+      } else {
+        setWatchedMovieIds((prev) => (prev.includes(movieId) ? prev : [movieId, ...prev]));
+      }
+      void persistQuickLogRemote(
+        authUser.id,
+        movieId,
+        { watched: !wasWatched },
+        movieMetaRef.current,
+      );
     },
     [isAuthenticated, authUser],
   );
@@ -501,18 +523,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleLikeMovie = useCallback(
     (movieId: number) => {
-      const wasLiked = likedSetRef.current.has(movieId);
-      setLikedMovieIds((prev) =>
-        prev.includes(movieId) ? prev.filter((id) => id !== movieId) : [movieId, ...prev],
-      );
-      if (isAuthenticated && authUser && watchedSetRef.current.has(movieId)) {
-        void persistQuickLogRemote(
-          authUser.id,
-          movieId,
-          { liked: !wasLiked },
-          movieMetaRef.current,
-        );
+      if (!isAuthenticated || !authUser) {
+        window.dispatchEvent(new CustomEvent('mw:require-auth'));
+        return;
       }
+      const wasLiked = likedSetRef.current.has(movieId);
+      const nextLiked = !wasLiked;
+      setLikedMovieIds((prev) =>
+        nextLiked ? (prev.includes(movieId) ? prev : [movieId, ...prev]) : prev.filter((id) => id !== movieId),
+      );
+      if (nextLiked && !watchedSetRef.current.has(movieId)) {
+        setWatchedMovieIds((prev) => [movieId, ...prev]);
+      }
+      void persistQuickLogRemote(
+        authUser.id,
+        movieId,
+        { liked: nextLiked },
+        movieMetaRef.current,
+      );
     },
     [isAuthenticated, authUser],
   );
@@ -523,23 +551,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setMovieRating = useCallback(
     (movieId: number, rating: number) => {
+      if (!isAuthenticated || !authUser) {
+        window.dispatchEvent(new CustomEvent('mw:require-auth'));
+        return;
+      }
       if (rating <= 0) {
         setRatingsMap((prev) => {
           const { [movieId]: _removed, ...rest } = prev;
           return rest;
         });
-        if (isAuthenticated && authUser) {
-          void persistQuickLogRemote(authUser.id, movieId, { rating: 0 }, movieMetaRef.current);
-        }
+        void persistQuickLogRemote(authUser.id, movieId, { rating: 0 }, movieMetaRef.current);
         return;
       }
       setRatingsMap((prev) => ({ ...prev, [movieId]: rating }));
       if (!watchedSetRef.current.has(movieId)) {
         setWatchedMovieIds((prev) => [movieId, ...prev]);
       }
-      if (isAuthenticated && authUser) {
-        void persistQuickLogRemote(authUser.id, movieId, { rating }, movieMetaRef.current);
-      }
+      void persistQuickLogRemote(authUser.id, movieId, { rating }, movieMetaRef.current);
     },
     [isAuthenticated, authUser],
   );
@@ -625,10 +653,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [],
   );
 
-  const openLogModal = useCallback((movie?: MovieShort) => {
-    setSelectedMovieForLog(movie || null);
-    setIsLogModalOpen(true);
-  }, []);
+  const openLogModal = useCallback(
+    (movie?: MovieShort) => {
+      if (!isAuthenticated) {
+        window.dispatchEvent(new CustomEvent('mw:require-auth'));
+        return;
+      }
+      setSelectedMovieForLog(movie || null);
+      setIsLogModalOpen(true);
+    },
+    [isAuthenticated],
+  );
 
   const closeLogModal = useCallback(() => {
     setIsLogModalOpen(false);

@@ -34,3 +34,8 @@ page.html
 .freebuff/
 .tmp-probe/
 .tmp-dev/
+.aistudio/
+public/assets/aistudio/
+backup-cores-originais/
+CONTA_DE_TESTE.md
+
