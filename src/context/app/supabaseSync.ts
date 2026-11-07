@@ -198,7 +198,8 @@ export async function persistQuickLogRemote(
         .from('film_logs')
         .delete()
         .eq('user_id', userId)
-        .eq('film_id', filmId);
+        .eq('film_id', filmId)
+        .is('watched_on', null);
       if (error) console.error('Supabase film_logs unwatch delete error:', error);
       return;
     }
@@ -207,9 +208,10 @@ export async function persistQuickLogRemote(
 
     const { data: rows } = await supabase
       .from('film_logs')
-      .select('id, rating, liked, review_text, watched_on')
+      .select('id, rating, liked, review_text')
       .eq('user_id', userId)
       .eq('film_id', filmId)
+      .is('watched_on', null)
       .order('created_at', { ascending: false })
       .limit(1);
 

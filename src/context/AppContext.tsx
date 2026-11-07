@@ -496,14 +496,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       const wasWatched = watchedSetRef.current.has(movieId);
       if (wasWatched) {
-        setWatchedMovieIds((prev) => prev.filter((id) => id !== movieId));
-        setLikedMovieIds((prev) => prev.filter((id) => id !== movieId));
-        setRatingsMap((prev) => {
-          const { [movieId]: _removed, ...rest } = prev;
-          return rest;
-        });
-        setLogs((prev) => prev.filter((l) => l.movieId !== movieId));
-        setReviews((prev) => prev.filter((r) => r.movieId !== movieId));
+        const diaryEntries = logsRef.current.filter(
+          (l) => l.movieId === movieId && Boolean(l.watchedDate),
+        );
+        if (diaryEntries.length === 0) {
+          setWatchedMovieIds((prev) => prev.filter((id) => id !== movieId));
+          setLikedMovieIds((prev) => prev.filter((id) => id !== movieId));
+          setRatingsMap((prev) => {
+            const { [movieId]: _removed, ...rest } = prev;
+            return rest;
+          });
+        } else {
+          const anyDiaryLiked = diaryEntries.some((l) => l.liked);
+          if (!anyDiaryLiked) {
+            setLikedMovieIds((prev) => prev.filter((id) => id !== movieId));
+          }
+          const latestDiaryRated = diaryEntries.find((l) => l.rating > 0);
+          setRatingsMap((prev) => {
+            if (latestDiaryRated) return { ...prev, [movieId]: latestDiaryRated.rating };
+            const { [movieId]: _removed, ...rest } = prev;
+            return rest;
+          });
+        }
       } else {
         setWatchedMovieIds((prev) => (prev.includes(movieId) ? prev : [movieId, ...prev]));
       }
