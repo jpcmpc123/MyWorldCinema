@@ -85,11 +85,11 @@ export function useProfileByUsername(
             movieYear: row.film_year ? String(row.film_year) : '',
             watchedDate: row.watched_on ?? '',
             rating: row.rating ?? 0,
-            isRewatch: false,
+            isRewatch: Boolean(row.is_rewatch),
             liked: Boolean(row.liked),
             reviewText: row.review_text ?? '',
             containsSpoilers: Boolean(row.contains_spoilers),
-            tags: [],
+            tags: Array.isArray(row.tags) ? row.tags : [],
             createdAt: row.created_at,
           }))
         );

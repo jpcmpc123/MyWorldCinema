@@ -30,10 +30,15 @@ import {
 import {
   deleteRemoteLog,
   fetchRemoteAccountSnapshot,
+  generateUuid,
+  isUuid,
+  persistCreateListRemote,
+  persistDeleteListRemote,
   persistFullLogRemote,
   persistMovieOverrideRemote,
   persistQuickLogRemote,
   persistTop4Remote,
+  persistUpdateListRemote,
   persistWatchlistAddRemote,
   persistWatchlistRemoveRemote,
 } from './app/supabaseSync';
@@ -309,6 +314,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setRatingsMap({});
       setReviews([]);
       setWatchlist([]);
+      setLists([]);
       setTop4MovieIds([0, 0, 0, 0]);
       setMovieOverrides({});
     }
@@ -325,6 +331,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setReviews(snapshot.logsData.reviews);
       }
       if (snapshot.watchlist) setWatchlist(snapshot.watchlist);
+      if (snapshot.lists) {
+        const cachedLists = readLocalJson<MovieList[]>('lb_lists', [], Array.isArray);
+        const cachedById = new Map(cachedLists.map((l) => [l.id, l]));
+        const mergedLists = snapshot.lists.map((remoteList) => {
+          const cached = cachedById.get(remoteList.id);
+          if (!cached) return remoteList;
+          const cachedNotesByFilm = new Map(
+            cached.movies.map((m) => [m.id, { notes: m.notes, director: m.director }]),
+          );
+          return {
+            ...remoteList,
+            isRanked: cached.isRanked,
+            tags: cached.tags && cached.tags.length > 0 ? cached.tags : remoteList.tags,
+            likesCount: cached.likesCount || remoteList.likesCount,
+            movies: remoteList.movies.map((m) => {
+              const extra = cachedNotesByFilm.get(m.id);
+              return extra ? { ...m, notes: extra.notes, director: extra.director } : m;
+            }),
+          };
+        });
+        setLists(mergedLists);
+      }
     };
 
     if (isInitialSync) {
@@ -605,9 +633,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newList: Omit<MovieList, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>,
     ): string => {
       const u = userRef.current;
+      const listId = generateUuid();
       const list: MovieList = {
         ...newList,
-        id: `list-${Date.now()}`,
+        id: listId,
         author: {
           username: u.username,
           displayName: u.displayName,
@@ -618,9 +647,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createdAt: new Date().toISOString(),
       };
       setLists((prev) => [list, ...prev]);
+
+      if (isAuthenticated && authUser) {
+        void persistCreateListRemote(authUser.id, list);
+      }
+
       return list.id;
     },
-    [],
+    [isAuthenticated, authUser],
   );
 
   const updateList = useCallback(
@@ -638,13 +672,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : l,
         ),
       );
+
+      if (isAuthenticated && authUser && isUuid(listId)) {
+        void persistUpdateListRemote(authUser.id, listId, updates);
+      }
     },
-    [],
+    [isAuthenticated, authUser],
   );
 
-  const deleteList = useCallback((listId: string) => {
-    setLists((prev) => prev.filter((l) => l.id !== listId));
-  }, []);
+  const deleteList = useCallback(
+    (listId: string) => {
+      setLists((prev) => prev.filter((l) => l.id !== listId));
+
+      if (isAuthenticated && authUser && isUuid(listId)) {
+        void persistDeleteListRemote(authUser.id, listId);
+      }
+    },
+    [isAuthenticated, authUser],
+  );
 
   const addReview = useCallback(
     (newReview: Omit<Review, 'id' | 'createdAt' | 'author' | 'likesCount' | 'commentsCount'>) => {

@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Send, RotateCcw, Sparkles, Star, ChevronRight, Compass, Wand2 } from 'lucide-react';
 import { PosterCard } from '../components/PosterCard';
 import { useLanguage } from '../i18n/LanguageContext';
+import { apiUrl } from '../utils/apiBase';
 import {
   COMPILED_CONTEXT_RULES,
   COMPILED_DECADE_RULES,
@@ -249,40 +250,31 @@ export const CineIaPage: React.FC = () => {
       // Se estamos no modo Adivinhar (ou a pista Akinator casou) mas a API não trouxe o objeto guessed_movie,
       // busca os dados completos do filme identificado + 3 similares para renderizar o Card de Destaque
       if (isGuessing && !guessedMovie && guessedTitle) {
-        const tmdbKey = (import.meta.env.VITE_TMDB_API_KEY as string | undefined)?.trim();
-        const tmdbToken = (import.meta.env.VITE_TMDB_ACCESS_TOKEN as string | undefined)?.trim();
-        const authHeaders: Record<string, string> = tmdbToken
-          ? { Authorization: `Bearer ${tmdbToken}`, accept: 'application/json' }
-          : { accept: 'application/json' };
-        const keyParam = tmdbKey ? `&api_key=${encodeURIComponent(tmdbKey)}` : '';
-
-        if (tmdbKey || tmdbToken) {
-          const searchRes = await fetch(
-            `https://api.themoviedb.org/3/search/movie?language=${lang}&query=${encodeURIComponent(
-              guessedTitle,
-            )}${keyParam}`,
-            { headers: authHeaders },
+        const searchRes = await fetch(
+          apiUrl(
+            `/api/tmdb/search/movie?language=${lang}&query=${encodeURIComponent(guessedTitle)}`,
+          ),
+          { headers: { Accept: 'application/json' } },
+        );
+        if (searchRes.ok) {
+          const searchJson = await searchRes.json();
+          const topHit = (searchJson?.results || []).find(
+            (m: any) => m && m.id && m.poster_path,
           );
-          if (searchRes.ok) {
-            const searchJson = await searchRes.json();
-            const topHit = (searchJson?.results || []).find(
-              (m: any) => m && m.id && m.poster_path,
+          if (topHit) {
+            guessedMovie = normalizeApiMovie(topHit);
+            const simRes = await fetch(
+              apiUrl(`/api/tmdb/movie/${topHit.id}/recommendations?language=${lang}&page=1`),
+              { headers: { Accept: 'application/json' } },
             );
-            if (topHit) {
-              guessedMovie = normalizeApiMovie(topHit);
-              const simRes = await fetch(
-                `https://api.themoviedb.org/3/movie/${topHit.id}/recommendations?language=${lang}&page=1${keyParam}`,
-                { headers: authHeaders },
-              );
-              if (simRes.ok) {
-                const simJson = await simRes.json();
-                const simMovies = (simJson?.results || [])
-                  .filter((m: any) => m && m.id && m.poster_path)
-                  .slice(0, 3)
-                  .map(normalizeApiMovie);
-                if (simMovies.length > 0) {
-                  rawMovies = simMovies;
-                }
+            if (simRes.ok) {
+              const simJson = await simRes.json();
+              const simMovies = (simJson?.results || [])
+                .filter((m: any) => m && m.id && m.poster_path)
+                .slice(0, 3)
+                .map(normalizeApiMovie);
+              if (simMovies.length > 0) {
+                rawMovies = simMovies;
               }
             }
           }

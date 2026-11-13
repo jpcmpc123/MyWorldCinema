@@ -20,6 +20,7 @@ import {
   User,
 } from 'lucide-react';
 import { tmdb, type TMDBMovieDetails } from '../services/tmdb';
+import { apiUrl } from '../utils/apiBase';
 import { curatedBackdropCache, curatedPosterCache } from '../services/tmdb/cache';
 import {
   BLOCKED_FAN_AI_IMAGE_PATHS,
@@ -2467,7 +2468,7 @@ function useImdbData(
     (async () => {
       let result: ImdbData | null = null;
       try {
-        const r = await fetch(`/api/imdb?imdbId=${encodeURIComponent(imdbId)}`);
+        const r = await fetch(apiUrl(`/api/imdb?imdbId=${encodeURIComponent(imdbId)}`));
         const contentType = r.headers.get('content-type') || '';
         if (r.ok && contentType.includes('application/json')) {
           const json: ImdbData = await r.json();

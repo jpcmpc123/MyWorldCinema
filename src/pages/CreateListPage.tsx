@@ -51,7 +51,6 @@ export const CreateListPage: React.FC = () => {
   );
   const [tags, setTags] = useState<string[]>(() => existingList?.tags ?? []);
   const [tagInput, setTagInput] = useState('');
-  const [showHtmlHint, setShowHtmlHint] = useState(false);
   const [items, setItems] = useState<SelectedListItem[]>(() =>
     existingList
       ? existingList.movies.map((m) => ({
@@ -464,6 +463,7 @@ export const CreateListPage: React.FC = () => {
               <div className="px-4 pt-3.5 pb-1">
                 <input
                   type="text"
+                  maxLength={150}
                   placeholder={t('create_list_name_mobile_ph')}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
@@ -475,6 +475,7 @@ export const CreateListPage: React.FC = () => {
               <div className="px-4 py-3 border-b border-white/10">
                 <textarea
                   rows={2}
+                  maxLength={5000}
                   placeholder={t('create_list_desc_mobile_ph')}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -916,6 +917,7 @@ export const CreateListPage: React.FC = () => {
                 </label>
                 <input
                   type="text"
+                  maxLength={150}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="w-full h-[36px] bg-[#2c3440] border border-[#384250] rounded-[3px] px-3 text-[14px] text-[#ccddee] shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)] focus:bg-white focus:text-[#14181c] focus:border-white focus:outline-none transition-colors"
@@ -1023,31 +1025,11 @@ export const CreateListPage: React.FC = () => {
 
             {/* Right Column: Description */}
             <div>
-              <div className="flex items-baseline justify-between mb-1.5">
-                <label className="text-[13px] font-normal text-white">
-                  {t('create_list_description')}
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowHtmlHint((v) => !v)}
-                  className="text-[11px] text-[#667788] hover:text-[#99aabb] transition-colors cursor-pointer"
-                >
-                  {t('create_list_show_html')}
-                </button>
-              </div>
-              {showHtmlHint && (
-                <div className="mb-2 p-2.5 rounded-[3px] bg-[#202830] border border-[#303844] text-[11px] text-[#8899aa] leading-relaxed">
-                  {t('create_list_html_hint_prefix')}{' '}
-                  <code className="text-white">&lt;b&gt;</code>,{' '}
-                  <code className="text-white">&lt;i&gt;</code>,{' '}
-                  <code className="text-white">&lt;a href=&quot;...&quot;&gt;</code>,{' '}
-                  <code className="text-white">&lt;blockquote&gt;</code>{' '}
-                  {t('create_list_html_hint_and')}{' '}
-                  <code className="text-white">&lt;ul&gt;/&lt;li&gt;</code>{' '}
-                  {t('create_list_html_hint_suffix')}
-                </div>
-              )}
+              <label className="block text-[13px] font-normal text-white mb-1.5">
+                {t('create_list_description')}
+              </label>
               <textarea
+                maxLength={5000}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full h-[222px] bg-[#2c3440] border border-[#384250] rounded-[3px] p-3 text-[13px] text-[#ccddee] shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)] focus:bg-white focus:text-[#14181c] focus:border-white focus:outline-none resize-y transition-colors"

@@ -3,6 +3,7 @@ import { X, ShieldAlert, Sparkles } from 'lucide-react';
 import { tmdb, type TMDBImage } from '../services/tmdb';
 import { isAiGeneratedDimension, isAiServiceUrl } from '../services/tmdb/posterFilter';
 import { useLanguage } from '../i18n/LanguageContext';
+import { isSafeHttpUrl } from '../utils/urlValidation';
 
 interface ImagePickerModalProps {
   mode: 'poster' | 'backdrop';
@@ -74,6 +75,15 @@ export const ImagePickerModal: React.FC<ImagePickerModalProps> = ({
     const url = urlInput.trim();
     if (!url || validatingUrl) return;
     setUrlError(null);
+
+    if (!isSafeHttpUrl(url)) {
+      setUrlError(
+        isPt
+          ? 'URL inválida: use apenas endereços iniciados com http:// ou https://.'
+          : 'Invalid URL: only http:// and https:// URLs are allowed.',
+      );
+      return;
+    }
 
     if (isAiServiceUrl(url)) {
       setUrlError(

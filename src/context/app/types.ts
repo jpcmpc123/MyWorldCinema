@@ -117,6 +117,8 @@ export interface FilmLogRow {
   liked: boolean;
   review_text: string | null;
   contains_spoilers: boolean;
+  tags?: string[] | null;
+  is_rewatch?: boolean | null;
   created_at: string;
 }
 
@@ -126,6 +128,26 @@ export interface WatchlistRow {
   film_title: string;
   film_poster: string | null;
   film_year: number | null;
+}
+
+export interface ListItemRow {
+  list_id?: string;
+  film_id: number;
+  film_title: string;
+  film_poster: string | null;
+  film_year: number | null;
+  position: number;
+}
+
+export interface ListRow {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  is_public: boolean;
+  created_at: string;
+  list_items?: ListItemRow[] | null;
+  list_comments?: { count: number }[] | null;
 }
 
 export type MovieMetaCache = Record<
@@ -169,10 +191,10 @@ export const rowToLogEntry = (row: FilmLogRow): LogEntry => ({
   movieYear: row.film_year ? String(row.film_year) : '',
   watchedDate: row.watched_on ?? '',
   rating: row.rating ?? 0,
-  isRewatch: false,
+  isRewatch: Boolean(row.is_rewatch),
   liked: row.liked,
   reviewText: row.review_text ?? '',
   containsSpoilers: row.contains_spoilers,
-  tags: [],
+  tags: Array.isArray(row.tags) ? row.tags : [],
   createdAt: row.created_at,
 });

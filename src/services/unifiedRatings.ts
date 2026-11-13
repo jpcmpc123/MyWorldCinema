@@ -1,14 +1,8 @@
 // Serviço de Nota Unificada (Letterboxd, IMDb, Metacritic, Rotten Tomatoes e TMDb)
-// Consulta MDBList API (principal) com fallback automático para OMDb API
-// e cache persistente em localStorage (notas_unificadas_v1_${tmdbId}).
+// Consulta o proxy /api/ratings (MDBList + fallback OMDb no servidor)
+// e mantém cache persistente em localStorage (notas_unificadas_v1_${tmdbId}).
 
-// ATENÇÃO: nunca recoloque chaves reais como fallback aqui — use apenas
-// variáveis de ambiente (.env local ou secrets de CI).
-const MDBLIST_API_KEY =
-  (import.meta.env.VITE_MDBLIST_API_KEY as string | undefined)?.trim() || '';
-
-const OMDB_API_KEY =
-  (import.meta.env.VITE_OMDB_API_KEY as string | undefined)?.trim() || '';
+import { apiUrl } from '../utils/apiBase';
 
 export type RatingPlatformSource =
   | 'letterboxd'
@@ -250,6 +244,12 @@ interface OMDbResponse {
   Ratings?: { Source?: string; Value?: string }[];
 }
 
+interface ProxyRatingsResponse {
+  mdblist?: MDBListResponse | null;
+  omdb?: OMDbResponse | null;
+  resolvedImdbId?: string | null;
+}
+
 export async function fetchUnifiedRatings(options: {
   tmdbId: number;
   isTv?: boolean;
@@ -269,192 +269,183 @@ export async function fetchUnifiedRatings(options: {
   const mediaType: 'movie' | 'tv' = isTv ? 'tv' : 'movie';
 
   const task = (async (): Promise<UnifiedRatingsPayload | null> => {
-    let resolvedImdbId = imdbId?.trim() || '';
     const mdbItemsMap = new Map<RatingPlatformSource, PlatformRatingItem>();
 
-    // 1. Tenta MDBList API (Principal) se a chave estiver configurada
-    if (MDBLIST_API_KEY) {
-      try {
-        const endpointType = isTv ? 'show' : 'movie';
-        const mdbUrl = `https://api.mdblist.com/tmdb/${endpointType}/${tmdbId}?apikey=${encodeURIComponent(
-          MDBLIST_API_KEY,
-        )}`;
-        const res = await fetch(mdbUrl);
-        if (res.ok) {
-          const data = (await res.json()) as MDBListResponse;
-          if (!resolvedImdbId && data?.imdbid && /^tt\d+/i.test(data.imdbid)) {
-            resolvedImdbId = data.imdbid.trim();
+    // Se o TMDb local já tem nota válida, prepara a fonte `tmdb`
+    const appendLocalTmdbFallback = (targetMap: Map<RatingPlatformSource, PlatformRatingItem>) => {
+      if (!targetMap.has('tmdb') && tmdbVoteAverage && tmdbVoteAverage > 0) {
+        const tmdbScore = Math.max(0, Math.min(100, Math.round(tmdbVoteAverage * 10)));
+        const cfg = SOURCE_CONFIG.tmdb;
+        targetMap.set('tmdb', {
+          source: 'tmdb',
+          label: cfg.label,
+          shortLabel: cfg.shortLabel,
+          score: tmdbScore,
+          rawValue: Number(tmdbVoteAverage.toFixed(1)),
+          displayValue: `${tmdbScore}%`,
+          weight: cfg.weight,
+        });
+      }
+    };
+
+    try {
+      const params = new URLSearchParams({
+        tmdbId: String(tmdbId),
+        type: mediaType,
+      });
+      const trimmedImdb = imdbId?.trim() || '';
+      if (trimmedImdb && /^tt\d+$/i.test(trimmedImdb)) {
+        params.set('imdbId', trimmedImdb);
+      }
+
+      const res = await fetch(apiUrl(`/api/ratings?${params.toString()}`), {
+        headers: { Accept: 'application/json' },
+      });
+
+      if (res.ok) {
+        const proxyData = (await res.json()) as ProxyRatingsResponse;
+        const mdbData = proxyData?.mdblist;
+
+        if (mdbData && Array.isArray(mdbData.ratings)) {
+          for (const entry of mdbData.ratings) {
+            const rawSource = (entry?.source || '').toLowerCase().trim() as RatingPlatformSource;
+            if (!(rawSource in SOURCE_CONFIG)) continue;
+
+            const cfg = SOURCE_CONFIG[rawSource];
+            const score = normalizeScore100(rawSource, entry.score, entry.value);
+            if (score <= 0) continue;
+
+            const rawValue = entry.value ?? score;
+            const displayValue = formatPlatformDisplayValue(rawSource, entry.value, score);
+
+            mdbItemsMap.set(rawSource, {
+              source: rawSource,
+              label: cfg.label,
+              shortLabel: cfg.shortLabel,
+              score,
+              rawValue,
+              displayValue,
+              weight: cfg.weight,
+            });
           }
+        }
 
-          if (Array.isArray(data?.ratings)) {
-            for (const entry of data.ratings) {
-              const rawSource = (entry?.source || '').toLowerCase().trim() as RatingPlatformSource;
-              if (!(rawSource in SOURCE_CONFIG)) continue;
+        appendLocalTmdbFallback(mdbItemsMap);
 
-              const cfg = SOURCE_CONFIG[rawSource];
-              const score = normalizeScore100(rawSource, entry.score, entry.value);
-              if (score <= 0) continue;
+        const hasExternalFromMdbList = Array.from(mdbItemsMap.keys()).some((k) => k !== 'tmdb');
+        if (hasExternalFromMdbList) {
+          const payload = buildPayloadFromSources(
+            tmdbId,
+            mediaType,
+            Array.from(mdbItemsMap.values()),
+            'mdblist',
+          );
+          if (payload) {
+            saveCachedUnifiedRatings(tmdbId, isTv, payload);
+            return payload;
+          }
+        }
 
-              const rawValue = entry.value ?? score;
-              const displayValue = formatPlatformDisplayValue(rawSource, entry.value, score);
+        const omdb = proxyData?.omdb;
+        if (omdb && omdb.Response !== 'False') {
+          const omdbItemsMap = new Map<RatingPlatformSource, PlatformRatingItem>(mdbItemsMap);
 
-              mdbItemsMap.set(rawSource, {
-                source: rawSource,
+          if (omdb.imdbRating && omdb.imdbRating !== 'N/A') {
+            const imdbVal = parseFloat(omdb.imdbRating);
+            if (!Number.isNaN(imdbVal) && imdbVal > 0) {
+              const score = Math.max(0, Math.min(100, Math.round(imdbVal * 10)));
+              const cfg = SOURCE_CONFIG.imdb;
+              omdbItemsMap.set('imdb', {
+                source: 'imdb',
                 label: cfg.label,
                 shortLabel: cfg.shortLabel,
                 score,
-                rawValue,
-                displayValue,
+                rawValue: imdbVal,
+                displayValue: imdbVal.toFixed(1),
                 weight: cfg.weight,
               });
             }
           }
-        }
-      } catch {
-        /* Falha de rede ou CORS na MDBList -> segue para fallback OMDb */
-      }
-    }
 
-    // Se o TMDb local já tem nota válida e a MDBList não trouxe `tmdb`, complementa a fonte `tmdb`
-    if (!mdbItemsMap.has('tmdb') && tmdbVoteAverage && tmdbVoteAverage > 0) {
-      const tmdbScore = Math.max(0, Math.min(100, Math.round(tmdbVoteAverage * 10)));
-      const cfg = SOURCE_CONFIG.tmdb;
-      mdbItemsMap.set('tmdb', {
-        source: 'tmdb',
-        label: cfg.label,
-        shortLabel: cfg.shortLabel,
-        score: tmdbScore,
-        rawValue: Number(tmdbVoteAverage.toFixed(1)),
-        displayValue: `${tmdbScore}%`,
-        weight: cfg.weight,
-      });
-    }
-
-    // Verifica se a MDBList retornou ao menos uma fonte externa (além do próprio TMDb)
-    const hasExternalFromMdbList = Array.from(mdbItemsMap.keys()).some((k) => k !== 'tmdb');
-    if (hasExternalFromMdbList) {
-      const payload = buildPayloadFromSources(
-        tmdbId,
-        mediaType,
-        Array.from(mdbItemsMap.values()),
-        'mdblist',
-      );
-      if (payload) {
-        saveCachedUnifiedRatings(tmdbId, isTv, payload);
-        return payload;
-      }
-    }
-
-    // 2. Fallback OMDb API (se MDBList falhou ou veio vazia de notas externas e OMDB_API_KEY estiver configurada)
-    if (OMDB_API_KEY && resolvedImdbId && /^tt\d+/i.test(resolvedImdbId)) {
-      try {
-        const omdbUrl = `https://www.omdbapi.com/?i=${encodeURIComponent(
-          resolvedImdbId,
-        )}&apikey=${encodeURIComponent(OMDB_API_KEY)}`;
-        const res = await fetch(omdbUrl);
-        if (res.ok) {
-          const omdb = (await res.json()) as OMDbResponse;
-          if (omdb && omdb.Response !== 'False') {
-            const omdbItemsMap = new Map<RatingPlatformSource, PlatformRatingItem>(mdbItemsMap);
-
-            // IMDb (imdbRating * 10)
-            if (omdb.imdbRating && omdb.imdbRating !== 'N/A') {
-              const imdbVal = parseFloat(omdb.imdbRating);
-              if (!Number.isNaN(imdbVal) && imdbVal > 0) {
-                const score = Math.max(0, Math.min(100, Math.round(imdbVal * 10)));
-                const cfg = SOURCE_CONFIG.imdb;
-                omdbItemsMap.set('imdb', {
-                  source: 'imdb',
-                  label: cfg.label,
-                  shortLabel: cfg.shortLabel,
-                  score,
-                  rawValue: imdbVal,
-                  displayValue: imdbVal.toFixed(1),
-                  weight: cfg.weight,
-                });
-              }
+          if (omdb.Metascore && omdb.Metascore !== 'N/A') {
+            const metaVal = parseInt(omdb.Metascore, 10);
+            if (!Number.isNaN(metaVal) && metaVal > 0) {
+              const score = Math.max(0, Math.min(100, metaVal));
+              const cfg = SOURCE_CONFIG.metacritic;
+              omdbItemsMap.set('metacritic', {
+                source: 'metacritic',
+                label: cfg.label,
+                shortLabel: cfg.shortLabel,
+                score,
+                rawValue: metaVal,
+                displayValue: String(metaVal),
+                weight: cfg.weight,
+              });
             }
+          }
 
-            // Metacritic (Metascore)
-            if (omdb.Metascore && omdb.Metascore !== 'N/A') {
-              const metaVal = parseInt(omdb.Metascore, 10);
-              if (!Number.isNaN(metaVal) && metaVal > 0) {
-                const score = Math.max(0, Math.min(100, metaVal));
-                const cfg = SOURCE_CONFIG.metacritic;
-                omdbItemsMap.set('metacritic', {
-                  source: 'metacritic',
-                  label: cfg.label,
-                  shortLabel: cfg.shortLabel,
-                  score,
-                  rawValue: metaVal,
-                  displayValue: String(metaVal),
-                  weight: cfg.weight,
-                });
-              }
-            }
-
-            // Rotten Tomatoes (Ratings array)
-            if (Array.isArray(omdb.Ratings)) {
-              for (const r of omdb.Ratings) {
-                const srcName = (r.Source || '').toLowerCase();
-                const valStr = (r.Value || '').trim();
-                if (srcName.includes('rotten tomatoes') && valStr) {
-                  const rtVal = parseInt(valStr.replace('%', ''), 10);
-                  if (!Number.isNaN(rtVal) && rtVal > 0) {
-                    const score = Math.max(0, Math.min(100, rtVal));
-                    const cfg = SOURCE_CONFIG.tomatoes;
-                    omdbItemsMap.set('tomatoes', {
-                      source: 'tomatoes',
-                      label: cfg.label,
-                      shortLabel: cfg.shortLabel,
-                      score,
-                      rawValue: `${rtVal}%`,
-                      displayValue: `${rtVal}%`,
-                      weight: cfg.weight,
-                    });
-                  }
-                } else if (
-                  srcName.includes('metacritic') &&
-                  !omdbItemsMap.has('metacritic') &&
-                  valStr
-                ) {
-                  const metaVal = parseInt(valStr.split('/')[0], 10);
-                  if (!Number.isNaN(metaVal) && metaVal > 0) {
-                    const score = Math.max(0, Math.min(100, metaVal));
-                    const cfg = SOURCE_CONFIG.metacritic;
-                    omdbItemsMap.set('metacritic', {
-                      source: 'metacritic',
-                      label: cfg.label,
-                      shortLabel: cfg.shortLabel,
-                      score,
-                      rawValue: metaVal,
-                      displayValue: String(metaVal),
-                      weight: cfg.weight,
-                    });
-                  }
+          if (Array.isArray(omdb.Ratings)) {
+            for (const r of omdb.Ratings) {
+              const srcName = (r.Source || '').toLowerCase();
+              const valStr = (r.Value || '').trim();
+              if (srcName.includes('rotten tomatoes') && valStr) {
+                const rtVal = parseInt(valStr.replace('%', ''), 10);
+                if (!Number.isNaN(rtVal) && rtVal > 0) {
+                  const score = Math.max(0, Math.min(100, rtVal));
+                  const cfg = SOURCE_CONFIG.tomatoes;
+                  omdbItemsMap.set('tomatoes', {
+                    source: 'tomatoes',
+                    label: cfg.label,
+                    shortLabel: cfg.shortLabel,
+                    score,
+                    rawValue: `${rtVal}%`,
+                    displayValue: `${rtVal}%`,
+                    weight: cfg.weight,
+                  });
+                }
+              } else if (
+                srcName.includes('metacritic') &&
+                !omdbItemsMap.has('metacritic') &&
+                valStr
+              ) {
+                const metaVal = parseInt(valStr.split('/')[0], 10);
+                if (!Number.isNaN(metaVal) && metaVal > 0) {
+                  const score = Math.max(0, Math.min(100, metaVal));
+                  const cfg = SOURCE_CONFIG.metacritic;
+                  omdbItemsMap.set('metacritic', {
+                    source: 'metacritic',
+                    label: cfg.label,
+                    shortLabel: cfg.shortLabel,
+                    score,
+                    rawValue: metaVal,
+                    displayValue: String(metaVal),
+                    weight: cfg.weight,
+                  });
                 }
               }
             }
+          }
 
-            const hasExternalFromOmdb = Array.from(omdbItemsMap.keys()).some((k) => k !== 'tmdb');
-            if (hasExternalFromOmdb) {
-              const payload = buildPayloadFromSources(
-                tmdbId,
-                mediaType,
-                Array.from(omdbItemsMap.values()),
-                'omdb',
-              );
-              if (payload) {
-                saveCachedUnifiedRatings(tmdbId, isTv, payload);
-                return payload;
-              }
+          const hasExternalFromOmdb = Array.from(omdbItemsMap.keys()).some((k) => k !== 'tmdb');
+          if (hasExternalFromOmdb) {
+            const payload = buildPayloadFromSources(
+              tmdbId,
+              mediaType,
+              Array.from(omdbItemsMap.values()),
+              'omdb',
+            );
+            if (payload) {
+              saveCachedUnifiedRatings(tmdbId, isTv, payload);
+              return payload;
             }
           }
         }
-      } catch {
-        /* Falha na OMDb -> usa contingência TMDb se disponível */
       }
+    } catch {
+      /* Falha de rede no proxy -> usa contingência TMDb se disponível */
     }
+
+    appendLocalTmdbFallback(mdbItemsMap);
 
     // 3. Contingência caso apenas TMDb esteja disponível
     if (mdbItemsMap.size > 0) {

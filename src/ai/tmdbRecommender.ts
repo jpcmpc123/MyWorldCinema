@@ -1,3 +1,4 @@
+import { apiUrl } from '../utils/apiBase';
 import { DECADE_YEAR_MAP, ORIGIN_MAP, TMDB_GENRE_MAP } from './constants';
 import { classifyLaya7D, extractReferenceMovieTitle } from './classifier';
 import { stripAccents } from './rules';
@@ -21,23 +22,13 @@ const inflightRequests = new Map<string, Promise<CacheEntry>>();
 function resolveDefaultTmdbAuth(explicitKey?: string): string {
   if (explicitKey) return explicitKey;
 
-  // Browser / Vite client env
-  try {
-    const metaEnv = (import.meta as any)?.env;
-    if (metaEnv?.VITE_TMDB_ACCESS_TOKEN) return metaEnv.VITE_TMDB_ACCESS_TOKEN;
-    if (metaEnv?.VITE_TMDB_API_KEY) return metaEnv.VITE_TMDB_API_KEY;
-  } catch {
-    // ignore in non-Vite context
-  }
-
-  // Node / Server env fallback
+  // Node / Server env fallback apenas (nunca lê chaves no bundle do navegador)
   const nodeEnv = (globalThis as any)?.process?.env;
   if (nodeEnv) {
     return (
+      nodeEnv.TMDB_ACCESS_TOKEN ||
       nodeEnv.TMDB_API_KEY ||
-      nodeEnv.VITE_TMDB_API_KEY ||
       nodeEnv.TMDB_READ_TOKEN ||
-      nodeEnv.VITE_TMDB_ACCESS_TOKEN ||
       ''
     );
   }
@@ -65,16 +56,24 @@ export function mapTmdbMovieItem(m: any): AiMovie {
   };
 }
 
-async function fetchTmdbJson(url: string, authKey: string): Promise<any> {
+async function fetchTmdbJson(tmdbPath: string, authKey: string): Promise<any> {
+  const normalizedPath = tmdbPath.startsWith('/') ? tmdbPath : `/${tmdbPath}`;
   const headers: Record<string, string> = {
-    accept: 'application/json',
+    Accept: 'application/json',
   };
-  let finalUrl = url;
-  if (authKey.length > 50) {
-    headers.Authorization = `Bearer ${authKey}`;
+
+  let finalUrl: string;
+  if (authKey) {
+    finalUrl = `https://api.themoviedb.org/3${normalizedPath}`;
+    if (authKey.length > 50) {
+      headers.Authorization = `Bearer ${authKey}`;
+    } else {
+      finalUrl += (finalUrl.includes('?') ? '&' : '?') + `api_key=${encodeURIComponent(authKey)}`;
+    }
   } else {
-    finalUrl += (finalUrl.includes('?') ? '&' : '?') + `api_key=${authKey}`;
+    finalUrl = apiUrl(`/api/tmdb${normalizedPath}`);
   }
+
   const res = await fetch(finalUrl, { headers });
   if (!res.ok) throw new Error(`TMDB HTTP ${res.status}`);
   return res.json();
@@ -179,7 +178,7 @@ async function resolvePoolForQuery(
       let topHit = referenceSearchCache.get(refCacheKey);
       if (topHit === undefined) {
         const searchData = await fetchTmdbJson(
-          `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(refTitle)}&language=${lang}`,
+          `/search/movie?query=${encodeURIComponent(refTitle)}&language=${lang}`,
           authKey,
         );
         const found = (searchData?.results || []).find(
@@ -192,7 +191,7 @@ async function resolvePoolForQuery(
       if (topHit?.id) {
         referenceMovieName = topHit.title;
         const simData = await fetchTmdbJson(
-          `https://api.themoviedb.org/3/movie/${topHit.id}/recommendations?language=${lang}&page=1`,
+          `/movie/${topHit.id}/recommendations?language=${lang}&page=1`,
           authKey,
         );
         const simResults = (simData?.results || []).filter((m: any) => m.poster_path);
@@ -223,7 +222,7 @@ async function resolvePoolForQuery(
 
       try {
         const discData = await fetchTmdbJson(
-          `https://api.themoviedb.org/3/discover/movie?${params.toString()}`,
+          `/discover/movie?${params.toString()}`,
           authKey,
         );
         const candidates = sortCandidatesByQuality(

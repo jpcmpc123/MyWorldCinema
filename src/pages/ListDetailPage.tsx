@@ -13,12 +13,18 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { isUuid, waitForPendingList } from '../context/app/supabaseSync';
+import type { ListRow } from '../context/app/types';
+import type { MovieList } from '../types';
 import { tmdb } from '../services/tmdb';
 import { useLanguage } from '../i18n/LanguageContext';
 import { PosterCarouselModal } from '../components/mobile/PosterCarouselModal';
+import { sanitizeAvatarSrc } from '../utils/urlValidation';
 
 interface ListComment {
   id: string;
+  userId?: string;
   username: string;
   avatarUrl: string;
   text: string;
@@ -26,13 +32,19 @@ interface ListComment {
 }
 
 export const ListDetailPage: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isPt = language.startsWith('pt');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { lists, deleteList, user, watchedMovieIds, logs, movieOverrides } = useApp();
-  const { isAuthenticated, profile } = useAuth();
+  const { isAuthenticated, profile, user: authUser } = useAuth();
 
-  const list = lists.find((l) => l.id === id);
+  const localList = lists.find((l) => l.id === id);
+  const [remoteList, setRemoteList] = useState<MovieList | null>(null);
+  const [loadingRemoteList, setLoadingRemoteList] = useState<boolean>(
+    () => !localList && Boolean(supabase && id && isUuid(id)),
+  );
+  const list = localList ?? remoteList;
   const [likedList, setLikedList] = useState(false);
 
   // Mobile states
@@ -45,7 +57,7 @@ export const ListDetailPage: React.FC = () => {
   const [shareCopied, setShareCopied] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  // Comments state (persisted per list in localStorage)
+  // Comments state (Supabase list_comments com localStorage apenas como cache)
   const commentsKey = `mw_list_comments_${id || ''}`;
   const [comments, setComments] = useState<ListComment[]>(() => {
     if (!id) return [];
@@ -57,6 +69,8 @@ export const ListDetailPage: React.FC = () => {
     }
   });
   const [commentText, setCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
 
   const sortMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -70,6 +84,171 @@ export const ListDetailPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
+  // Fallback: carrega lista pública do Supabase caso o link seja aberto diretamente
+  useEffect(() => {
+    if (localList || !supabase || !id || !isUuid(id)) {
+      setLoadingRemoteList(false);
+      return;
+    }
+    const client = supabase;
+    let cancelled = false;
+    setLoadingRemoteList(true);
+
+    (async () => {
+      try {
+        await waitForPendingList(id);
+        const { data, error } = await client
+          .from('lists')
+          .select(
+            'id, user_id, title, description, is_public, created_at, list_items(film_id, film_title, film_poster, film_year, position)',
+          )
+          .eq('id', id)
+          .maybeSingle();
+
+        if (cancelled || error || !data) {
+          if (!cancelled) setRemoteList(null);
+          return;
+        }
+
+        const row = data as ListRow;
+        const { data: authorProf } = await client
+          .from('profiles')
+          .select('username, display_name, avatar_url')
+          .eq('id', row.user_id)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        const sortedItems = [...(row.list_items ?? [])].sort(
+          (a, b) => (a.position ?? 0) - (b.position ?? 0),
+        );
+        setRemoteList({
+          id: row.id,
+          title: row.title,
+          description: row.description ?? '',
+          isRanked: false,
+          isPrivate: !row.is_public,
+          tags: [],
+          movies: sortedItems.map((item) => ({
+            id: item.film_id,
+            title: item.film_title,
+            poster_path: item.film_poster,
+            release_date: item.film_year ? `${item.film_year}-01-01` : '',
+          })),
+          author: {
+            username: authorProf?.username ?? 'usuario',
+            displayName: authorProf?.display_name ?? authorProf?.username ?? 'Usuário',
+            avatarUrl: authorProf?.avatar_url ?? '',
+          },
+          likesCount: 0,
+          commentsCount: 0,
+          createdAt: row.created_at,
+        });
+      } catch (err) {
+        console.error('Erro ao carregar lista do Supabase:', err);
+      } finally {
+        if (!cancelled) setLoadingRemoteList(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, localList]);
+
+  // Carrega comentários reais de public.list_comments e atualiza o cache local
+  useEffect(() => {
+    if (!id) {
+      setComments([]);
+      return;
+    }
+
+    try {
+      const cached = localStorage.getItem(`mw_list_comments_${id}`);
+      setComments(cached ? JSON.parse(cached) : []);
+    } catch {
+      setComments([]);
+    }
+
+    if (!supabase || !isUuid(id)) return;
+    const client = supabase;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await waitForPendingList(id);
+        const { data: rows, error } = await client
+          .from('list_comments')
+          .select('id, list_id, user_id, body, created_at')
+          .eq('list_id', id)
+          .order('created_at', { ascending: true });
+
+        if (cancelled || error || !rows) return;
+
+        const typedRows = rows as {
+          id: string;
+          list_id: string;
+          user_id: string;
+          body: string;
+          created_at: string;
+        }[];
+
+        const userIds = Array.from(new Set(typedRows.map((r) => r.user_id)));
+        const profileMap = new Map<
+          string,
+          { username: string; display_name: string; avatar_url: string }
+        >();
+
+        if (userIds.length > 0) {
+          const { data: profs } = await client
+            .from('profiles')
+            .select('id, username, display_name, avatar_url')
+            .in('id', userIds);
+
+          for (const p of (profs ?? []) as {
+            id: string;
+            username: string;
+            display_name: string | null;
+            avatar_url: string | null;
+          }[]) {
+            profileMap.set(p.id, {
+              username: p.username,
+              display_name: p.display_name || p.username,
+              avatar_url: p.avatar_url || '',
+            });
+          }
+        }
+
+        if (cancelled) return;
+
+        const mapped: ListComment[] = typedRows.map((r) => {
+          const prof = profileMap.get(r.user_id);
+          return {
+            id: r.id,
+            userId: r.user_id,
+            username: prof?.username ?? 'usuario',
+            avatarUrl: prof?.avatar_url ?? '',
+            text: r.body,
+            createdAt: new Date(r.created_at).toLocaleDateString(),
+          };
+        });
+
+        setComments(mapped);
+        try {
+          localStorage.setItem(`mw_list_comments_${id}`, JSON.stringify(mapped));
+        } catch {
+          // ignore cache write failure
+        }
+      } catch (err) {
+        console.error('Erro ao carregar comentários da lista:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
   const currentUsername = isAuthenticated && profile ? profile.username : user.username;
   const currentAvatar =
     isAuthenticated && profile?.avatar_url ? profile.avatar_url : user.avatarUrl;
@@ -79,6 +258,14 @@ export const ListDetailPage: React.FC = () => {
     logs.forEach((l) => s.add(l.movieId));
     return s;
   }, [watchedMovieIds, logs]);
+
+  if (loadingRemoteList) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#00e054] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!list) {
     return (
@@ -95,7 +282,7 @@ export const ListDetailPage: React.FC = () => {
     list.author.username && list.author.username !== 'visitante'
       ? list.author.username
       : currentUsername;
-  const authorAvatar = list.author.avatarUrl || currentAvatar;
+  const authorAvatar = sanitizeAvatarSrc(list.author.avatarUrl || currentAvatar);
   const isAuthor =
     list.author.username === user.username ||
     list.author.username === currentUsername;
@@ -152,25 +339,106 @@ export const ListDetailPage: React.FC = () => {
     }
   };
 
-  const handleAddComment = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = commentText.trim();
-    if (!trimmed) return;
-    const newComment: ListComment = {
-      id: `c-${Date.now()}`,
-      username: currentUsername,
-      avatarUrl: currentAvatar,
-      text: trimmed,
-      createdAt: new Date().toLocaleDateString(),
-    };
-    const next = [...comments, newComment];
-    setComments(next);
-    setCommentText('');
+  const persistCommentsCache = (next: ListComment[]) => {
     try {
       localStorage.setItem(commentsKey, JSON.stringify(next));
     } catch {
       // ignore
     }
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submittingComment) return;
+
+    if (!isAuthenticated || !authUser) {
+      window.dispatchEvent(new CustomEvent('mw:require-auth'));
+      return;
+    }
+
+    const trimmed = commentText.trim();
+    if (!trimmed) return;
+    if (trimmed.length > 2000) {
+      setCommentError(
+        isPt
+          ? 'O comentário deve ter no máximo 2.000 caracteres.'
+          : 'Comment must be 2,000 characters or fewer.',
+      );
+      return;
+    }
+
+    setCommentError(null);
+    setSubmittingComment(true);
+
+    try {
+      if (supabase && isUuid(list.id)) {
+        await waitForPendingList(list.id);
+        const { data, error } = await supabase
+          .from('list_comments')
+          .insert({
+            list_id: list.id,
+            user_id: authUser.id,
+            body: trimmed,
+          })
+          .select('id, created_at')
+          .single();
+
+        if (error) {
+          setCommentError(error.message);
+          return;
+        }
+
+        const persistedComment: ListComment = {
+          id: data.id,
+          userId: authUser.id,
+          username: currentUsername,
+          avatarUrl: currentAvatar,
+          text: trimmed,
+          createdAt: new Date(data.created_at).toLocaleDateString(),
+        };
+        const next = [...comments, persistedComment];
+        setComments(next);
+        setCommentText('');
+        persistCommentsCache(next);
+        return;
+      }
+
+      const fallbackComment: ListComment = {
+        id: `c-${Date.now()}`,
+        userId: authUser.id,
+        username: currentUsername,
+        avatarUrl: currentAvatar,
+        text: trimmed,
+        createdAt: new Date().toLocaleDateString(),
+      };
+      const next = [...comments, fallbackComment];
+      setComments(next);
+      setCommentText('');
+      persistCommentsCache(next);
+    } catch (err) {
+      setCommentError(
+        err instanceof Error
+          ? err.message
+          : isPt
+            ? 'Erro ao enviar comentário.'
+            : 'Failed to post comment.',
+      );
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (supabase && isUuid(commentId)) {
+      const { error } = await supabase.from('list_comments').delete().eq('id', commentId);
+      if (error) {
+        setCommentError(error.message);
+        return;
+      }
+    }
+    const next = comments.filter((c) => c.id !== commentId);
+    setComments(next);
+    persistCommentsCache(next);
   };
 
   return (
@@ -517,51 +785,75 @@ export const ListDetailPage: React.FC = () => {
               </div>
             ) : (
               <div className="divide-y divide-white/10 mb-4">
-                {comments.map((c) => (
-                  <div key={c.id} className="py-3 flex gap-3 items-start">
-                    {c.avatarUrl ? (
-                      <img
-                        src={c.avatarUrl}
-                        alt={c.username}
-                        className="w-7 h-7 rounded-full object-cover shrink-0"
-                      />
-                    ) : (
-                      <div className="w-7 h-7 rounded-full bg-[#2c3440] flex items-center justify-center text-[#99aabb] shrink-0">
-                        <User className="w-3.5 h-3.5" />
+                {comments.map((c) => {
+                  const safeAvatar = sanitizeAvatarSrc(c.avatarUrl);
+                  const canDelete = Boolean(
+                    isAuthenticated && authUser && (c.userId === authUser.id || isAuthor),
+                  );
+                  return (
+                    <div key={c.id} className="py-3 flex gap-3 items-start">
+                      {safeAvatar ? (
+                        <img
+                          src={safeAvatar}
+                          alt={c.username}
+                          className="w-7 h-7 rounded-full object-cover shrink-0"
+                        />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-[#2c3440] flex items-center justify-center text-[#99aabb] shrink-0">
+                          <User className="w-3.5 h-3.5" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-[13px] font-bold text-white">
+                            {c.username}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-[#667788]">{c.createdAt}</span>
+                            {canDelete && (
+                              <button
+                                type="button"
+                                aria-label={t('lists_delete_title')}
+                                onClick={() => void handleDeleteComment(c.id)}
+                                className="text-[#667788] hover:text-[#ff4455] cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-[13.5px] text-[#ccddee] mt-1 leading-relaxed break-words">
+                          {c.text}
+                        </p>
                       </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-[13px] font-bold text-white">
-                          {c.username}
-                        </span>
-                        <span className="text-[11px] text-[#667788]">{c.createdAt}</span>
-                      </div>
-                      <p className="text-[13.5px] text-[#ccddee] mt-1 leading-relaxed">
-                        {c.text}
-                      </p>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
-            <form onSubmit={handleAddComment} className="flex items-center gap-2 pt-2 border-t border-white/10">
-              <input
-                type="text"
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder={t('list_add_comment_ph')}
-                className="flex-1 bg-[#2c3440] rounded-[4px] px-3 py-2 text-[14px] text-white placeholder-[#778899] focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={!commentText.trim()}
-                className="h-9 px-3 rounded-[4px] bg-[#00e054] text-[#14181c] font-bold text-xs disabled:opacity-40 flex items-center justify-center cursor-pointer"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
+            <div className="space-y-2 pt-2 border-t border-white/10">
+              {commentError && (
+                <p className="text-[12px] text-red-400">{commentError}</p>
+              )}
+              <form onSubmit={(e) => void handleAddComment(e)} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  maxLength={2000}
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  placeholder={t('list_add_comment_ph')}
+                  className="flex-1 bg-[#2c3440] rounded-[4px] px-3 py-2 text-[14px] text-white placeholder-[#778899] focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={!commentText.trim() || submittingComment}
+                  className="h-9 px-3 rounded-[4px] bg-[#00e054] text-[#14181c] font-bold text-xs disabled:opacity-40 flex items-center justify-center cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+            </div>
           </div>
         )}
 
@@ -849,6 +1141,83 @@ export const ListDetailPage: React.FC = () => {
             );
           })}
         </div>
+
+        {/* Desktop Comments Section */}
+        <section className="border-t border-lb-elevated pt-6 space-y-4">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-lb-muted">
+            {t('list_tab_comments')} ({comments.length})
+          </h2>
+
+          {comments.length === 0 ? (
+            <p className="text-xs text-lb-muted">{t('list_no_comments')}</p>
+          ) : (
+            <div className="divide-y divide-lb-elevated">
+              {comments.map((c) => {
+                const safeAvatar = sanitizeAvatarSrc(c.avatarUrl);
+                const canDelete = Boolean(
+                  isAuthenticated && authUser && (c.userId === authUser.id || isAuthor),
+                );
+                return (
+                  <div key={c.id} className="py-3 flex gap-3 items-start">
+                    {safeAvatar ? (
+                      <img
+                        src={safeAvatar}
+                        alt={c.username}
+                        className="w-7 h-7 rounded-full object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-lb-elevated flex items-center justify-center text-lb-muted shrink-0">
+                        <User className="w-3.5 h-3.5" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-xs font-bold text-white">{c.username}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-lb-muted">{c.createdAt}</span>
+                          {canDelete && (
+                            <button
+                              type="button"
+                              aria-label={t('lists_delete_title')}
+                              onClick={() => void handleDeleteComment(c.id)}
+                              className="text-lb-muted hover:text-lb-red cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-lb-white mt-1 leading-relaxed break-words">
+                        {c.text}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="space-y-2 pt-2">
+            {commentError && <p className="text-xs text-red-400">{commentError}</p>}
+            <form onSubmit={(e) => void handleAddComment(e)} className="flex items-center gap-2">
+              <input
+                type="text"
+                maxLength={2000}
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder={t('list_add_comment_ph')}
+                className="flex-1 bg-lb-surface border border-lb-elevated focus:border-lb-green rounded px-3 py-2 text-xs text-white placeholder-lb-muted focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={!commentText.trim() || submittingComment}
+                className="h-8 px-4 rounded bg-lb-green text-lb-bg font-bold text-xs disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </div>
+        </section>
       </div>
     </>
   );

@@ -10,6 +10,11 @@ import { supabase } from '../lib/supabase';
 import { tmdb } from '../services/tmdb';
 import { LetterboxdImportView } from '../components/LetterboxdImportView';
 import type { ImportDestination } from '../utils/letterboxdImport';
+import { isSafeHttpUrl, sanitizeAvatarSrc } from '../utils/urlValidation';
+
+const ALLOWED_AVATAR_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const ALLOWED_AVATAR_EXT = new Set(['jpg', 'jpeg', 'png', 'webp']);
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2 MB
 
 type TabKey = 'profile' | 'avatar' | 'data';
 
@@ -174,7 +179,8 @@ interface ProfileForm {
 const ProfileTab: React.FC = () => {
   const { user: authUser, session, profile } = useAuth();
   const { updateUser, top4MovieIds, openTop4Picker } = useApp();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isPt = language.startsWith('pt');
 
   const [form, setForm] = useState<ProfileForm>({
     username: profile?.username ?? '',
@@ -249,6 +255,17 @@ const ProfileTab: React.FC = () => {
       });
       return;
     }
+    const trimmedWebsite = form.website.trim();
+    if (trimmedWebsite && !isSafeHttpUrl(trimmedWebsite)) {
+      setNotice({
+        kind: 'error',
+        message: isPt
+          ? 'URL do site inválida. Use apenas endereços iniciados com http:// ou https://.'
+          : 'Invalid website URL. Only http:// and https:// URLs are allowed.',
+      });
+      return;
+    }
+
     if (!supabase || !authUser) {
       setNotice({ kind: 'error', message: t('cfg_supabase_missing') });
       return;
@@ -258,9 +275,9 @@ const ProfileTab: React.FC = () => {
     try {
       const payload: Record<string, unknown> = {
         username: form.username,
-        bio: form.bio,
-        location: form.location,
-        website: form.website,
+        bio: form.bio.slice(0, 1000),
+        location: form.location.trim().slice(0, 100),
+        website: trimmedWebsite.slice(0, 255),
       };
 
       let { error } = await supabase.from('profiles').update(payload).eq('id', authUser.id);
@@ -284,9 +301,9 @@ const ProfileTab: React.FC = () => {
 
       updateUser({
         username: form.username,
-        bio: form.bio,
-        location: form.location,
-        website: form.website,
+        bio: form.bio.slice(0, 1000),
+        location: form.location.trim().slice(0, 100),
+        website: trimmedWebsite.slice(0, 255),
       });
       setNotice({ kind: 'success', message: t('cfg_profile_updated') });
     } catch (err) {
@@ -331,6 +348,7 @@ const ProfileTab: React.FC = () => {
           <FieldLabel>{t('cfg_location')}</FieldLabel>
           <input
             type="text"
+            maxLength={100}
             value={form.location}
             onChange={set('location')}
             placeholder={t('cfg_location_ph')}
@@ -342,10 +360,11 @@ const ProfileTab: React.FC = () => {
         <div>
           <FieldLabel>{t('cfg_website')}</FieldLabel>
           <input
-            type="text"
+            type="url"
+            maxLength={255}
             value={form.website}
             onChange={set('website')}
-            placeholder={t('cfg_website_ph')}
+            placeholder="https://..."
             className={inputClass}
             disabled={!extraFieldsAvailable}
           />
@@ -354,6 +373,7 @@ const ProfileTab: React.FC = () => {
         <div>
           <FieldLabel>{t('cfg_bio')}</FieldLabel>
           <textarea
+            maxLength={1000}
             value={form.bio}
             onChange={set('bio')}
             rows={5}
@@ -482,33 +502,59 @@ const MobileProfileSettings: React.FC<{ onOpenDataTab?: () => void }> = ({ onOpe
   const handleSave = async () => {
     if (saving) return;
     setNotice(null);
+
+    const isPt = language.startsWith('pt');
+    const trimmedWebsite = form.website.trim();
+    if (trimmedWebsite && !isSafeHttpUrl(trimmedWebsite)) {
+      setNotice({
+        kind: 'error',
+        message: isPt
+          ? 'URL do site inválida. Use apenas endereços iniciados com http:// ou https://.'
+          : 'Invalid website URL. Only http:// and https:// URLs are allowed.',
+      });
+      return;
+    }
+
+    const displayName = [form.givenName.trim(), form.familyName.trim()]
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, 80);
+    const cleanBio = form.bio.slice(0, 1000);
+    const cleanLocation = form.location.trim().slice(0, 100);
+    const cleanWebsite = trimmedWebsite.slice(0, 255);
+
     setSaving(true);
     try {
-      const displayName = [form.givenName, form.familyName].filter(Boolean).join(' ');
-      updateUser({
-        displayName,
-        bio: form.bio,
-        location: form.location,
-        website: form.website,
-      });
-      // Best-effort persist to Supabase (same fields as the desktop form)
+      // Persiste no Supabase (incluindo display_name) antes de fechar a tela
       if (supabase && authUser) {
         const payload: Record<string, unknown> = {
-          bio: form.bio,
-          location: form.location,
-          website: form.website,
+          display_name: displayName,
+          bio: cleanBio,
+          location: cleanLocation,
+          website: cleanWebsite,
         };
-        const { error } = await supabase
+        let { error } = await supabase
           .from('profiles')
           .update(payload)
           .eq('id', authUser.id);
         if (error && /location|website/i.test(error.message)) {
-          await supabase
+          ({ error } = await supabase
             .from('profiles')
-            .update({ bio: form.bio })
-            .eq('id', authUser.id);
+            .update({ display_name: displayName, bio: cleanBio })
+            .eq('id', authUser.id));
+        }
+        if (error) {
+          setNotice({ kind: 'error', message: error.message });
+          return;
         }
       }
+
+      updateUser({
+        displayName,
+        bio: cleanBio,
+        location: cleanLocation,
+        website: cleanWebsite,
+      });
       navigate(-1);
     } catch (err) {
       setNotice({
@@ -578,13 +624,13 @@ const MobileProfileSettings: React.FC<{ onOpenDataTab?: () => void }> = ({ onOpe
           />
         </MobileField>
         <MobileField label={t('cfg_location')}>
-          <input type="text" value={form.location} onChange={set('location')} className={mobileInputClass} />
+          <input type="text" maxLength={100} value={form.location} onChange={set('location')} className={mobileInputClass} />
         </MobileField>
         <MobileField label={t('cfg_website')}>
-          <input type="text" value={form.website} onChange={set('website')} className={mobileInputClass} />
+          <input type="url" maxLength={255} placeholder="https://..." value={form.website} onChange={set('website')} className={mobileInputClass} />
         </MobileField>
         <MobileField label={t('cfg_bio')}>
-          <textarea rows={3} value={form.bio} onChange={set('bio')} className={`${mobileInputClass} resize-y`} />
+          <textarea rows={3} maxLength={1000} value={form.bio} onChange={set('bio')} className={`${mobileInputClass} resize-y`} />
         </MobileField>
         <MobileField label={t('cfg_pronoun')}>
           <input
@@ -689,7 +735,8 @@ const MobileProfileSettings: React.FC<{ onOpenDataTab?: () => void }> = ({ onOpe
 const AvatarTab: React.FC = () => {
   const { user: authUser, profile } = useAuth();
   const { user: appUser, updateUser } = useApp();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isPt = language.startsWith('pt');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentAvatar = profile?.avatar_url || appUser.avatarUrl;
@@ -699,7 +746,7 @@ const AvatarTab: React.FC = () => {
   const [savingUrl, setSavingUrl] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'success' | 'error' | 'info'; message: string } | null>(null);
 
-  const avatarSrc = avatarUrlInput || currentAvatar;
+  const avatarSrc = sanitizeAvatarSrc(avatarUrlInput) || sanitizeAvatarSrc(currentAvatar);
 
   const applyAvatarToProfile = async (url: string) => {
     if (!supabase || !authUser) {
@@ -724,10 +771,32 @@ const AvatarTab: React.FC = () => {
   const handleUploadFile = async (file: File) => {
     if (uploading) return;
     setNotice(null);
-    if (!file.type.startsWith('image/')) {
-      setNotice({ kind: 'error', message: 'Please choose an image file (PNG, JPG, WebP…).' });
+
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const mimeLower = (file.type || '').toLowerCase();
+    const isSvg = mimeLower.includes('svg') || ext === 'svg';
+    const hasAllowedMime = mimeLower ? ALLOWED_AVATAR_MIME.has(mimeLower) : ALLOWED_AVATAR_EXT.has(ext);
+
+    if (isSvg || !hasAllowedMime || !ALLOWED_AVATAR_EXT.has(ext)) {
+      setNotice({
+        kind: 'error',
+        message: isPt
+          ? 'Formato inválido. Envie apenas imagens JPG, PNG ou WebP (arquivos SVG não são permitidos).'
+          : 'Invalid format. Please choose a JPG, PNG, or WebP image (SVG files are not allowed).',
+      });
       return;
     }
+
+    if (file.size > MAX_AVATAR_BYTES) {
+      setNotice({
+        kind: 'error',
+        message: isPt
+          ? 'A imagem excede o limite máximo de 2 MB.'
+          : 'Image size must be 2 MB or less.',
+      });
+      return;
+    }
+
     if (!supabase || !authUser) {
       setNotice({ kind: 'error', message: t('cfg_supabase_missing') });
       return;
@@ -735,12 +804,20 @@ const AvatarTab: React.FC = () => {
 
     setUploading(true);
     try {
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const path = `${authUser.id}/avatar.${ext}`;
+      const safeExt = ext === 'jpeg' ? 'jpg' : ext;
+      const contentType =
+        mimeLower && ALLOWED_AVATAR_MIME.has(mimeLower)
+          ? mimeLower
+          : safeExt === 'png'
+            ? 'image/png'
+            : safeExt === 'webp'
+              ? 'image/webp'
+              : 'image/jpeg';
+      const path = `${authUser.id}/avatar.${safeExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, file, { upsert: true, contentType });
 
       if (uploadError) {
         setNotice({
@@ -770,13 +847,23 @@ const AvatarTab: React.FC = () => {
     e.preventDefault();
     if (savingUrl) return;
     setNotice(null);
-    if (!avatarUrlInput.trim()) {
+    const trimmed = avatarUrlInput.trim();
+    if (!trimmed) {
       setNotice({ kind: 'error', message: t('cfg_paste_url_first') });
+      return;
+    }
+    if (!isSafeHttpUrl(trimmed)) {
+      setNotice({
+        kind: 'error',
+        message: isPt
+          ? 'URL inválida. Use apenas endereços iniciados com http:// ou https://.'
+          : 'Invalid URL. Only http:// and https:// URLs are allowed.',
+      });
       return;
     }
     setSavingUrl(true);
     try {
-      const ok = await applyAvatarToProfile(avatarUrlInput.trim());
+      const ok = await applyAvatarToProfile(trimmed);
       if (ok) setNotice({ kind: 'success', message: t('cfg_avatar_updated') });
     } finally {
       setSavingUrl(false);
@@ -810,7 +897,7 @@ const AvatarTab: React.FC = () => {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -900,8 +987,8 @@ const DataTab: React.FC<{
             r.film_year,
             r.watched_on ? String(r.watched_on).slice(0, 10) : '',
             r.rating || '',
-            '',
-            '',
+            r.is_rewatch ? 'Yes' : 'No',
+            Array.isArray(r.tags) ? r.tags.join(', ') : '',
             r.review_text || '',
             r.film_id,
           ]),

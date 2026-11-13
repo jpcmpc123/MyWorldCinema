@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -220,18 +220,174 @@ function imdbApiPlugin() {
   }
 }
 
+function tmdbProxyDevPlugin(env: Record<string, string>) {
+  return {
+    name: 'tmdb-proxy-dev-middleware',
+    configureServer(server: any) {
+      server.middlewares.use('/api/tmdb', async (req: any, res: any) => {
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204
+          res.end()
+          return
+        }
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.statusCode = 405
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+
+        const reqUrl = new URL(req.url ?? '/', 'http://localhost')
+        const rawPath = reqUrl.pathname.replace(/^\/+/, '')
+        const segments = rawPath.split('/').filter(Boolean)
+        if (
+          segments.length === 0 ||
+          segments.some((seg) => seg === '.' || seg === '..' || !/^[A-Za-z0-9_.-]+$/.test(seg))
+        ) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Invalid TMDB endpoint path' }))
+          return
+        }
+
+        const token = (env.TMDB_ACCESS_TOKEN || env.VITE_TMDB_ACCESS_TOKEN || '').trim()
+        const apiKey = (env.TMDB_API_KEY || env.VITE_TMDB_API_KEY || '').trim()
+        if (!token && !apiKey) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'TMDB_ACCESS_TOKEN / TMDB_API_KEY não configurados no .env' }))
+          return
+        }
+
+        const targetUrl = new URL(`https://api.themoviedb.org/3/${segments.join('/')}`)
+        reqUrl.searchParams.forEach((value, key) => {
+          if (key.toLowerCase() === 'api_key') return
+          targetUrl.searchParams.append(key, value)
+        })
+
+        const headers: Record<string, string> = { Accept: 'application/json' }
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        } else {
+          targetUrl.searchParams.set('api_key', apiKey)
+        }
+
+        try {
+          const upstream = await fetch(targetUrl.toString(), { method: req.method, headers })
+          res.statusCode = upstream.status
+          res.setHeader('Content-Type', upstream.headers.get('Content-Type') || 'application/json; charset=utf-8')
+          const retryAfter = upstream.headers.get('Retry-After')
+          if (retryAfter) res.setHeader('Retry-After', retryAfter)
+          const body = req.method === 'HEAD' ? '' : Buffer.from(await upstream.arrayBuffer())
+          res.end(body)
+        } catch {
+          res.statusCode = 502
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Failed to reach TMDB upstream' }))
+        }
+      })
+    },
+  }
+}
+
+function ratingsProxyDevPlugin(env: Record<string, string>) {
+  return {
+    name: 'ratings-proxy-dev-middleware',
+    configureServer(server: any) {
+      server.middlewares.use('/api/ratings', async (req: any, res: any) => {
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204
+          res.end()
+          return
+        }
+        if (req.method !== 'GET') {
+          res.statusCode = 405
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+
+        const url = new URL(req.url ?? '', 'http://localhost')
+        const tmdbId = Number(url.searchParams.get('tmdbId') || '')
+        const typeParam = (url.searchParams.get('type') || 'movie').toLowerCase().trim()
+        const endpointType = typeParam === 'tv' || typeParam === 'show' ? 'show' : 'movie'
+        const rawImdbId = (url.searchParams.get('imdbId') || '').trim()
+
+        if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Parâmetro tmdbId inválido' }))
+          return
+        }
+        if (rawImdbId && !/^tt\d+$/i.test(rawImdbId)) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Parâmetro imdbId inválido' }))
+          return
+        }
+
+        const mdbKey = (env.MDBLIST_API_KEY || env.VITE_MDBLIST_API_KEY || '').trim()
+        const omdbKey = (env.OMDB_API_KEY || env.VITE_OMDB_API_KEY || '').trim()
+        let resolvedImdbId = rawImdbId
+        let mdblist: { imdbid?: string; ratings?: Array<{ source?: string; score?: unknown; value?: unknown }> } | null = null
+        let omdb: { Response?: string } | null = null
+
+        if (mdbKey) {
+          try {
+            const mdbRes = await fetch(
+              `https://api.mdblist.com/tmdb/${endpointType}/${tmdbId}?apikey=${encodeURIComponent(mdbKey)}`,
+              { headers: { Accept: 'application/json' } },
+            )
+            if (mdbRes.ok) {
+              mdblist = (await mdbRes.json()) as {
+                imdbid?: string
+                ratings?: Array<{ source?: string; score?: unknown; value?: unknown }>
+              }
+              if (!resolvedImdbId && mdblist?.imdbid && /^tt\d+$/i.test(mdblist.imdbid.trim())) {
+                resolvedImdbId = mdblist.imdbid.trim()
+              }
+            }
+          } catch {
+            /* segue para fallback OMDb */
+          }
+        }
+
+        const hasExternal = Array.isArray(mdblist?.ratings) && mdblist.ratings.some((e) => {
+          const src = String(e?.source || '').toLowerCase().trim()
+          if (!src || src === 'tmdb') return false
+          const score = Number(e?.score)
+          const val = Number(String(e?.value ?? '').replace('%', '').trim())
+          return (!Number.isNaN(score) && score > 0) || (!Number.isNaN(val) && val > 0)
+        })
+
+        if (!hasExternal && omdbKey && resolvedImdbId && /^tt\d+$/i.test(resolvedImdbId)) {
+          try {
+            const omdbRes = await fetch(
+              `https://www.omdbapi.com/?i=${encodeURIComponent(resolvedImdbId)}&apikey=${encodeURIComponent(omdbKey)}`,
+              { headers: { Accept: 'application/json' } },
+            )
+            if (omdbRes.ok) {
+              const data = (await omdbRes.json()) as { Response?: string }
+              if (data && data.Response !== 'False') omdb = data
+            }
+          } catch {
+            /* degrada para TMDb no cliente */
+          }
+        }
+
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ mdblist, omdb, resolvedImdbId: resolvedImdbId || null }))
+      })
+    },
+  }
+}
+
 import {
   recommendMovies,
   setLoadedLayaWeights,
   type Weights5DModel,
 } from './src/ai'
-
-const TMDB_KEY_DEFAULT =
-  process.env.TMDB_API_KEY ||
-  process.env.VITE_TMDB_API_KEY ||
-  process.env.TMDB_READ_TOKEN ||
-  process.env.VITE_TMDB_ACCESS_TOKEN ||
-  ''
 
 let nodeWeightsLoaded = false
 
@@ -254,7 +410,15 @@ function ensureNodeCheckpointWeights(): Weights5DModel | null {
   return null
 }
 
-function recommendApiPlugin() {
+function recommendApiPlugin(env: Record<string, string>) {
+  const tmdbKeyDefault =
+    env.TMDB_ACCESS_TOKEN ||
+    env.TMDB_API_KEY ||
+    env.TMDB_READ_TOKEN ||
+    env.VITE_TMDB_ACCESS_TOKEN ||
+    env.VITE_TMDB_API_KEY ||
+    ''
+
   return {
     name: 'laya-recommend-api-middleware',
     configureServer(server: any) {
@@ -273,7 +437,7 @@ function recommendApiPlugin() {
 
           const payload = await recommendMovies(q, {
             language: lang,
-            apiKeyOrToken: TMDB_KEY_DEFAULT,
+            apiKeyOrToken: tmdbKeyDefault,
           })
 
           res.statusCode = 200
@@ -290,34 +454,37 @@ function recommendApiPlugin() {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  base: process.env.CAPACITOR === 'true'
-    ? './'
-    : (process.env.VITE_BASE_PATH || '/'),
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-    allowedHosts: true,
-  },
-  plugins: [
-    react(),
-    tailwindcss(),
-    imdbApiPlugin(),
-    recommendApiPlugin(),
-  ],
-  build: {
-    rollupOptions: {
-      output: {
-        // Divide dependências pesadas em chunks próprios para cache independente e menor parse inicial
-        manualChunks(id) {
-          if (id.includes('weights_5d.json')) return 'ai-weights';
-          if (id.includes('@supabase')) return 'supabase';
-          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router')) {
-            return 'react-vendor';
-          }
-          if (id.includes('node_modules/lucide-react')) return 'icons';
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  return {
+    base: process.env.CAPACITOR === 'true' ? './' : '/',
+    server: {
+      host: '0.0.0.0',
+      port: 3000,
+      allowedHosts: true,
+    },
+    plugins: [
+      react(),
+      tailwindcss(),
+      tmdbProxyDevPlugin(env),
+      ratingsProxyDevPlugin(env),
+      imdbApiPlugin(),
+      recommendApiPlugin(env),
+    ],
+    build: {
+      rollupOptions: {
+        output: {
+          // Divide dependências pesadas em chunks próprios para cache independente e menor parse inicial
+          manualChunks(id) {
+            if (id.includes('weights_5d.json')) return 'ai-weights';
+            if (id.includes('@supabase')) return 'supabase';
+            if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router')) {
+              return 'react-vendor';
+            }
+            if (id.includes('node_modules/lucide-react')) return 'icons';
+          },
         },
       },
     },
-  },
+  }
 })

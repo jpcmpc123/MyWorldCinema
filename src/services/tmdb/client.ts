@@ -1,18 +1,9 @@
+import { API_BASE_URL, apiUrl } from '../../utils/apiBase';
 import { curatedBackdropCache, curatedPosterCache, tmdbHttpCache, tmdbInflight } from './cache';
 import { CANONICAL_BACKDROP_BY_ID } from './posterFilter';
 import type { TMDBMovie, TMDBRawMediaPayload } from './types';
 
-// ATENÇÃO: nunca recoloque chaves reais como fallback aqui — use apenas
-// variáveis de ambiente (.env local ou secrets de CI). Chaves hardcoded
-// vazam no repositório público mesmo se as envs estiverem corretas.
-const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY as string | undefined;
-const TMDB_ACCESS_TOKEN = import.meta.env.VITE_TMDB_ACCESS_TOKEN as string | undefined;
-
-if (!TMDB_API_KEY || !TMDB_ACCESS_TOKEN) {
-  console.error('[tmdb] VITE_TMDB_API_KEY / VITE_TMDB_ACCESS_TOKEN não definidas. Crie um .env local.');
-}
-
-export const BASE_URL = 'https://api.themoviedb.org/3';
+export const BASE_URL = '/api/tmdb';
 export const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p';
 
 // ---------------------------------------------------------------------------
@@ -149,7 +140,13 @@ async function fetchWithRetry(
     try {
       const res = await fetch(urlString, { headers, signal: controller.signal });
       clearTimeout(timeoutId);
-      if (res.ok) return res;
+      if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType && !contentType.includes('application/json')) {
+          throw new Error(`TMDB proxy returned unexpected content-type: ${contentType}`);
+        }
+        return res;
+      }
       if ((res.status === 429 || res.status >= 500) && attempt < maxAttempts) {
         const retryAfterSec = Number(res.headers.get('Retry-After'));
         const delayMs =
@@ -178,15 +175,14 @@ export async function fetchFromTMDB<T>(
   params: Record<string, string | number | undefined> = {},
   options?: { allowMissingPoster?: boolean },
 ): Promise<T> {
-  if (!TMDB_API_KEY || !TMDB_ACCESS_TOKEN) {
-    throw new Error('TMDB não configurado: defina VITE_TMDB_API_KEY e VITE_TMDB_ACCESS_TOKEN no .env');
-  }
   const headers = {
-    Authorization: `Bearer ${TMDB_ACCESS_TOKEN}`,
-    'Content-Type': 'application/json',
+    Accept: 'application/json',
   };
-  const url = new URL(`${BASE_URL}${endpoint}`);
-  url.searchParams.append('api_key', TMDB_API_KEY);
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+  const url = new URL(apiUrl(`${BASE_URL}${normalizedEndpoint}`), origin);
+  const formatTargetUrl = (u: URL): string =>
+    API_BASE_URL ? u.toString() : `${u.pathname}${u.search}`;
 
   const effectiveLang = params.language !== undefined ? String(params.language) : tmdbLanguage;
   if (params.language === undefined) {
@@ -199,8 +195,8 @@ export async function fetchFromTMDB<T>(
     }
   });
 
-  const cacheKey = options?.allowMissingPoster ? `${url.toString()}#allowNoPoster` : url.toString();
-  const urlString = url.toString();
+  const urlString = formatTargetUrl(url);
+  const cacheKey = options?.allowMissingPoster ? `${urlString}#allowNoPoster` : urlString;
 
   const cached = tmdbHttpCache.get(cacheKey);
   if (cached !== null) {
@@ -219,12 +215,13 @@ export async function fetchFromTMDB<T>(
     const enPostersPromise = shouldSyncOfficialPosters
       ? (async () => {
           try {
-            const enUrl = new URL(urlString);
+            const enUrl = new URL(urlString, origin);
             enUrl.searchParams.set('language', 'en-US');
-            const enKey = `${enUrl.toString()}#enPosters`;
+            const enUrlString = formatTargetUrl(enUrl);
+            const enKey = `${enUrlString}#enPosters`;
             const cachedEn = tmdbHttpCache.get(enKey) as Map<number, string> | null;
             if (cachedEn) return cachedEn;
-            const enRes = await fetchWithRetry(enUrl.toString(), headers, 2);
+            const enRes = await fetchWithRetry(enUrlString, headers, 2);
             const enJson = await enRes.json();
             const map = new Map<number, string>();
             if (enJson && Array.isArray(enJson.results)) {

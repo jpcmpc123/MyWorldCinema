@@ -111,6 +111,8 @@ export async function executeProfileImport(params: {
     liked: boolean;
     review_text: string | null;
     contains_spoilers: boolean;
+    tags: string[];
+    is_rewatch: boolean;
   }[] = [];
 
   for (const item of combinedItems) {
@@ -161,6 +163,8 @@ export async function executeProfileImport(params: {
             liked: updatedLiked,
             review_text: updatedReview.trim() || null,
             contains_spoilers: existing.containsSpoilers,
+            tags: updatedTags.slice(0, 20),
+            is_rewatch: updatedRewatch,
           });
         }
       } else {
@@ -196,6 +200,8 @@ export async function executeProfileImport(params: {
             liked: item.liked,
             review_text: item.reviewText.trim() || null,
             contains_spoilers: false,
+            tags: (item.tags || []).slice(0, 20),
+            is_rewatch: Boolean(item.isRewatch),
           });
         }
       }
@@ -260,6 +266,8 @@ export async function executeProfileImport(params: {
           liked: item.liked,
           review_text: item.reviewText.trim() || null,
           contains_spoilers: false,
+          tags: (item.tags || []).slice(0, 20),
+          is_rewatch: Boolean(item.isRewatch),
         });
       }
     }
@@ -343,6 +351,8 @@ export async function executeProfileImport(params: {
                   rating: dRow.rating,
                   liked: dRow.liked,
                   review_text: dRow.review_text,
+                  tags: dRow.tags,
+                  is_rewatch: dRow.is_rewatch,
                 })
                 .eq('id', existingMap.get(dRow.film_id)!),
             ),

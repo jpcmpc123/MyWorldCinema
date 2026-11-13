@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { AlertTriangle, ChevronRight, RefreshCw } from 'lucide-react';
 import { tmdb, type TMDBMovie } from '../services/tmdb';
 import { tabDataCache, prewarmHubPosters } from '../services/tabDataCache';
 import { PosterCard } from '../components/PosterCard';
@@ -11,7 +11,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 
 export const HomePage: React.FC = () => {
   const { lists, openLogModal, movieOverrides } = useApp();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isPt = language.startsWith('pt');
   const isMobile = useIsMobile();
 
   const [cachedHub] = useState(() => tabDataCache.getFilmsHub());
@@ -32,41 +33,57 @@ export const HomePage: React.FC = () => {
     cachedHub ? (cachedHub.popular[0] || null) : null,
   );
   const [loading, setLoading] = useState<boolean>(() => !cachedHub);
+  const [loadError, setLoadError] = useState<boolean>(false);
+  const mountedRef = useRef(true);
+
+  const loadData = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
+    setLoadError(false);
+    try {
+      const hub = await tmdb.getFilmsHubSections();
+      if (!mountedRef.current) return;
+      const isEmpty =
+        hub.popular.length === 0 &&
+        hub.highestRated.length === 0 &&
+        hub.mostWatched.length === 0 &&
+        hub.mostAnticipated.length === 0;
+      if (isEmpty) {
+        setLoadError(true);
+        return;
+      }
+      tabDataCache.setFilmsHub(hub);
+      setPopularFilms(hub.popular.slice(0, 18));
+      setTopRatedFilms(hub.highestRated.slice(0, 24));
+      setNowPlayingFilms(hub.mostAnticipated.slice(0, 18));
+      setMostWatchedFilms(hub.mostWatched.slice(0, 18));
+      setFeaturedFilm(hub.popular[0] || null);
+      setLoadError(false);
+    } catch (err) {
+      console.error('Failed to load homepage movies:', err);
+      if (mountedRef.current) setLoadError(true);
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    mountedRef.current = true;
     if (cachedHub) {
       prewarmHubPosters(cachedHub);
     }
+    void loadData(!cachedHub);
 
-    async function loadData() {
-      try {
-        const hub = await tmdb.getFilmsHubSections();
-        if (cancelled) return;
-        tabDataCache.setFilmsHub(hub);
-        setPopularFilms(hub.popular.slice(0, 18));
-        setTopRatedFilms(hub.highestRated.slice(0, 24));
-        setNowPlayingFilms(hub.mostAnticipated.slice(0, 18));
-        setMostWatchedFilms(hub.mostWatched.slice(0, 18));
-        setFeaturedFilm(hub.popular[0] || null);
-      } catch (err) {
-        console.error('Failed to load homepage movies:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    loadData();
     const onRefresh = (evt: Event) => {
       const customEvt = evt as CustomEvent<{ registerPromise?: (p: Promise<unknown>) => void }>;
-      const task = loadData();
+      const task = loadData(false);
       customEvt.detail?.registerPromise?.(task);
     };
     window.addEventListener('mw:pull-to-refresh', onRefresh);
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
       window.removeEventListener('mw:pull-to-refresh', onRefresh);
     };
-  }, []);
+  }, [cachedHub, loadData]);
 
   const popularThisWeek = React.useMemo(() => popularFilms.slice(0, 4), [popularFilms]);
 
@@ -129,6 +146,31 @@ export const HomePage: React.FC = () => {
       {/* pt-4 no mobile: respiro entre a faixa de abas e a primeira seção
           (o hero hidden não gera espaçamento no mobile) */}
       <div className="max-w-[950px] mx-auto px-4 pt-4 md:pt-0 space-y-8 md:space-y-14">
+        {loadError && (
+          <div
+            role="alert"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-red-500/35 bg-red-500/10 px-4 py-3 text-xs text-red-200"
+          >
+            <div className="flex items-start sm:items-center gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5 sm:mt-0" />
+              <span>
+                {isPt
+                  ? 'Não foi possível carregar o catálogo de filmes do TMDb. Verifique sua conexão e tente novamente.'
+                  : 'Could not load movies from TMDb. Please check your connection and try again.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadData(popularFilms.length === 0)}
+              disabled={loading}
+              className="self-start sm:self-auto shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-lb-green hover:bg-lb-green-hover text-lb-bg font-bold text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span>{isPt ? 'Tentar novamente' : 'Try again'}</span>
+            </button>
+          </div>
+        )}
+
         {/* 4 seções de catálogo do app (Popular / Highest rated / Most watched /
             Most anticipated) — estrutura compartilhada com a aba Series */}
         {isMobile && (
